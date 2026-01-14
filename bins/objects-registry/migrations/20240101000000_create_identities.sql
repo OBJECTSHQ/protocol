@@ -40,8 +40,8 @@ CREATE UNIQUE INDEX idx_identities_handle_lower ON identities (LOWER(handle));
 -- Signer uniqueness (one identity per signer public key)
 CREATE UNIQUE INDEX idx_identities_signer ON identities (signer_public_key);
 
--- Wallet uniqueness (one identity per wallet, excluding nulls)
-CREATE UNIQUE INDEX idx_identities_wallet ON identities (wallet_address)
+-- Wallet uniqueness (one identity per wallet, case-insensitive, excluding nulls)
+CREATE UNIQUE INDEX idx_identities_wallet ON identities (LOWER(wallet_address))
     WHERE wallet_address IS NOT NULL;
 
 -- Index for timestamp-based queries (DESC ordering for recent-first queries)
