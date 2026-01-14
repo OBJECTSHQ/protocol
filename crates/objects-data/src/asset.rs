@@ -37,7 +37,7 @@ impl ContentHash {
 
     /// Returns the hash as a hex string.
     pub fn to_hex(&self) -> String {
-        self.0.iter().map(|b| format!("{:02x}", b)).collect()
+        hex::encode(self.0)
     }
 }
 

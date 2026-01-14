@@ -54,21 +54,7 @@ impl Signer {
 
     /// Returns the public key as a hex string.
     pub fn public_key_hex(&self) -> String {
-        hex::encode(&self.public_key)
-    }
-}
-
-// Include hex encoding for public keys
-mod hex {
-    const HEX_CHARS: &[u8; 16] = b"0123456789abcdef";
-
-    pub fn encode(bytes: &[u8]) -> String {
-        let mut s = String::with_capacity(bytes.len() * 2);
-        for &b in bytes {
-            s.push(HEX_CHARS[(b >> 4) as usize] as char);
-            s.push(HEX_CHARS[(b & 0xf) as usize] as char);
-        }
-        s
+        hex::encode(self.public_key)
     }
 }
 
