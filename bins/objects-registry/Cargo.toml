@@ -6,6 +6,14 @@ license.workspace = true
 repository.workspace = true
 description = "Identity registry service for OBJECTS Protocol"
 
+[[bin]]
+name = "objects-registry"
+path = "src/main.rs"
+
+[lib]
+name = "objects_registry"
+path = "src/lib.rs"
+
 [dependencies]
 objects-identity.workspace = true
 
@@ -36,6 +44,16 @@ thiserror.workspace = true
 # Logging
 tracing.workspace = true
 tracing-subscriber.workspace = true
+
+[dev-dependencies]
+p256 = { version = "0.13", features = ["ecdsa"] }
+k256 = { version = "0.13", features = ["ecdsa"] }
+rand = "0.8"  # Must match rand_core version used by p256/k256
+sha2 = "0.10"
+hex = "0.4"
+alloy-primitives = "1.5"
+hyper = { version = "1.0", features = ["full"] }
+http-body-util = "0.1"
 
 [build-dependencies]
 prost-build.workspace = true
