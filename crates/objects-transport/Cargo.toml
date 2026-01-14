@@ -4,24 +4,31 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Iroh-based transport layer for OBJECTS Protocol"
+description = "P2P transport layer for OBJECTS Protocol"
 
 [dependencies]
-objects-identity.workspace = true
-
-# Iroh
+# Iroh (transport substrate - replaceable)
 iroh.workspace = true
 iroh-gossip.workspace = true
 
-# Crypto
+# Crypto (standard, not Iroh-specific)
 ed25519-dalek.workspace = true
 
 # Async
 tokio.workspace = true
 futures.workspace = true
+async-trait = "0.1"
+async-stream = "0.3"
 
-# Serialization
-serde.workspace = true
+# Types
+url = "2"
+bytes = "1"
+
+# Hashing
+blake3 = "1"
+
+# Random
+rand.workspace = true
 
 # Error handling
 thiserror.workspace = true
