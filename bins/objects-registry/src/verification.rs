@@ -39,7 +39,13 @@ pub fn verify_timestamp(timestamp: u64, config: &Config) -> Result<()> {
 ///
 /// Per RFC-001 Section 2:
 /// identity_id = "obj_" || base58(truncate(sha256(public_key || nonce), 15))
-#[allow(dead_code)] // Useful for verifying IDs from external sources
+///
+/// NOTE: This function is currently unused in the codebase but is retained for potential
+/// future use cases such as:
+/// - Verifying identity IDs from external API requests that include a claimed ID
+/// - Admin tools that need to validate identity derivation
+/// - Cross-system identity verification where the ID is provided separately
+#[allow(dead_code)]
 pub fn verify_id_derivation(
     public_key: &[u8; 33],
     nonce: &[u8; 8],
@@ -77,9 +83,9 @@ pub fn verify_public_key_matches(signature: &Signature, expected: &[u8]) -> Resu
     match &signature.public_key {
         Some(pk) if pk.as_slice() == expected => Ok(()),
         Some(pk) => Err(RegistryError::InvalidSignature(format!(
-            "public key mismatch: expected {} bytes, signature contains {} bytes",
-            expected.len(),
-            pk.len()
+            "signature public key does not match request public key (signature: {} bytes, request: {} bytes)",
+            pk.len(),
+            expected.len()
         ))),
         None => {
             // For wallet signatures, public key is not included

@@ -21,7 +21,12 @@ pub struct AppState {
 }
 
 /// Health check endpoint.
-/// GET /health
+///
+/// # Endpoint
+/// `GET /health`
+///
+/// # Response
+/// Returns a JSON object with status "ok".
 pub async fn health_check() -> Json<HealthResponse> {
     Json(HealthResponse {
         status: "ok".to_string(),
@@ -29,7 +34,32 @@ pub async fn health_check() -> Json<HealthResponse> {
 }
 
 /// Create a new identity.
-/// POST /v1/identities
+///
+/// # Endpoint
+/// `POST /v1/identities`
+///
+/// # Request Body
+/// [`CreateIdentityRequest`] containing:
+/// - `signer_public_key`: Base64-encoded compressed SEC1 public key (33 bytes)
+/// - `nonce`: Base64-encoded random nonce (8 bytes) for identity derivation
+/// - `signer_type`: "PASSKEY" or "WALLET"
+/// - `handle`: Desired handle (1-30 chars, lowercase alphanumeric + underscore + period)
+/// - `timestamp`: Unix timestamp in seconds
+/// - `signature`: Signature object containing signature data and optional public key
+///
+/// # Verification Steps
+/// 1. Parses and validates public key and nonce format
+/// 2. Derives identity ID from public key + nonce per RFC-001
+/// 3. Validates handle format and checks for reserved words
+/// 4. Verifies timestamp is within acceptable bounds (5 min future, 24 hours past)
+/// 5. Verifies signature over the create identity message
+/// 6. Verifies signature public key matches request public key (passkey only)
+/// 7. Inserts identity into database
+///
+/// # Returns
+/// - `201 Created` with [`IdentityResponse`] on success
+/// - `400 Bad Request` for validation errors
+/// - `409 Conflict` if handle, signer, or ID already exists
 pub async fn create_identity(
     State(state): State<AppState>,
     Json(req): Json<CreateIdentityRequest>,
@@ -92,7 +122,16 @@ pub async fn create_identity(
 }
 
 /// Get an identity by ID.
-/// GET /v1/identities/{id}
+///
+/// # Endpoint
+/// `GET /v1/identities/{id}`
+///
+/// # Path Parameters
+/// - `id`: Identity ID (e.g., "obj_2dMiYc8RhnYkorPc5pVh9")
+///
+/// # Returns
+/// - `200 OK` with [`IdentityResponse`] on success
+/// - `404 Not Found` if identity does not exist
 pub async fn get_identity(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -105,7 +144,20 @@ pub async fn get_identity(
 }
 
 /// Resolve an identity by handle, signer, or wallet.
-/// GET /v1/identities?handle=X or ?signer=X or ?wallet=X
+///
+/// # Endpoint
+/// `GET /v1/identities`
+///
+/// # Query Parameters
+/// Exactly one of the following must be provided:
+/// - `handle`: Identity handle (e.g., "montez")
+/// - `signer`: Base64-encoded signer public key
+/// - `wallet`: Ethereum wallet address (e.g., "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb")
+///
+/// # Returns
+/// - `200 OK` with [`IdentityResponse`] on success
+/// - `400 Bad Request` if no query parameter provided or multiple provided
+/// - `404 Not Found` if identity does not exist
 pub async fn resolve_identity(
     State(state): State<AppState>,
     Query(query): Query<ResolveQuery>,
@@ -132,7 +184,33 @@ pub async fn resolve_identity(
 }
 
 /// Link a wallet to an identity.
-/// POST /v1/identities/{id}/wallet
+///
+/// # Endpoint
+/// `POST /v1/identities/{id}/wallet`
+///
+/// # Path Parameters
+/// - `id`: Identity ID to link the wallet to
+///
+/// # Request Body
+/// [`LinkWalletRequest`] containing:
+/// - `wallet_address`: Ethereum wallet address (0x + 40 hex chars)
+/// - `timestamp`: Unix timestamp in seconds
+/// - `identity_signature`: Signature from the identity's signer over the link message
+/// - `wallet_signature`: Signature from the wallet over the link message
+///
+/// # Verification Steps
+/// 1. Fetches the existing identity by ID
+/// 2. Verifies timestamp is within acceptable bounds
+/// 3. Builds the link wallet message
+/// 4. Verifies the identity signature using the identity's signer public key
+/// 5. Verifies the wallet signature using the wallet address
+/// 6. Updates the identity with the linked wallet address
+///
+/// # Returns
+/// - `200 OK` with updated [`IdentityResponse`] on success
+/// - `400 Bad Request` for validation errors
+/// - `404 Not Found` if identity does not exist
+/// - `409 Conflict` if wallet is already linked to another identity
 pub async fn link_wallet(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -181,7 +259,32 @@ pub async fn link_wallet(
 }
 
 /// Change an identity's handle.
-/// PATCH /v1/identities/{id}/handle
+///
+/// # Endpoint
+/// `PATCH /v1/identities/{id}/handle`
+///
+/// # Path Parameters
+/// - `id`: Identity ID whose handle should be changed
+///
+/// # Request Body
+/// [`ChangeHandleRequest`] containing:
+/// - `new_handle`: Desired new handle (1-30 chars, lowercase alphanumeric + underscore + period)
+/// - `timestamp`: Unix timestamp in seconds
+/// - `signature`: Signature from the identity's signer over the change handle message
+///
+/// # Verification Steps
+/// 1. Fetches the existing identity by ID
+/// 2. Validates the new handle format and checks for reserved words
+/// 3. Verifies timestamp is within acceptable bounds
+/// 4. Builds the change handle message
+/// 5. Verifies the signature using the identity's signer public key
+/// 6. Updates the identity with the new handle
+///
+/// # Returns
+/// - `200 OK` with updated [`IdentityResponse`] on success
+/// - `400 Bad Request` for validation errors
+/// - `404 Not Found` if identity does not exist
+/// - `409 Conflict` if new handle is already taken
 pub async fn change_handle(
     State(state): State<AppState>,
     Path(id): Path<String>,
