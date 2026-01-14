@@ -1,0 +1,24 @@
+//! Error types for sync operations.
+
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum Error {
+    #[error("blob not found: {0}")]
+    BlobNotFound(String),
+
+    #[error("verification failed: {0}")]
+    VerificationFailed(String),
+
+    #[error("sync failed: {0}")]
+    SyncFailed(String),
+
+    #[error("invalid ticket: {0}")]
+    InvalidTicket(String),
+
+    #[error("transport error: {0}")]
+    Transport(#[from] objects_transport::Error),
+
+    #[error("iroh error: {0}")]
+    Iroh(#[from] anyhow::Error),
+}

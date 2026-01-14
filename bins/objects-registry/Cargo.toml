@@ -1,0 +1,39 @@
+[package]
+name = "objects-registry"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Identity registry service for OBJECTS Protocol"
+
+[dependencies]
+objects-identity.workspace = true
+
+# Web/API
+axum.workspace = true
+tonic.workspace = true
+tower.workspace = true
+
+# Database
+sqlx.workspace = true
+
+# Async
+tokio.workspace = true
+futures.workspace = true
+
+# Serialization
+prost.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+# Error handling
+anyhow.workspace = true
+thiserror.workspace = true
+
+# Logging
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[build-dependencies]
+prost-build.workspace = true
+tonic-build = "0.14"

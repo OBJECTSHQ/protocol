@@ -1,0 +1,26 @@
+[package]
+name = "objects-data"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Asset, Project, and Reference types for OBJECTS Protocol"
+
+[dependencies]
+objects-identity.workspace = true
+
+# Crypto
+blake3.workspace = true
+
+# Serialization
+prost.workspace = true
+serde.workspace = true
+
+# Error handling
+thiserror.workspace = true
+
+[dev-dependencies]
+tokio-test.workspace = true
+
+[build-dependencies]
+prost-build.workspace = true
