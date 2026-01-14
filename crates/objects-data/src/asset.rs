@@ -499,6 +499,7 @@ mod tests {
     mod signed_asset_tests {
         use super::*;
         use alloy_primitives::keccak256;
+        use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
         use k256::ecdsa::SigningKey as K256SigningKey;
         use k256::elliptic_curve::rand_core::OsRng;
         use objects_identity::{IdentityId, Signature, SignerType, message::sign_asset_message};
@@ -545,7 +546,7 @@ mod tests {
 
             let client_data_json = format!(
                 r#"{{"type":"webauthn.get","challenge":"{}"}}"#,
-                hex::encode(message.as_bytes())
+                URL_SAFE_NO_PAD.encode(message.as_bytes())
             )
             .into_bytes();
 
