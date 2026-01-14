@@ -188,16 +188,26 @@ impl EndpointBuilder {
         let mut transport_config = TransportConfig::default();
 
         // Apply idle timeout (RFC-002 §6.2)
-        transport_config.max_idle_timeout(Some(
-            config
-                .idle_timeout()
-                .try_into()
-                .expect("idle timeout should be valid"),
-        ));
+        // Note: Duration::try_into() converts to IdleTimeout, which validates
+        // that timeout in milliseconds fits in QUIC VarInt (< 2^62)
+        let idle_timeout = config.idle_timeout().try_into().map_err(|_| {
+            Error::Iroh(anyhow::anyhow!(
+                "idle timeout {:?} exceeds QUIC VarInt maximum",
+                config.idle_timeout()
+            ))
+        })?;
+        transport_config.max_idle_timeout(Some(idle_timeout));
 
         // Apply max streams per connection (RFC-002 §6.1)
-        transport_config.max_concurrent_bidi_streams((config.max_streams_per_conn() as u32).into());
-        transport_config.max_concurrent_uni_streams((config.max_streams_per_conn() as u32).into());
+        // Safe cast: validated in NetworkConfigBuilder::build() to fit in u32
+        let max_streams: u32 = config.max_streams_per_conn().try_into().map_err(|_| {
+            Error::Iroh(anyhow::anyhow!(
+                "max_streams_per_conn {} exceeds u32::MAX",
+                config.max_streams_per_conn()
+            ))
+        })?;
+        transport_config.max_concurrent_bidi_streams(max_streams.into());
+        transport_config.max_concurrent_uni_streams(max_streams.into());
 
         // Build the Iroh endpoint with OBJECTS configuration
         let mut builder = Endpoint::builder()

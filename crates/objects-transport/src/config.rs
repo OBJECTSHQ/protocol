@@ -255,6 +255,24 @@ impl NetworkConfigBuilder {
             });
         }
 
+        // Validate max_streams_per_conn fits in u32 (required by QUIC transport config)
+        if self.max_streams_per_conn > u32::MAX as usize {
+            return Err(ConfigError::AboveMaximum {
+                field: "max_streams_per_conn",
+                maximum: u32::MAX as u64,
+                provided: self.max_streams_per_conn as u64,
+            });
+        }
+
+        // Validate idle_timeout can be converted to QUIC's VarInt (in milliseconds)
+        let timeout_ms = self.idle_timeout.as_millis() as u64;
+        let _: iroh::endpoint::VarInt = timeout_ms.try_into().map_err(|_| {
+            ConfigError::InvalidIdleTimeout(format!(
+                "idle_timeout {:?} exceeds QUIC VarInt maximum (2^62 - 1 milliseconds)",
+                self.idle_timeout
+            ))
+        })?;
+
         let relay_url = self.relay_url.unwrap_or_else(|| {
             DEFAULT_RELAY_URL
                 .parse()
