@@ -6,9 +6,9 @@ Instructions for AI coding agents working on the OBJECTS Protocol.
 
 OBJECTS Protocol is a decentralized identity and data sync system for design engineering. Rust monorepo using Cargo workspaces, built on Iroh for P2P networking.
 
-**Stack:** Rust 2021 edition, Iroh 0.33, Protocol Buffers (prost), Tokio async runtime, PostgreSQL (registry only)
+**Stack:** Rust 2024 edition, Iroh 0.95, Protocol Buffers (prost), Tokio async runtime, PostgreSQL (registry only)
 
-**Network:** ALPN `/objects/0.1`, Discovery topic `/objects/devnet/0.1/discovery`, Relay `https://relay.objects.network`
+**Network:** ALPN `/objects/0.1`, Discovery topic `/objects/devnet/0.1/discovery`, Relay `https://relay.objects.foundation`
 
 ## Commands
 
@@ -33,6 +33,16 @@ cargo build -p objects-identity --features codegen
 cargo run -p objects-cli -- identity create
 cargo run -p objects-node
 cargo run -p objects-registry
+
+# Dev tools (install with: cargo install <tool>)
+cargo nextest run                       # Fast parallel test runner
+cargo watch -x check -x test            # Auto-rebuild on changes
+cargo machete                           # Find unused dependencies
+cargo audit                             # Security vulnerability scan
+cargo expand                            # Debug macro expansions
+cargo deny check                        # License/dependency policy
+cargo tarpaulin                         # Code coverage
+cargo upgrade                           # Update Cargo.toml versions (cargo-edit)
 ```
 
 ## Architecture
@@ -64,15 +74,19 @@ identity_id = "obj_" || base58(truncate(sha256(signer_public_key || nonce), 15))
 
 - `signer_public_key`: 33 bytes, compressed SEC1 format
 - `nonce`: 8 bytes, cryptographically random
-- Result: exactly 24 characters (`obj_` + 20 base58)
+- Result: 23-25 characters (`obj_` + 19-21 base58)
 
 **Test vector:**
 ```
 Input:
   signer_public_key: 02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5
   nonce: 0102030405060708
+Derivation:
+  sha256: 3a26513646a95b6cefac3cbe0a6b8053401956aaaa4c374e1f83521be5ab0a1f
+  truncated: 3a26513646a95b6cefac3cbe0a6b80
+  base58: 2dMiYc8RhnYkorPc5pVh9
 Output:
-  identity_id: obj_5KJvsngHeMpm88rD
+  identity_id: obj_2dMiYc8RhnYkorPc5pVh9
 ```
 
 **Handle rules:** 1-30 chars, lowercase alphanumeric + underscore + period, no leading `_` or `.`, no trailing `.`, no consecutive `..`
