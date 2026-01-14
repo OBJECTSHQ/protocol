@@ -98,7 +98,7 @@ impl Signature {
 
     /// Verifies the signature against a message using audited libraries.
     ///
-    /// For passkey signatures: Uses webauthn-rs-core (SUSE audited)
+    /// For passkey signatures: Uses p256 (RustCrypto, audited by zkSecurity 2025)
     /// For wallet signatures: Uses alloy-signer (industry standard)
     pub fn verify(&self, message: &[u8]) -> Result<(), Error> {
         match self {
