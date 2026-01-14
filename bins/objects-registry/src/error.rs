@@ -36,6 +36,9 @@ pub enum RegistryError {
     #[error("timestamp expired or too far in future")]
     TimestampInvalid,
 
+    #[error("bad request: {0}")]
+    BadRequest(String),
+
     #[error("identity not found: {0}")]
     NotFound(String),
 
@@ -63,6 +66,7 @@ impl RegistryError {
             Self::InvalidWalletAddress(_) => "INVALID_WALLET_ADDRESS",
             Self::InvalidIdentityId { .. } => "INVALID_IDENTITY_ID",
             Self::TimestampInvalid => "TIMESTAMP_INVALID",
+            Self::BadRequest(_) => "BAD_REQUEST",
             Self::NotFound(_) => "NOT_FOUND",
             Self::Database(_) => "DATABASE_ERROR",
             Self::Internal(_) => "INTERNAL_ERROR",
@@ -85,6 +89,7 @@ impl RegistryError {
             | Self::InvalidWalletAddress(_)
             | Self::InvalidIdentityId { .. }
             | Self::TimestampInvalid
+            | Self::BadRequest(_)
             | Self::Identity(_) => StatusCode::BAD_REQUEST,
 
             // 404 Not Found
@@ -138,6 +143,7 @@ impl From<RegistryError> for tonic::Status {
             | RegistryError::InvalidWalletAddress(_)
             | RegistryError::InvalidIdentityId { .. }
             | RegistryError::TimestampInvalid
+            | RegistryError::BadRequest(_)
             | RegistryError::Identity(_) => tonic::Code::InvalidArgument,
 
             // NOT_FOUND

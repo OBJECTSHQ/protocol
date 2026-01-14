@@ -6,6 +6,7 @@ use axum::Json;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use objects_identity::IdentityId;
 use sqlx::PgPool;
+use tracing::error;
 
 use crate::api::rest::types::*;
 use crate::config::Config;
@@ -115,9 +116,11 @@ pub async fn create_identity(
 
     let identity = db::insert_identity(&state.pool, &row).await?;
 
-    let response = identity
-        .try_into()
-        .map_err(RegistryError::Internal)?;
+    let identity_id = identity.id.clone();
+    let response = identity.try_into().map_err(|e| {
+        error!("Data integrity error: failed to convert IdentityRow {} to response: {}", identity_id, e);
+        RegistryError::Internal(format!("database contains invalid identity record {}: {}", identity_id, e))
+    })?;
     Ok((StatusCode::CREATED, Json(response)))
 }
 
@@ -137,9 +140,11 @@ pub async fn get_identity(
     Path(id): Path<String>,
 ) -> Result<Json<IdentityResponse>> {
     let identity = db::get_identity_by_id(&state.pool, &id).await?;
-    let response = identity
-        .try_into()
-        .map_err(RegistryError::Internal)?;
+    let identity_id = identity.id.clone();
+    let response = identity.try_into().map_err(|e| {
+        error!("Data integrity error: failed to convert IdentityRow {} to response: {}", identity_id, e);
+        RegistryError::Internal(format!("database contains invalid identity record {}: {}", identity_id, e))
+    })?;
     Ok(Json(response))
 }
 
@@ -162,24 +167,76 @@ pub async fn resolve_identity(
     State(state): State<AppState>,
     Query(query): Query<ResolveQuery>,
 ) -> Result<Json<IdentityResponse>> {
+    // Validate that exactly one query parameter is provided
+    let param_count = [
+        query.handle.is_some(),
+        query.signer.is_some(),
+        query.wallet.is_some(),
+    ]
+    .iter()
+    .filter(|&&x| x)
+    .count();
+
+    if param_count == 0 {
+        return Err(RegistryError::BadRequest(
+            "must provide one of: handle, signer, or wallet query parameter".to_string(),
+        ));
+    }
+
+    if param_count > 1 {
+        return Err(RegistryError::BadRequest(
+            "must provide exactly one query parameter, received multiple".to_string(),
+        ));
+    }
+
     let identity = if let Some(handle) = query.handle {
-        db::get_identity_by_handle(&state.pool, &handle).await?
+        match db::get_identity_by_handle(&state.pool, &handle).await {
+            Ok(identity) => identity,
+            Err(RegistryError::NotFound(_)) => {
+                return Err(RegistryError::NotFound(format!("handle:{}", handle)))
+            }
+            Err(RegistryError::Database(e)) => {
+                error!("Database error during identity lookup by handle: {}", e);
+                return Err(RegistryError::Database(e));
+            }
+            Err(e) => return Err(e),
+        }
     } else if let Some(signer) = query.signer {
         let public_key = BASE64
             .decode(&signer)
             .map_err(|e| RegistryError::InvalidSignature(format!("invalid signer base64: {}", e)))?;
-        db::get_identity_by_signer(&state.pool, &public_key).await?
-    } else if let Some(wallet) = query.wallet {
-        db::get_identity_by_wallet(&state.pool, &wallet).await?
+        match db::get_identity_by_signer(&state.pool, &public_key).await {
+            Ok(identity) => identity,
+            Err(RegistryError::NotFound(_)) => {
+                return Err(RegistryError::NotFound("signer".to_string()))
+            }
+            Err(RegistryError::Database(e)) => {
+                error!("Database error during identity lookup by signer: {}", e);
+                return Err(RegistryError::Database(e));
+            }
+            Err(e) => return Err(e),
+        }
     } else {
-        return Err(RegistryError::InvalidSignature(
-            "must provide handle, signer, or wallet query parameter".to_string(),
-        ));
+        // We validated param_count == 1, so wallet must be Some
+        let wallet = query.wallet.unwrap();
+        match db::get_identity_by_wallet(&state.pool, &wallet).await {
+            Ok(identity) => identity,
+            Err(RegistryError::NotFound(_)) => {
+                return Err(RegistryError::NotFound(format!("wallet:{}", wallet)))
+            }
+            Err(RegistryError::Database(e)) => {
+                error!("Database error during identity lookup by wallet: {}", e);
+                return Err(RegistryError::Database(e));
+            }
+            Err(e) => return Err(e),
+        }
     };
 
-    let response = identity
-        .try_into()
-        .map_err(RegistryError::Internal)?;
+    let identity_id = identity.id.clone();
+    let response = identity.try_into().map_err(|e| {
+        error!("Data integrity error: failed to convert IdentityRow {} to response: {}", identity_id, e);
+        RegistryError::Internal(format!("database contains invalid identity record {}: {}", identity_id, e))
+    })?;
     Ok(Json(response))
 }
 
@@ -255,9 +312,11 @@ pub async fn link_wallet(
         db::update_identity_wallet(&state.pool, &id, &req.wallet_address, req.timestamp as i64)
             .await?;
 
-    let response = updated
-        .try_into()
-        .map_err(RegistryError::Internal)?;
+    let identity_id = updated.id.clone();
+    let response = updated.try_into().map_err(|e| {
+        error!("Data integrity error: failed to convert IdentityRow {} to response: {}", identity_id, e);
+        RegistryError::Internal(format!("database contains invalid identity record {}: {}", identity_id, e))
+    })?;
     Ok(Json(response))
 }
 
@@ -325,8 +384,10 @@ pub async fn change_handle(
         db::update_identity_handle(&state.pool, &id, new_handle.as_str(), req.timestamp as i64)
             .await?;
 
-    let response = updated
-        .try_into()
-        .map_err(RegistryError::Internal)?;
+    let identity_id = updated.id.clone();
+    let response = updated.try_into().map_err(|e| {
+        error!("Data integrity error: failed to convert IdentityRow {} to response: {}", identity_id, e);
+        RegistryError::Internal(format!("database contains invalid identity record {}: {}", identity_id, e))
+    })?;
     Ok(Json(response))
 }
