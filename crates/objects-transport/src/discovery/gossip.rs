@@ -275,14 +275,30 @@ impl GossipDiscovery {
                     };
 
                     if accepted {
+                        // Extract node_id before moving announcement
+                        let node_id_str = announcement.node_id.fmt_short();
                         debug!(
                             "Discovered peer {} (relay: {:?})",
-                            announcement.node_id.fmt_short(),
+                            node_id_str,
                             announcement.relay_url.as_ref().map(|u| u.as_str())
                         );
 
                         // Notify subscribers
-                        let _ = announcement_tx.send(announcement);
+                        match announcement_tx.send(announcement) {
+                            Ok(_) => {
+                                debug!(
+                                    "Notified subscribers of peer {} discovery",
+                                    node_id_str
+                                );
+                            }
+                            Err(_) => {
+                                debug!(
+                                    "No active subscribers for announcement from {}",
+                                    node_id_str
+                                );
+                                // This is acceptable - subscribers may not exist yet
+                            }
+                        }
                     } else {
                         trace!(
                             "Announcement from {} rejected (rate limited or full)",
@@ -392,19 +408,25 @@ impl Discovery for GossipDiscovery {
     }
 
     fn peers(&self) -> Vec<NodeAddr> {
-        // Use blocking read since this is a sync method
-        // In a real async context, you'd want to use try_read or make this async
-        futures::executor::block_on(async {
-            let table = self.peer_table.read().await;
-            table.peers()
-        })
+        // Use try_read to avoid blocking - returns empty on contention
+        // This is safe because peer list is eventually consistent
+        match self.peer_table.try_read() {
+            Ok(table) => table.peers(),
+            Err(_) => {
+                warn!("Failed to acquire peer table lock for read, returning empty peer list");
+                Vec::new()
+            }
+        }
     }
 
     fn peer_count(&self) -> usize {
-        futures::executor::block_on(async {
-            let table = self.peer_table.read().await;
-            table.len()
-        })
+        match self.peer_table.try_read() {
+            Ok(table) => table.len(),
+            Err(_) => {
+                warn!("Failed to acquire peer table lock for read, returning 0 peer count");
+                0
+            }
+        }
     }
 
     async fn shutdown(&mut self) -> Result<()> {
