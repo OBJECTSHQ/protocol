@@ -29,6 +29,8 @@ thiserror.workspace = true
 
 [dev-dependencies]
 tokio-test.workspace = true
+p256.workspace = true
+sha2.workspace = true
 
 [build-dependencies]
 prost-build.workspace = true
