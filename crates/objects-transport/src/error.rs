@@ -99,4 +99,25 @@ pub enum ConfigError {
     /// Invalid relay URL.
     #[error("invalid relay URL: {0}")]
     InvalidRelayUrl(String),
+
+    /// A configuration value exceeds the maximum allowed.
+    #[error("{field} must be at most {maximum}, got {provided}")]
+    AboveMaximum {
+        field: &'static str,
+        maximum: u64,
+        provided: u64,
+    },
+
+    /// Invalid idle timeout duration.
+    #[error("idle timeout conversion failed: {0}")]
+    InvalidIdleTimeout(String),
+
+    /// A configuration value is invalid relative to another value.
+    #[error("{field} must be greater than {other_field} ({field_value:?} <= {other_value:?})")]
+    InvalidRelation {
+        field: &'static str,
+        field_value: Duration,
+        other_field: &'static str,
+        other_value: Duration,
+    },
 }
