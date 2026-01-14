@@ -1,0 +1,23 @@
+# Build output
+/target/
+
+# Cargo.lock for libraries (keep for binaries - you have bins/, so keeping it)
+# Cargo.lock
+
+# Editor/IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
+
+# Debug
+*.log
