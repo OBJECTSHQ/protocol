@@ -73,7 +73,7 @@ impl DiscoveryAnnouncement {
         let signature = iroh::Signature::from_bytes(&self.signature);
         self.node_id
             .verify(&message, &signature)
-            .map_err(|_| Error::InvalidSignature)
+            .map_err(|e| Error::InvalidSignature(e.to_string()))
     }
 
     /// Check if this announcement is stale (older than 24 hours).
@@ -84,6 +84,9 @@ impl DiscoveryAnnouncement {
     }
 
     /// Get the age of this announcement.
+    ///
+    /// Returns `Duration::ZERO` if the timestamp is in the future.
+    /// Use [`is_from_future`](Self::is_from_future) to check for future timestamps.
     pub fn age(&self) -> Duration {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -96,6 +99,19 @@ impl DiscoveryAnnouncement {
             // Announcement is from the future (clock skew)
             Duration::ZERO
         }
+    }
+
+    /// Check if this announcement's timestamp is too far in the future.
+    ///
+    /// Returns `true` if the timestamp exceeds `now + tolerance`, indicating
+    /// either clock skew beyond acceptable bounds or a malicious announcement.
+    pub fn is_from_future(&self, tolerance: Duration) -> bool {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time should be after unix epoch")
+            .as_secs();
+
+        self.timestamp > now + tolerance.as_secs()
     }
 
     /// Encode this announcement for transmission.
@@ -148,8 +164,8 @@ impl DiscoveryAnnouncement {
         let node_id_bytes: [u8; 32] = bytes[offset..offset + 32]
             .try_into()
             .map_err(|_| Error::Decode("invalid node_id".into()))?;
-        let node_id =
-            NodeId::from_bytes(&node_id_bytes).map_err(|_| Error::Decode("invalid node_id".into()))?;
+        let node_id = NodeId::from_bytes(&node_id_bytes)
+            .map_err(|_| Error::Decode("invalid node_id".into()))?;
         offset += 32;
 
         // relay_url_len (2 bytes)
@@ -299,5 +315,83 @@ mod tests {
     fn decode_too_short() {
         let result = DiscoveryAnnouncement::decode(&[0u8; 50]);
         assert!(result.is_err());
+    }
+
+    // --- Security tests (T1-T4) ---
+
+    #[test]
+    fn reject_tampered_node_id() {
+        let key1 = test_secret_key();
+        let key2 = test_secret_key();
+        let announcement = DiscoveryAnnouncement::new(&key1, None);
+
+        // Create copy with different node_id but same signature
+        let tampered = DiscoveryAnnouncement {
+            node_id: key2.public(),
+            relay_url: announcement.relay_url.clone(),
+            timestamp: announcement.timestamp,
+            signature: announcement.signature,
+        };
+
+        assert!(matches!(tampered.verify(), Err(Error::InvalidSignature(_))));
+    }
+
+    #[test]
+    fn decode_invalid_utf8_relay() {
+        let key = test_secret_key();
+        let announcement =
+            DiscoveryAnnouncement::new(&key, Some("https://relay.example.com".parse().unwrap()));
+        let mut encoded = announcement.encode();
+
+        // Corrupt UTF-8 in relay URL section (after node_id + length prefix)
+        // Position 34 is within the relay URL bytes
+        encoded[34] = 0xFF; // Invalid UTF-8 byte
+
+        assert!(matches!(
+            DiscoveryAnnouncement::decode(&encoded),
+            Err(Error::Decode(_))
+        ));
+    }
+
+    #[test]
+    fn decode_truncated_relay() {
+        let key = test_secret_key();
+        let relay: RelayUrl = "https://relay.example.com".parse().unwrap();
+        let announcement = DiscoveryAnnouncement::new(&key, Some(relay));
+        let encoded = announcement.encode();
+
+        // Truncate in the middle of the message
+        let truncated = &encoded[..40];
+
+        assert!(matches!(
+            DiscoveryAnnouncement::decode(truncated),
+            Err(Error::Decode(_))
+        ));
+    }
+
+    #[test]
+    fn reject_future_timestamp() {
+        let key = test_secret_key();
+        let announcement = DiscoveryAnnouncement::new(&key, None);
+
+        // Check within tolerance (5 seconds ahead should be fine)
+        assert!(!announcement.is_from_future(Duration::from_secs(300)));
+
+        // Create an announcement with timestamp 1 hour in future
+        let future_ts = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+            + 3600;
+
+        let future_announcement = DiscoveryAnnouncement {
+            node_id: announcement.node_id,
+            relay_url: announcement.relay_url.clone(),
+            timestamp: future_ts,
+            signature: announcement.signature, // Invalid but we're testing is_from_future
+        };
+
+        // 1 hour ahead should be rejected with 5 minute tolerance
+        assert!(future_announcement.is_from_future(Duration::from_secs(300)));
     }
 }

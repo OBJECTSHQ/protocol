@@ -37,8 +37,8 @@ pub enum Error {
     ///
     /// Per RFC-002 §7.5, nodes MUST verify signatures before accepting
     /// announcements. Invalid signatures MUST be rejected.
-    #[error("invalid announcement signature")]
-    InvalidSignature,
+    #[error("invalid announcement signature: {0}")]
+    InvalidSignature(String),
 
     /// Announcement is too old to be accepted.
     ///
@@ -78,3 +78,25 @@ pub enum Error {
 
 /// Result type for transport operations.
 pub type Result<T> = std::result::Result<T, Error>;
+
+/// Configuration validation error.
+///
+/// Returned when [`NetworkConfig`] or [`DiscoveryConfig`] is built with
+/// values that violate RFC-002 requirements.
+///
+/// [`NetworkConfig`]: crate::NetworkConfig
+/// [`DiscoveryConfig`]: crate::DiscoveryConfig
+#[derive(Debug, Error)]
+pub enum ConfigError {
+    /// A configuration value is below the RFC-002 minimum.
+    #[error("{field} must be at least {minimum}, got {provided}")]
+    BelowMinimum {
+        field: &'static str,
+        minimum: usize,
+        provided: usize,
+    },
+
+    /// Invalid relay URL.
+    #[error("invalid relay URL: {0}")]
+    InvalidRelayUrl(String),
+}
