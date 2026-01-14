@@ -21,7 +21,7 @@ pub use peer_table::{PeerInfo, PeerTable};
 use async_trait::async_trait;
 use futures::stream::BoxStream;
 
-use crate::{NodeAddr, Result, announcement::DiscoveryAnnouncement};
+use crate::{announcement::DiscoveryAnnouncement, NodeAddr, Result};
 
 /// Discovery service abstraction.
 ///
@@ -55,10 +55,12 @@ pub trait Discovery: Send + Sync + 'static {
     /// Get addresses of all known peers.
     ///
     /// Returns a snapshot of the current peer table.
-    async fn peers(&self) -> Vec<NodeAddr>;
+    fn peers(&self) -> Vec<NodeAddr>;
 
     /// Get the number of known peers.
-    async fn peer_count(&self) -> usize;
+    fn peer_count(&self) -> usize {
+        self.peers().len()
+    }
 
     /// Shutdown the discovery service.
     ///

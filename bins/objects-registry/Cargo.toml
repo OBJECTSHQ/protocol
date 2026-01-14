@@ -9,6 +9,9 @@ description = "Identity registry service for OBJECTS Protocol"
 [dependencies]
 objects-identity.workspace = true
 
+# Encoding
+base64 = "0.22"
+
 # Web/API
 axum.workspace = true
 tonic.workspace = true

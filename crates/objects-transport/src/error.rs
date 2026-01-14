@@ -37,8 +37,8 @@ pub enum Error {
     ///
     /// Per RFC-002 §7.5, nodes MUST verify signatures before accepting
     /// announcements. Invalid signatures MUST be rejected.
-    #[error("invalid announcement signature: {0}")]
-    InvalidSignature(String),
+    #[error("invalid announcement signature")]
+    InvalidSignature,
 
     /// Announcement is too old to be accepted.
     ///
@@ -78,46 +78,3 @@ pub enum Error {
 
 /// Result type for transport operations.
 pub type Result<T> = std::result::Result<T, Error>;
-
-/// Configuration validation error.
-///
-/// Returned when [`NetworkConfig`] or [`DiscoveryConfig`] is built with
-/// values that violate RFC-002 requirements.
-///
-/// [`NetworkConfig`]: crate::NetworkConfig
-/// [`DiscoveryConfig`]: crate::DiscoveryConfig
-#[derive(Debug, Error)]
-pub enum ConfigError {
-    /// A configuration value is below the RFC-002 minimum.
-    #[error("{field} must be at least {minimum}, got {provided}")]
-    BelowMinimum {
-        field: &'static str,
-        minimum: usize,
-        provided: usize,
-    },
-
-    /// Invalid relay URL.
-    #[error("invalid relay URL: {0}")]
-    InvalidRelayUrl(String),
-
-    /// A configuration value exceeds the maximum allowed.
-    #[error("{field} must be at most {maximum}, got {provided}")]
-    AboveMaximum {
-        field: &'static str,
-        maximum: u64,
-        provided: u64,
-    },
-
-    /// Invalid idle timeout duration.
-    #[error("idle timeout conversion failed: {0}")]
-    InvalidIdleTimeout(String),
-
-    /// A configuration value is invalid relative to another value.
-    #[error("{field} must be greater than {other_field} ({field_value:?} <= {other_value:?})")]
-    InvalidRelation {
-        field: &'static str,
-        field_value: Duration,
-        other_field: &'static str,
-        other_value: Duration,
-    },
-}
