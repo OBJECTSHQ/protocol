@@ -8,7 +8,7 @@ use crate::error::{RegistryError, Result};
 /// Insert a new identity record.
 ///
 /// Returns the inserted row on success.
-/// Returns `HandleTaken` or `SignerExists` on unique constraint violation.
+/// Returns `IdentityExists`, `HandleTaken`, or `SignerExists` on unique constraint violation.
 ///
 /// # Atomicity
 /// This function uses a single INSERT statement, which PostgreSQL executes atomically.
@@ -47,6 +47,9 @@ pub async fn insert_identity(pool: &PgPool, row: &IdentityRow) -> Result<Identit
         Err(sqlx::Error::Database(db_err)) => {
             // Check for unique constraint violations
             if let Some(constraint) = db_err.constraint() {
+                if constraint.contains("pkey") {
+                    return Err(RegistryError::IdentityExists(row.id.clone()));
+                }
                 if constraint.contains("handle") {
                     return Err(RegistryError::HandleTaken(row.handle.clone()));
                 }
