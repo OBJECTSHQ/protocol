@@ -4,7 +4,7 @@
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use objects_identity::{message, Handle, IdentityId, Signature};
+use objects_identity::{Handle, IdentityId, Signature, message};
 
 use crate::config::Config;
 use crate::error::{RegistryError, Result};
@@ -211,7 +211,10 @@ mod tests {
         let wrong_id = "obj_wrong";
 
         let result = verify_id_derivation(&public_key, &nonce, wrong_id);
-        assert!(matches!(result, Err(RegistryError::InvalidIdentityId { .. })));
+        assert!(matches!(
+            result,
+            Err(RegistryError::InvalidIdentityId { .. })
+        ));
     }
 
     #[test]
@@ -245,36 +248,57 @@ mod tests {
     fn test_verify_wallet_address_invalid_length() {
         // Too short
         let result = verify_wallet_address("0x742d35cc");
-        assert!(matches!(result, Err(RegistryError::InvalidWalletAddress(_))));
+        assert!(matches!(
+            result,
+            Err(RegistryError::InvalidWalletAddress(_))
+        ));
 
         // Too long
         let result = verify_wallet_address("0x742d35cc6634c0532925a3b844bc9e7595f1de21ab");
-        assert!(matches!(result, Err(RegistryError::InvalidWalletAddress(_))));
+        assert!(matches!(
+            result,
+            Err(RegistryError::InvalidWalletAddress(_))
+        ));
 
         // Empty
         let result = verify_wallet_address("");
-        assert!(matches!(result, Err(RegistryError::InvalidWalletAddress(_))));
+        assert!(matches!(
+            result,
+            Err(RegistryError::InvalidWalletAddress(_))
+        ));
     }
 
     #[test]
     fn test_verify_wallet_address_invalid_prefix() {
         // Missing 0x prefix
         let result = verify_wallet_address("742d35cc6634c0532925a3b844bc9e7595f1de21");
-        assert!(matches!(result, Err(RegistryError::InvalidWalletAddress(_))));
+        assert!(matches!(
+            result,
+            Err(RegistryError::InvalidWalletAddress(_))
+        ));
 
         // Wrong prefix
         let result = verify_wallet_address("0X742d35cc6634c0532925a3b844bc9e7595f1de21");
-        assert!(matches!(result, Err(RegistryError::InvalidWalletAddress(_))));
+        assert!(matches!(
+            result,
+            Err(RegistryError::InvalidWalletAddress(_))
+        ));
     }
 
     #[test]
     fn test_verify_wallet_address_invalid_hex() {
         // Contains non-hex character 'g'
         let result = verify_wallet_address("0x742d35cc6634c0532925a3b844bc9e7595f1deg1");
-        assert!(matches!(result, Err(RegistryError::InvalidWalletAddress(_))));
+        assert!(matches!(
+            result,
+            Err(RegistryError::InvalidWalletAddress(_))
+        ));
 
         // Contains space
         let result = verify_wallet_address("0x742d35cc6634c0532925a3b844bc9e7595f1de 1");
-        assert!(matches!(result, Err(RegistryError::InvalidWalletAddress(_))));
+        assert!(matches!(
+            result,
+            Err(RegistryError::InvalidWalletAddress(_))
+        ));
     }
 }

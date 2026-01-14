@@ -5,8 +5,7 @@
 use iroh::endpoint::{Endpoint, RelayMode};
 
 use crate::{
-    config::NetworkConfig, connection::Connection, Error, NodeAddr, NodeId, Result, SecretKey,
-    ALPN,
+    ALPN, Error, NodeAddr, NodeId, Result, SecretKey, config::NetworkConfig, connection::Connection,
 };
 
 /// OBJECTS network endpoint.
@@ -111,9 +110,7 @@ impl ObjectsEndpoint {
             .await
             .ok_or_else(|| Error::Iroh(anyhow::anyhow!("endpoint closed")))?;
 
-        let conn = incoming
-            .await
-            .map_err(|e| Error::Iroh(e.into()))?;
+        let conn = incoming.await.map_err(|e| Error::Iroh(e.into()))?;
 
         Ok(Connection::new(conn))
     }

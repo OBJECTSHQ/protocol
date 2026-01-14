@@ -4,13 +4,13 @@
 //! Catalog entries are encrypted before storage in user vaults to preserve privacy.
 
 use chacha20poly1305::{
-    aead::{Aead, KeyInit},
     XChaCha20Poly1305, XNonce,
+    aead::{Aead, KeyInit},
 };
 use prost::Message;
 use rand::RngCore;
 
-use crate::{proto::ProjectCatalogEntry, Error};
+use crate::{Error, proto::ProjectCatalogEntry};
 
 /// Encrypt a catalog entry with XChaCha20-Poly1305.
 ///
@@ -176,7 +176,10 @@ mod tests {
         }
 
         let result = decrypt_catalog_entry(&encrypted, &key);
-        assert!(result.is_err(), "Tampered ciphertext should fail decryption");
+        assert!(
+            result.is_err(),
+            "Tampered ciphertext should fail decryption"
+        );
     }
 
     #[test]

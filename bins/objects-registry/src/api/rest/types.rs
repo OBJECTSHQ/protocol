@@ -2,7 +2,7 @@
 //!
 //! Binary fields (public_key, nonce, signature) are base64-encoded in JSON.
 
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
 use objects_identity::SignerType;
 use serde::{Deserialize, Serialize};
 
@@ -115,7 +115,7 @@ impl TryFrom<IdentityRow> for IdentityResponse {
                 return Err(format!(
                     "invalid signer_type in database: {} (expected 1 for PASSKEY or 2 for WALLET)",
                     unknown
-                ))
+                ));
             }
         };
         Ok(Self {
@@ -141,7 +141,10 @@ pub struct HealthResponse {
 
 impl SignatureRequest {
     /// Convert to objects_identity::Signature.
-    pub fn to_signature(&self, signer_type: SignerType) -> Result<objects_identity::Signature, String> {
+    pub fn to_signature(
+        &self,
+        signer_type: SignerType,
+    ) -> Result<objects_identity::Signature, String> {
         let signature_bytes = BASE64
             .decode(&self.signature)
             .map_err(|e| format!("invalid base64 signature: {}", e))?;
@@ -185,7 +188,10 @@ impl SignatureRequest {
                     .as_ref()
                     .ok_or("wallet signature requires address")?
                     .clone();
-                Ok(objects_identity::Signature::wallet(signature_bytes, address))
+                Ok(objects_identity::Signature::wallet(
+                    signature_bytes,
+                    address,
+                ))
             }
         }
     }

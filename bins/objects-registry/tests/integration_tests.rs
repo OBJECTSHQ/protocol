@@ -2,21 +2,21 @@
 //!
 //! These tests use sqlx::test to run against a real PostgreSQL database.
 
+use alloy_primitives::keccak256;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
 use http_body_util::BodyExt;
+use k256::ecdsa::SigningKey as K256SigningKey;
 use objects_identity::{IdentityId, SignerType};
-use objects_registry::api::rest::routes::create_router;
 use objects_registry::api::rest::handlers::AppState;
+use objects_registry::api::rest::routes::create_router;
 use objects_registry::api::rest::types::*;
 use objects_registry::config::Config;
-use p256::ecdsa::{signature::Signer as _, SigningKey as P256SigningKey};
-use k256::ecdsa::SigningKey as K256SigningKey;
-use sha2::{Digest, Sha256};
-use alloy_primitives::keccak256;
+use p256::ecdsa::{SigningKey as P256SigningKey, signature::Signer as _};
 use rand::rngs::OsRng;
-use sqlx::{PgPool, ConnectOptions};
+use sha2::{Digest, Sha256};
+use sqlx::{ConnectOptions, PgPool};
 use tower::ServiceExt;
 
 /// Helper: Generate test passkey signing key
@@ -44,7 +44,8 @@ fn sign_create_identity_passkey(
         .unwrap();
 
     // Create message per verification.rs
-    let message = objects_identity::message::create_identity_message(identity_id, handle, timestamp);
+    let message =
+        objects_identity::message::create_identity_message(identity_id, handle, timestamp);
 
     // Create minimal WebAuthn data
     let rp_id_hash = Sha256::digest(b"example.com");
@@ -91,7 +92,8 @@ fn sign_create_identity_wallet(
     let address = format!("0x{}", hex::encode(&pub_key_hash[12..]));
 
     // Create message
-    let message = objects_identity::message::create_identity_message(identity_id, handle, timestamp);
+    let message =
+        objects_identity::message::create_identity_message(identity_id, handle, timestamp);
 
     // EIP-191 prefix
     let eip191_prefix = format!("\x19Ethereum Signed Message:\n{}", message.len());
@@ -146,7 +148,8 @@ async fn test_create_identity_with_passkey(pool: PgPool) {
 
     let handle = "alice";
     let timestamp = 1000;
-    let signature = sign_create_identity_passkey(&signing_key, identity_id.as_str(), handle, timestamp);
+    let signature =
+        sign_create_identity_passkey(&signing_key, identity_id.as_str(), handle, timestamp);
 
     let request_body = serde_json::json!({
         "handle": handle,
@@ -195,7 +198,8 @@ async fn test_create_identity_with_wallet(pool: PgPool) {
 
     let handle = "bob";
     let timestamp = 1000;
-    let (signature, _address) = sign_create_identity_wallet(&signing_key, identity_id.as_str(), handle, timestamp);
+    let (signature, _address) =
+        sign_create_identity_wallet(&signing_key, identity_id.as_str(), handle, timestamp);
 
     let request_body = serde_json::json!({
         "handle": handle,
@@ -244,7 +248,8 @@ async fn test_create_identity_duplicate_handle(pool: PgPool) {
 
     let handle = "alice";
     let timestamp = 1000;
-    let signature1 = sign_create_identity_passkey(&signing_key1, identity_id1.as_str(), handle, timestamp);
+    let signature1 =
+        sign_create_identity_passkey(&signing_key1, identity_id1.as_str(), handle, timestamp);
 
     let request_body1 = serde_json::json!({
         "handle": handle,
@@ -281,7 +286,8 @@ async fn test_create_identity_duplicate_handle(pool: PgPool) {
         .unwrap();
     let identity_id2 = IdentityId::derive(&public_key2, &nonce2);
 
-    let signature2 = sign_create_identity_passkey(&signing_key2, identity_id2.as_str(), handle, timestamp);
+    let signature2 =
+        sign_create_identity_passkey(&signing_key2, identity_id2.as_str(), handle, timestamp);
 
     let request_body2 = serde_json::json!({
         "handle": handle,
@@ -325,7 +331,8 @@ async fn test_resolve_identity_by_handle(pool: PgPool) {
 
     let handle = "alice";
     let timestamp = 1000;
-    let signature = sign_create_identity_passkey(&signing_key, identity_id.as_str(), handle, timestamp);
+    let signature =
+        sign_create_identity_passkey(&signing_key, identity_id.as_str(), handle, timestamp);
 
     let request_body = serde_json::json!({
         "handle": handle,

@@ -113,11 +113,7 @@ mod tests {
 
     #[test]
     fn test_link_wallet_message() {
-        let msg = link_wallet_message(
-            "obj_2dMiYc8RhnYkorPc5pVh9",
-            "0x5678efgh",
-            1704542500,
-        );
+        let msg = link_wallet_message("obj_2dMiYc8RhnYkorPc5pVh9", "0x5678efgh", 1704542500);
         assert!(msg.contains("Action: Link Wallet\n"));
         assert!(msg.contains("Wallet: 0x5678efgh\n"));
     }

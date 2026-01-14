@@ -2,9 +2,9 @@
 //!
 //! These tests verify that race conditions are handled correctly.
 
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
 use objects_identity::IdentityId;
-use objects_registry::db::{insert_identity, signer_type_to_i16, IdentityRow};
+use objects_registry::db::{IdentityRow, insert_identity, signer_type_to_i16};
 use objects_registry::error::RegistryError;
 use p256::ecdsa::SigningKey as P256SigningKey;
 use rand::rngs::OsRng;
@@ -63,7 +63,10 @@ async fn test_concurrent_identity_creation_with_same_handle(pool: PgPool) {
     }
 
     assert_eq!(successes, 1, "Expected exactly 1 success");
-    assert_eq!(handle_taken_errors, 9, "Expected exactly 9 handle taken errors");
+    assert_eq!(
+        handle_taken_errors, 9,
+        "Expected exactly 9 handle taken errors"
+    );
 }
 
 #[sqlx::test]
@@ -116,7 +119,10 @@ async fn test_concurrent_identity_creation_with_same_id(pool: PgPool) {
     }
 
     assert_eq!(successes, 1, "Expected exactly 1 success");
-    assert_eq!(duplicate_errors, 9, "Expected exactly 9 duplicate ID errors");
+    assert_eq!(
+        duplicate_errors, 9,
+        "Expected exactly 9 duplicate ID errors"
+    );
 }
 
 #[sqlx::test]
@@ -194,5 +200,8 @@ async fn test_concurrent_wallet_linking(pool: PgPool) {
 
     // Exactly 1 should succeed
     assert_eq!(successes, 1, "Expected exactly 1 success");
-    assert_eq!(wallet_linked_errors, 1, "Expected exactly 1 wallet already linked error");
+    assert_eq!(
+        wallet_linked_errors, 1,
+        "Expected exactly 1 wallet already linked error"
+    );
 }

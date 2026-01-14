@@ -1,7 +1,7 @@
 //! Database connection pool setup.
 
-use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
+use sqlx::postgres::PgPoolOptions;
 use tracing::info;
 
 /// Create a PostgreSQL connection pool and run migrations.

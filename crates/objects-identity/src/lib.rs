@@ -14,7 +14,7 @@ pub mod proto;
 
 pub use error::Error;
 pub use handle::Handle;
-pub use id::{generate_nonce, IdentityId, NONCE_SIZE};
+pub use id::{IdentityId, NONCE_SIZE, generate_nonce};
 pub use signature::Signature;
 pub use signer::{Signer, SignerType};
 pub use vault::VaultKeys;

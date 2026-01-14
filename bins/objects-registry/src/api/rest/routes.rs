@@ -1,11 +1,11 @@
 //! REST API routes for OBJECTS Registry.
 
-use axum::routing::{get, patch, post};
 use axum::Router;
+use axum::routing::{get, patch, post};
 
 use super::handlers::{
-    change_handle, create_identity, get_identity, health_check, link_wallet, resolve_identity,
-    AppState,
+    AppState, change_handle, create_identity, get_identity, health_check, link_wallet,
+    resolve_identity,
 };
 
 /// Create the REST API router.

@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use crate::{NodeAddr, RelayUrl, DEFAULT_RELAY_URL, DISCOVERY_TOPIC_DEVNET};
+use crate::{DEFAULT_RELAY_URL, DISCOVERY_TOPIC_DEVNET, NodeAddr, RelayUrl};
 
 /// Network configuration for OBJECTS nodes.
 ///

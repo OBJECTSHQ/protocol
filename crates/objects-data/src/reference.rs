@@ -2,8 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::asset::ContentHash;
 use crate::Error;
+use crate::asset::ContentHash;
 
 /// Type of relationship between assets.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

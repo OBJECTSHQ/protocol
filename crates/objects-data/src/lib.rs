@@ -15,4 +15,6 @@ pub use asset::{Asset, ContentHash, Nonce, SignedAsset};
 pub use error::Error;
 pub use project::Project;
 pub use reference::{CrossProjectReference, Reference, ReferenceType};
-pub use storage::{asset_key, parse_key, reference_key, KeyType, ASSETS_PREFIX, PROJECT_KEY, REFS_PREFIX};
+pub use storage::{
+    ASSETS_PREFIX, KeyType, PROJECT_KEY, REFS_PREFIX, asset_key, parse_key, reference_key,
+};
