@@ -3,7 +3,7 @@
 Design engineering protocol for modern craftspeople.
 
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE)
-[![CI](https://github.com/OBJECTSHQ/protocol/actions/workflows/ci.yml/badge.svg)](https://github.com/OBJECTSHQ/protocol/actions)
+[![CI](https://github.com/OBJECTSHQ/protocol/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/OBJECTSHQ/protocol/actions)
 
 ## What is OBJECTS?
 
