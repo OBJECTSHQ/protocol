@@ -2,10 +2,12 @@
 //!
 //! These tests use sqlx::test to run against a real PostgreSQL database.
 
+use std::time::{SystemTime, UNIX_EPOCH};
+
 use alloy_primitives::keccak256;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
-use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
+use base64::{Engine, engine::general_purpose::{STANDARD as BASE64, URL_SAFE_NO_PAD}};
 use http_body_util::BodyExt;
 use k256::ecdsa::SigningKey as K256SigningKey;
 use objects_identity::IdentityId;
@@ -27,6 +29,14 @@ fn test_passkey_key() -> P256SigningKey {
 /// Helper: Generate test wallet signing key
 fn test_wallet_key() -> K256SigningKey {
     K256SigningKey::random(&mut OsRng)
+}
+
+/// Helper: Get current Unix timestamp in seconds
+fn current_timestamp() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
 }
 
 /// Helper: Create passkey signature for create identity message
@@ -57,7 +67,7 @@ fn sign_create_identity_passkey(
 
     let client_data_json = format!(
         r#"{{"type":"webauthn.get","challenge":"{}"}}"#,
-        hex::encode(message.as_bytes())
+        URL_SAFE_NO_PAD.encode(message.as_bytes())
     )
     .into_bytes();
 
@@ -147,7 +157,7 @@ async fn test_create_identity_with_passkey(pool: PgPool) {
     let identity_id = IdentityId::derive(&public_key, &nonce);
 
     let handle = "alice";
-    let timestamp = 1000;
+    let timestamp = current_timestamp();
     let signature =
         sign_create_identity_passkey(&signing_key, identity_id.as_str(), handle, timestamp);
 
@@ -197,7 +207,7 @@ async fn test_create_identity_with_wallet(pool: PgPool) {
     let identity_id = IdentityId::derive(&public_key, &nonce);
 
     let handle = "bob";
-    let timestamp = 1000;
+    let timestamp = current_timestamp();
     let (signature, _address) =
         sign_create_identity_wallet(&signing_key, identity_id.as_str(), handle, timestamp);
 
@@ -247,7 +257,7 @@ async fn test_create_identity_duplicate_handle(pool: PgPool) {
     let identity_id1 = IdentityId::derive(&public_key1, &nonce1);
 
     let handle = "alice";
-    let timestamp = 1000;
+    let timestamp = current_timestamp();
     let signature1 =
         sign_create_identity_passkey(&signing_key1, identity_id1.as_str(), handle, timestamp);
 
@@ -330,7 +340,7 @@ async fn test_resolve_identity_by_handle(pool: PgPool) {
     let identity_id = IdentityId::derive(&public_key, &nonce);
 
     let handle = "alice";
-    let timestamp = 1000;
+    let timestamp = current_timestamp();
     let signature =
         sign_create_identity_passkey(&signing_key, identity_id.as_str(), handle, timestamp);
 
