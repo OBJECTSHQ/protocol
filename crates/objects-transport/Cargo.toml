@@ -11,9 +11,6 @@ description = "P2P transport layer for OBJECTS Protocol"
 iroh.workspace = true
 iroh-gossip.workspace = true
 
-# Crypto (standard, not Iroh-specific)
-ed25519-dalek.workspace = true
-
 # Async
 tokio.workspace = true
 futures.workspace = true

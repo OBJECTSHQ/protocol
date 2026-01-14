@@ -30,18 +30,6 @@ impl Connection {
         self.inner.remote_id()
     }
 
-    /// Get the current connection type.
-    ///
-    /// Returns whether this is a direct UDP connection, relayed connection,
-    /// or mixed.
-    pub fn connection_type(&self) -> ConnectionType {
-        // Note: Connection type tracking would require access to the Endpoint
-        // to call conn_type(). For now, we return Unknown.
-        // In a full implementation, we'd pass the endpoint reference or
-        // track connection type separately.
-        ConnectionType::Unknown
-    }
-
     /// Open a new bidirectional stream.
     ///
     /// Returns a pair of (send, receive) streams for exchanging data.
@@ -111,29 +99,5 @@ impl Connection {
     /// Useful for advanced operations.
     pub fn inner(&self) -> &IrohConnection {
         &self.inner
-    }
-}
-
-/// The type of connection to a remote node.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ConnectionType {
-    /// Direct UDP connection (best latency).
-    Direct,
-    /// Connection via relay server (works through NAT).
-    Relayed,
-    /// Both direct and relayed paths available.
-    Mixed,
-    /// Connection type not yet determined.
-    Unknown,
-}
-
-impl std::fmt::Display for ConnectionType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ConnectionType::Direct => write!(f, "direct"),
-            ConnectionType::Relayed => write!(f, "relayed"),
-            ConnectionType::Mixed => write!(f, "mixed"),
-            ConnectionType::Unknown => write!(f, "unknown"),
-        }
     }
 }

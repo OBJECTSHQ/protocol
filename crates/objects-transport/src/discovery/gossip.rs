@@ -8,18 +8,18 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use futures::stream::BoxStream;
 use futures::StreamExt;
+use futures::stream::BoxStream;
 use iroh_gossip::api::{Event, GossipTopic};
 use iroh_gossip::net::Gossip;
-use tokio::sync::{broadcast, RwLock};
+use tokio::sync::{RwLock, broadcast};
 use tokio::task::JoinHandle;
 use tracing::{debug, info, trace, warn};
 
 use crate::announcement::DiscoveryAnnouncement;
 use crate::discovery::{Discovery, PeerTable};
 use crate::endpoint::ObjectsEndpoint;
-use crate::{Error, NodeAddr, NodeId, Result, DISCOVERY_TOPIC_DEVNET};
+use crate::{DISCOVERY_TOPIC_DEVNET, Error, NodeAddr, NodeId, Result};
 
 /// Configuration for gossip discovery.
 #[derive(Debug, Clone)]
@@ -34,6 +34,12 @@ pub struct DiscoveryConfig {
     /// Per RFC-002 §5.4.2, default is 24 hours.
     pub stale_threshold: Duration,
 
+    /// Maximum clock skew tolerance for announcements.
+    ///
+    /// Announcements with timestamps further in the future than this
+    /// will be rejected. Default: 5 minutes.
+    pub max_clock_skew: Duration,
+
     /// Max announcements per minute from a single peer.
     ///
     /// Per RFC-002 §7.5.
@@ -41,15 +47,22 @@ pub struct DiscoveryConfig {
 
     /// Maximum peers to track.
     pub max_peers: usize,
+
+    /// Duration of the rate limit window.
+    ///
+    /// Rate limiting resets after this duration. Default: 60 seconds.
+    pub rate_limit_window: Duration,
 }
 
 impl Default for DiscoveryConfig {
     fn default() -> Self {
         Self {
             announce_interval: Duration::from_secs(3600), // 1 hour
-            stale_threshold: Duration::from_secs(86400), // 24 hours
+            stale_threshold: Duration::from_secs(86400),  // 24 hours
+            max_clock_skew: Duration::from_secs(300),     // 5 minutes
             rate_limit_per_peer: 10,
             max_peers: 1000,
+            rate_limit_window: Duration::from_secs(60),
         }
     }
 }
@@ -60,10 +73,12 @@ impl DiscoveryConfig {
     /// More aggressive intervals for faster iteration.
     pub fn devnet() -> Self {
         Self {
-            announce_interval: Duration::from_secs(60),    // 1 minute
-            stale_threshold: Duration::from_secs(3600),   // 1 hour
+            announce_interval: Duration::from_secs(60), // 1 minute
+            stale_threshold: Duration::from_secs(3600), // 1 hour
+            max_clock_skew: Duration::from_secs(300),   // 5 minutes
             rate_limit_per_peer: 20,
             max_peers: 100,
+            rate_limit_window: Duration::from_secs(60),
         }
     }
 }
@@ -129,6 +144,7 @@ impl GossipDiscovery {
         let peer_table = Arc::new(RwLock::new(PeerTable::new(
             config.max_peers,
             config.rate_limit_per_peer,
+            config.rate_limit_window,
         )));
 
         let (announcement_tx, _) = broadcast::channel(256);
@@ -178,6 +194,24 @@ impl GossipDiscovery {
         self.announce().await
     }
 
+    /// Check if discovery is healthy (background tasks running).
+    ///
+    /// Returns `true` if both the receive and announce tasks are still running.
+    /// Returns `false` if either task has finished (possibly due to an error).
+    pub fn is_healthy(&self) -> bool {
+        let receive_ok = self
+            .receive_task
+            .as_ref()
+            .map(|t| !t.is_finished())
+            .unwrap_or(false);
+        let announce_ok = self
+            .announce_task
+            .as_ref()
+            .map(|t| !t.is_finished())
+            .unwrap_or(false);
+        receive_ok && announce_ok
+    }
+
     /// Get the current relay URL from the endpoint.
     fn get_relay_url(endpoint: &ObjectsEndpoint) -> Option<crate::RelayUrl> {
         endpoint.node_addr().relay_urls().next().cloned()
@@ -192,9 +226,17 @@ impl GossipDiscovery {
         let peer_table = Arc::clone(&self.peer_table);
         let announcement_tx = self.announcement_tx.clone();
         let stale_threshold = self.config.stale_threshold;
+        let max_clock_skew = self.config.max_clock_skew;
 
         let receive_task = tokio::spawn(async move {
-            Self::receive_loop(topic, peer_table, announcement_tx, stale_threshold).await;
+            Self::receive_loop(
+                topic,
+                peer_table,
+                announcement_tx,
+                stale_threshold,
+                max_clock_skew,
+            )
+            .await;
         });
 
         self.receive_task = Some(receive_task);
@@ -217,6 +259,7 @@ impl GossipDiscovery {
         peer_table: Arc<RwLock<PeerTable>>,
         announcement_tx: broadcast::Sender<DiscoveryAnnouncement>,
         stale_threshold: Duration,
+        max_clock_skew: Duration,
     ) {
         debug!("Starting discovery receive loop");
 
@@ -240,6 +283,15 @@ impl GossipDiscovery {
                             "Invalid signature from {}: {}",
                             announcement.node_id.fmt_short(),
                             e
+                        );
+                        continue;
+                    }
+
+                    // Reject future-dated announcements (clock skew protection)
+                    if announcement.is_from_future(max_clock_skew) {
+                        debug!(
+                            "Rejecting future-dated announcement from {}",
+                            announcement.node_id.fmt_short()
                         );
                         continue;
                     }
@@ -297,15 +349,11 @@ impl GossipDiscovery {
             }
         }
 
-        debug!("Discovery receive loop ended");
+        warn!("Discovery receive loop ended unexpectedly");
     }
 
     /// Background loop for periodic announcements.
-    async fn announce_loop(
-        endpoint: Arc<ObjectsEndpoint>,
-        gossip: Gossip,
-        interval: Duration,
-    ) {
+    async fn announce_loop(endpoint: Arc<ObjectsEndpoint>, gossip: Gossip, interval: Duration) {
         debug!("Starting periodic announce loop (interval: {:?})", interval);
 
         let topic_id = blake3::hash(DISCOVERY_TOPIC_DEVNET.as_bytes()).into();
@@ -323,13 +371,18 @@ impl GossipDiscovery {
             let data = announcement.encode();
 
             // Broadcast to topic
-            if let Ok(mut topic) = gossip.subscribe(topic_id, Default::default()).await
-                && let Err(e) = topic.broadcast(data.into()).await
-            {
-                warn!("Failed to broadcast announcement: {}", e);
+            match gossip.subscribe(topic_id, Default::default()).await {
+                Ok(mut topic) => {
+                    if let Err(e) = topic.broadcast(data.into()).await {
+                        warn!("Failed to broadcast announcement: {}", e);
+                    } else {
+                        trace!("Periodic announcement sent");
+                    }
+                }
+                Err(e) => {
+                    warn!("Failed to subscribe to discovery topic: {}", e);
+                }
             }
-
-            trace!("Periodic announcement sent");
         }
     }
 }
@@ -372,20 +425,14 @@ impl Discovery for GossipDiscovery {
         })
     }
 
-    fn peers(&self) -> Vec<NodeAddr> {
-        // Use blocking read since this is a sync method
-        // In a real async context, you'd want to use try_read or make this async
-        futures::executor::block_on(async {
-            let table = self.peer_table.read().await;
-            table.peers()
-        })
+    async fn peers(&self) -> Vec<NodeAddr> {
+        let table = self.peer_table.read().await;
+        table.peers()
     }
 
-    fn peer_count(&self) -> usize {
-        futures::executor::block_on(async {
-            let table = self.peer_table.read().await;
-            table.len()
-        })
+    async fn peer_count(&self) -> usize {
+        let table = self.peer_table.read().await;
+        table.len()
     }
 
     async fn shutdown(&mut self) -> Result<()> {

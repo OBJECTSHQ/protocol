@@ -56,7 +56,9 @@ impl IdentityId {
         if encoded.len() < IDENTITY_ENCODED_MIN_LEN || encoded.len() > IDENTITY_ENCODED_MAX_LEN {
             return Err(Error::InvalidIdentityId(format!(
                 "encoded portion must be {}-{} characters, got {}",
-                IDENTITY_ENCODED_MIN_LEN, IDENTITY_ENCODED_MAX_LEN, encoded.len()
+                IDENTITY_ENCODED_MIN_LEN,
+                IDENTITY_ENCODED_MAX_LEN,
+                encoded.len()
             )));
         }
 
