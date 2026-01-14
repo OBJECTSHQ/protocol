@@ -55,6 +55,23 @@ message Project {
   uint64 updated_at = 6;
 }
 
+// ProjectCatalogEntry represents a project in the user's vault catalog.
+// Stored in user vault replica at key: /catalog/{project_id}
+// STORED ENCRYPTED in vault using XChaCha20-Poly1305
+message ProjectCatalogEntry {
+  // REQUIRED. Unique project identifier.
+  string project_id = 1;
+
+  // REQUIRED. NamespaceId of the project replica (32 bytes).
+  bytes replica_id = 2;
+
+  // REQUIRED. Human-readable project name.
+  string project_name = 3;
+
+  // REQUIRED. Unix timestamp (seconds) when project was created.
+  uint64 created_at = 4;
+}
+
 enum ReferenceType {
   REFERENCE_TYPE_UNSPECIFIED = 0;
   REFERENCE_TYPE_CONTAINS = 1;

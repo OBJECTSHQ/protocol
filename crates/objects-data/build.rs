@@ -13,6 +13,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         prost_build::Config::new()
             .out_dir("src/")
+            .extern_path(".objects.identity.v1", "::objects_identity::proto")
             .compile_protos(&[proto_file], &[proto_root])?;
 
         // Rename the generated file to proto.rs
