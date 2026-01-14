@@ -213,15 +213,18 @@ pub async fn link_wallet(
     // 2. Verify timestamp
     verification::verify_timestamp(req.timestamp, &state.config)?;
 
-    // 3. Build message
+    // 3. Validate wallet address format
+    verification::verify_wallet_address(&req.wallet_address)?;
+
+    // 4. Build message
     let message = verification::link_wallet_message(&id, &req.wallet_address, req.timestamp);
 
-    // 4. Get identity's signer type
+    // 5. Get identity's signer type
     let identity_signer_type = identity.signer_type_enum().ok_or_else(|| {
         RegistryError::Internal(format!("unknown signer type: {}", identity.signer_type))
     })?;
 
-    // 5. Verify identity signature (from identity's signer)
+    // 6. Verify identity signature (from identity's signer)
     let identity_sig = req
         .identity_signature
         .to_signature(identity_signer_type)
@@ -230,7 +233,7 @@ pub async fn link_wallet(
     verification::verify_signature(&identity_sig, message.as_bytes())?;
     verification::verify_public_key_matches(&identity_sig, &identity.signer_public_key)?;
 
-    // 6. Verify wallet signature (always wallet type)
+    // 7. Verify wallet signature (always wallet type)
     let wallet_sig = req
         .wallet_signature
         .to_signature(objects_identity::SignerType::Wallet)
@@ -238,7 +241,7 @@ pub async fn link_wallet(
 
     verification::verify_signature(&wallet_sig, message.as_bytes())?;
 
-    // 7. Update identity
+    // 8. Update identity
     let updated =
         db::update_identity_wallet(&state.pool, &id, &req.wallet_address, req.timestamp as i64)
             .await?;
