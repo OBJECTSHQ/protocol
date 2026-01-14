@@ -1,0 +1,29 @@
+[package]
+name = "objects-identity"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Identity types, signatures, and ID derivation for OBJECTS Protocol"
+
+[dependencies]
+# Crypto
+ed25519-dalek.workspace = true
+p256.workspace = true
+k256.workspace = true
+sha2.workspace = true
+bs58.workspace = true
+rand.workspace = true
+
+# Serialization
+prost.workspace = true
+serde.workspace = true
+
+# Error handling
+thiserror.workspace = true
+
+[dev-dependencies]
+tokio-test.workspace = true
+
+[build-dependencies]
+prost-build.workspace = true

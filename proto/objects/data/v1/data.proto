@@ -1,0 +1,94 @@
+syntax = "proto3";
+package objects.data.v1;
+
+import "objects/identity/v1/identity.proto";
+
+message Asset {
+  // REQUIRED. Unique identifier within the project.
+  string id = 1;
+
+  // REQUIRED. Human-readable name.
+  string name = 2;
+
+  // REQUIRED. Identity ID of the asset creator (RFC-001).
+  string author_id = 3;
+
+  // REQUIRED. BLAKE3 hash of the content blob. Exactly 32 bytes.
+  bytes content_hash = 4;
+
+  // REQUIRED. Size of the content blob in bytes.
+  uint64 content_size = 5;
+
+  // OPTIONAL. MIME type or format identifier.
+  string format = 6;
+
+  // REQUIRED. Unix timestamp (seconds) when asset was created.
+  uint64 created_at = 7;
+
+  // REQUIRED. Unix timestamp (seconds) when asset was last updated.
+  uint64 updated_at = 8;
+}
+
+message SignedAsset {
+  Asset asset = 1;
+  objects.identity.v1.Signature signature = 2;
+  bytes nonce = 3;
+}
+
+message Project {
+  // REQUIRED. Unique identifier (derived from ReplicaId).
+  string id = 1;
+
+  // REQUIRED. Human-readable name.
+  string name = 2;
+
+  // OPTIONAL. Project description.
+  string description = 3;
+
+  // REQUIRED. Identity ID of the project owner (RFC-001).
+  string owner_id = 4;
+
+  // REQUIRED. Unix timestamp (seconds) when project was created.
+  uint64 created_at = 5;
+
+  // REQUIRED. Unix timestamp (seconds) when project was last updated.
+  uint64 updated_at = 6;
+}
+
+enum ReferenceType {
+  REFERENCE_TYPE_UNSPECIFIED = 0;
+  REFERENCE_TYPE_CONTAINS = 1;
+  REFERENCE_TYPE_DEPENDS_ON = 2;
+  REFERENCE_TYPE_DERIVED_FROM = 3;
+  REFERENCE_TYPE_REFERENCES = 4;
+}
+
+message Reference {
+  // REQUIRED. Unique identifier within the project.
+  string id = 1;
+
+  // REQUIRED. ID of the source asset.
+  string source_asset_id = 2;
+
+  // REQUIRED. ID of the target asset.
+  string target_asset_id = 3;
+
+  // OPTIONAL. BLAKE3 hash of the specific target version.
+  bytes target_content_hash = 4;
+
+  // REQUIRED. Type of relationship.
+  ReferenceType reference_type = 5;
+
+  // REQUIRED. Unix timestamp (seconds) when reference was created.
+  uint64 created_at = 6;
+}
+
+message CrossProjectReference {
+  string id = 1;
+  string source_asset_id = 2;
+  string target_project_id = 3;
+  string target_asset_id = 4;
+  bytes target_content_hash = 5;
+  ReferenceType reference_type = 6;
+  uint64 created_at = 7;
+}
