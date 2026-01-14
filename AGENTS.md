@@ -144,8 +144,7 @@ Entry key format for Sync layer:
 |---------|---------|-------|
 | Hex encoding | `hex` | Never roll custom hex |
 | Ethereum/EIP-191 | `alloy-primitives` | Replaces deprecated ethers-rs |
-| WebAuthn/Passkey | `webauthn-rs-core` | Security audited by SUSE |
-| P-256 ECDSA | `p256` | RustCrypto, constant-time |
+| P-256 ECDSA (WebAuthn) | `p256` | RustCrypto, audited by zkSecurity 2025 |
 | secp256k1 | `k256` | RustCrypto, constant-time |
 | Random bytes | `rand` with `OsRng` | OS-provided entropy |
 | Hashing | `sha2`, `blake3` | Standard implementations |
