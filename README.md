@@ -2,8 +2,9 @@
 
 Design engineering protocol for modern craftspeople.
 
+[![CI](https://github.com/OBJECTSHQ/protocol/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/OBJECTSHQ/protocol/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE)
-[![CI](https://github.com/OBJECTSHQ/protocol/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/OBJECTSHQ/protocol/actions)
+[![Rust Version](https://img.shields.io/badge/rust-2024%20edition-orange.svg)](https://www.rust-lang.org)
 
 ## What is OBJECTS?
 
