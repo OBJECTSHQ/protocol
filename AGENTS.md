@@ -139,6 +139,23 @@ Prefer tested, audited libraries over custom implementations, especially for sec
 - Check for CVEs before adding new dependencies (`cargo audit`)
 - Pin major versions in workspace dependencies
 
+## Agent Execution
+
+**Parallel execution:** When multiple independent operations are needed, execute them in parallel using multiple tool calls in a single message. Examples:
+- Reading multiple files simultaneously
+- Running independent searches across different areas
+- Building/testing multiple crates at once
+
+**Sequential execution:** Chain dependent operations with `&&`:
+```bash
+cargo build --workspace && cargo test --workspace && cargo clippy --workspace
+```
+
+**Use subagents for:**
+- Exploring unfamiliar parts of the codebase (`Explore` agent)
+- Planning complex multi-step implementations (`Plan` agent)
+- Code review before commits (`code-reviewer` agent)
+
 ## Boundaries
 
 **Always:**
