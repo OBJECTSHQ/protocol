@@ -22,6 +22,8 @@ iroh-docs.workspace = true
 
 # Ethereum (Alloy)
 alloy-primitives.workspace = true
+alloy-signer.workspace = true
+alloy-signer-local.workspace = true
 
 # WebAuthn
 webauthn-rs-core.workspace = true
@@ -29,6 +31,7 @@ webauthn-rs-core.workspace = true
 # Serialization
 prost.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 
 # Error handling
 thiserror.workspace = true
