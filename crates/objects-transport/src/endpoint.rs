@@ -2,10 +2,11 @@
 //!
 //! Wraps Iroh's Endpoint with OBJECTS-specific configuration.
 
-use iroh::endpoint::{Endpoint, RelayMode, TransportConfig};
+use iroh::endpoint::{Endpoint, RelayMode};
 
 use crate::{
-    ALPN, Error, NodeAddr, NodeId, Result, SecretKey, config::NetworkConfig, connection::Connection,
+    config::NetworkConfig, connection::Connection, Error, NodeAddr, NodeId, Result, SecretKey,
+    ALPN,
 };
 
 /// OBJECTS network endpoint.
@@ -100,12 +101,6 @@ impl ObjectsEndpoint {
     /// Returns the next incoming connection that negotiated the
     /// OBJECTS ALPN identifier.
     ///
-    /// # ALPN Verification
-    ///
-    /// Iroh automatically filters incoming connections by the ALPNs configured
-    /// in [`EndpointBuilder::bind`]. Connections that don't negotiate a matching
-    /// ALPN (in our case `/objects/0.1`) are rejected before reaching this method.
-    ///
     /// # Errors
     ///
     /// Returns an error if accepting fails.
@@ -116,9 +111,9 @@ impl ObjectsEndpoint {
             .await
             .ok_or_else(|| Error::Iroh(anyhow::anyhow!("endpoint closed")))?;
 
-        // Iroh filters by ALPN configured in builder.alpns().
-        // Only connections using OBJECTS ALPN reach this point.
-        let conn = incoming.await.map_err(|e| Error::Iroh(e.into()))?;
+        let conn = incoming
+            .await
+            .map_err(|e| Error::Iroh(e.into()))?;
 
         Ok(Connection::new(conn))
     }
@@ -172,48 +167,16 @@ impl EndpointBuilder {
     /// # Errors
     ///
     /// Returns an error if binding fails.
-    ///
-    /// # Note on max_connections
-    ///
-    /// QUIC/Iroh doesn't have a built-in connection limit. The `max_connections`
-    /// value in [`NetworkConfig`] is intended for application-level enforcement
-    /// (e.g., via a connection tracker or semaphore in the accept loop).
     pub async fn bind(self) -> Result<ObjectsEndpoint> {
         let config = self.config.unwrap_or_default();
         let secret_key = self
             .secret_key
             .unwrap_or_else(|| SecretKey::generate(&mut rand::rng()));
 
-        // Build transport config with RFC-002 §6 settings
-        let mut transport_config = TransportConfig::default();
-
-        // Apply idle timeout (RFC-002 §6.2)
-        // Note: Duration::try_into() converts to IdleTimeout, which validates
-        // that timeout in milliseconds fits in QUIC VarInt (< 2^62)
-        let idle_timeout = config.idle_timeout().try_into().map_err(|_| {
-            Error::Iroh(anyhow::anyhow!(
-                "idle timeout {:?} exceeds QUIC VarInt maximum",
-                config.idle_timeout()
-            ))
-        })?;
-        transport_config.max_idle_timeout(Some(idle_timeout));
-
-        // Apply max streams per connection (RFC-002 §6.1)
-        // Safe cast: validated in NetworkConfigBuilder::build() to fit in u32
-        let max_streams: u32 = config.max_streams_per_conn().try_into().map_err(|_| {
-            Error::Iroh(anyhow::anyhow!(
-                "max_streams_per_conn {} exceeds u32::MAX",
-                config.max_streams_per_conn()
-            ))
-        })?;
-        transport_config.max_concurrent_bidi_streams(max_streams.into());
-        transport_config.max_concurrent_uni_streams(max_streams.into());
-
         // Build the Iroh endpoint with OBJECTS configuration
         let mut builder = Endpoint::builder()
             .secret_key(secret_key.clone())
-            .alpns(vec![ALPN.to_vec()])
-            .transport_config(transport_config);
+            .alpns(vec![ALPN.to_vec()]);
 
         // Configure relay mode
         // For now, use default relay mode. In production, we'd configure
