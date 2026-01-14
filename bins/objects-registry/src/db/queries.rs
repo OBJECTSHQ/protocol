@@ -107,13 +107,6 @@ pub async fn update_identity_wallet(
     wallet_address: &str,
     updated_at: i64,
 ) -> Result<IdentityRow> {
-    // Check if wallet is already linked to another identity
-    if let Ok(existing) = get_identity_by_wallet(pool, wallet_address).await
-        && existing.id != id
-    {
-        return Err(RegistryError::WalletLinked(existing.id));
-    }
-
     let result = sqlx::query_as::<_, IdentityRow>(
         r#"
         UPDATE identities
@@ -125,10 +118,22 @@ pub async fn update_identity_wallet(
     .bind(wallet_address)
     .bind(updated_at)
     .bind(id)
-    .fetch_optional(pool)
-    .await?;
+    .fetch_one(pool)
+    .await;
 
-    result.ok_or_else(|| RegistryError::NotFound(id.to_string()))
+    match result {
+        Ok(row) => Ok(row),
+        Err(sqlx::Error::Database(db_err)) => {
+            if let Some(constraint) = db_err.constraint()
+                && constraint.contains("wallet")
+            {
+                return Err(RegistryError::WalletLinked(wallet_address.to_string()));
+            }
+            Err(RegistryError::Database(sqlx::Error::Database(db_err)))
+        }
+        Err(sqlx::Error::RowNotFound) => Err(RegistryError::NotFound(id.to_string())),
+        Err(e) => Err(RegistryError::Database(e)),
+    }
 }
 
 /// Update an identity's handle.
