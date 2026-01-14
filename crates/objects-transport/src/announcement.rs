@@ -41,22 +41,26 @@ impl DiscoveryAnnouncement {
     ///
     /// The announcement is signed with the provided secret key.
     /// The timestamp is set to the current time.
-    pub fn new(secret_key: &SecretKey, relay_url: Option<RelayUrl>) -> Self {
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Discovery`] if the system clock is not functioning properly.
+    pub fn new(secret_key: &SecretKey, relay_url: Option<RelayUrl>) -> Result<Self> {
         let node_id = secret_key.public();
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .expect("system time should be after unix epoch")
+            .map_err(|e| Error::Discovery(format!("system clock error: {}", e)))?
             .as_secs();
 
         let message = Self::signing_message(&node_id, relay_url.as_ref(), timestamp);
         let sig = secret_key.sign(&message);
 
-        Self {
+        Ok(Self {
             node_id,
             relay_url,
             timestamp,
             signature: sig.to_bytes(),
-        }
+        })
     }
 
     /// Verify that this announcement's signature is valid.
@@ -79,23 +83,29 @@ impl DiscoveryAnnouncement {
     /// Check if this announcement is stale (older than 24 hours).
     ///
     /// Per RFC-002 §5.4.2, nodes SHOULD discard stale announcements.
+    ///
+    /// Returns `false` if the system clock is not functioning properly.
     pub fn is_stale(&self) -> bool {
-        self.age() > STALE_THRESHOLD
+        self.age().map(|age| age > STALE_THRESHOLD).unwrap_or(false)
     }
 
     /// Get the age of this announcement.
-    pub fn age(&self) -> Duration {
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Discovery`] if the system clock is not functioning properly.
+    pub fn age(&self) -> Result<Duration> {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .expect("system time should be after unix epoch")
+            .map_err(|e| Error::Discovery(format!("system clock error: {}", e)))?
             .as_secs();
 
-        if now >= self.timestamp {
+        Ok(if now >= self.timestamp {
             Duration::from_secs(now - self.timestamp)
         } else {
             // Announcement is from the future (clock skew)
             Duration::ZERO
-        }
+        })
     }
 
     /// Encode this announcement for transmission.
@@ -228,7 +238,7 @@ mod tests {
         let key = test_secret_key();
         let relay_url: RelayUrl = "https://relay.example.com".parse().unwrap();
 
-        let announcement = DiscoveryAnnouncement::new(&key, Some(relay_url));
+        let announcement = DiscoveryAnnouncement::new(&key, Some(relay_url)).unwrap();
 
         assert!(announcement.verify().is_ok());
         assert!(!announcement.is_stale());
@@ -238,7 +248,7 @@ mod tests {
     fn sign_and_verify_no_relay() {
         let key = test_secret_key();
 
-        let announcement = DiscoveryAnnouncement::new(&key, None);
+        let announcement = DiscoveryAnnouncement::new(&key, None).unwrap();
 
         assert!(announcement.verify().is_ok());
     }
@@ -248,7 +258,7 @@ mod tests {
         let key = test_secret_key();
         let relay_url: RelayUrl = "https://relay.example.com".parse().unwrap();
 
-        let original = DiscoveryAnnouncement::new(&key, Some(relay_url));
+        let original = DiscoveryAnnouncement::new(&key, Some(relay_url)).unwrap();
         let encoded = original.encode();
         let decoded = DiscoveryAnnouncement::decode(&encoded).unwrap();
 
@@ -262,7 +272,7 @@ mod tests {
     fn encode_decode_no_relay() {
         let key = test_secret_key();
 
-        let original = DiscoveryAnnouncement::new(&key, None);
+        let original = DiscoveryAnnouncement::new(&key, None).unwrap();
         let encoded = original.encode();
         let decoded = DiscoveryAnnouncement::decode(&encoded).unwrap();
 
@@ -274,7 +284,7 @@ mod tests {
     #[test]
     fn reject_invalid_signature() {
         let key = test_secret_key();
-        let announcement = DiscoveryAnnouncement::new(&key, None);
+        let announcement = DiscoveryAnnouncement::new(&key, None).unwrap();
 
         // Tamper with the signature
         let mut tampered = announcement.clone();
@@ -286,7 +296,7 @@ mod tests {
     #[test]
     fn reject_tampered_timestamp() {
         let key = test_secret_key();
-        let announcement = DiscoveryAnnouncement::new(&key, None);
+        let announcement = DiscoveryAnnouncement::new(&key, None).unwrap();
 
         // Tamper with the timestamp
         let mut tampered = announcement.clone();

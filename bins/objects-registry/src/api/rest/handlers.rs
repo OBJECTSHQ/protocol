@@ -85,7 +85,10 @@ pub async fn create_identity(
 
     let identity = db::insert_identity(&state.pool, &row).await?;
 
-    Ok((StatusCode::CREATED, Json(identity.into())))
+    let response = identity
+        .try_into()
+        .map_err(RegistryError::Internal)?;
+    Ok((StatusCode::CREATED, Json(response)))
 }
 
 /// Get an identity by ID.
@@ -95,7 +98,10 @@ pub async fn get_identity(
     Path(id): Path<String>,
 ) -> Result<Json<IdentityResponse>> {
     let identity = db::get_identity_by_id(&state.pool, &id).await?;
-    Ok(Json(identity.into()))
+    let response = identity
+        .try_into()
+        .map_err(RegistryError::Internal)?;
+    Ok(Json(response))
 }
 
 /// Resolve an identity by handle, signer, or wallet.
@@ -119,7 +125,10 @@ pub async fn resolve_identity(
         ));
     };
 
-    Ok(Json(identity.into()))
+    let response = identity
+        .try_into()
+        .map_err(RegistryError::Internal)?;
+    Ok(Json(response))
 }
 
 /// Link a wallet to an identity.
@@ -165,7 +174,10 @@ pub async fn link_wallet(
         db::update_identity_wallet(&state.pool, &id, &req.wallet_address, req.timestamp as i64)
             .await?;
 
-    Ok(Json(updated.into()))
+    let response = updated
+        .try_into()
+        .map_err(RegistryError::Internal)?;
+    Ok(Json(response))
 }
 
 /// Change an identity's handle.
@@ -207,5 +219,8 @@ pub async fn change_handle(
         db::update_identity_handle(&state.pool, &id, new_handle.as_str(), req.timestamp as i64)
             .await?;
 
-    Ok(Json(updated.into()))
+    let response = updated
+        .try_into()
+        .map_err(RegistryError::Internal)?;
+    Ok(Json(response))
 }

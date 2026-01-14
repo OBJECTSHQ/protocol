@@ -245,11 +245,19 @@ impl GossipDiscovery {
                     }
 
                     // Check staleness (RFC-002 §5.4.2)
-                    if announcement.age() > stale_threshold {
+                    let age = match announcement.age() {
+                        Ok(age) => age,
+                        Err(e) => {
+                            debug!("Failed to get announcement age: {}", e);
+                            continue;
+                        }
+                    };
+
+                    if age > stale_threshold {
                         debug!(
                             "Stale announcement from {} ({:?} old)",
                             announcement.node_id.fmt_short(),
-                            announcement.age()
+                            age
                         );
                         continue;
                     }
@@ -319,17 +327,28 @@ impl GossipDiscovery {
             let relay_url = Self::get_relay_url(&endpoint);
 
             // Create and sign announcement
-            let announcement = DiscoveryAnnouncement::new(endpoint.secret_key(), relay_url);
+            let announcement = match DiscoveryAnnouncement::new(endpoint.secret_key(), relay_url) {
+                Ok(a) => a,
+                Err(e) => {
+                    warn!("Failed to create announcement: {}", e);
+                    continue;
+                }
+            };
             let data = announcement.encode();
 
             // Broadcast to topic
-            if let Ok(mut topic) = gossip.subscribe(topic_id, Default::default()).await
-                && let Err(e) = topic.broadcast(data.into()).await
-            {
-                warn!("Failed to broadcast announcement: {}", e);
+            match gossip.subscribe(topic_id, Default::default()).await {
+                Ok(mut topic) => {
+                    if let Err(e) = topic.broadcast(data.into()).await {
+                        warn!("Failed to broadcast announcement: {}", e);
+                    } else {
+                        trace!("Periodic announcement sent");
+                    }
+                }
+                Err(e) => {
+                    warn!("Failed to subscribe to gossip topic: {}", e);
+                }
             }
-
-            trace!("Periodic announcement sent");
         }
     }
 }
@@ -341,7 +360,7 @@ impl Discovery for GossipDiscovery {
         let relay_url = Self::get_relay_url(&self.endpoint);
 
         // Create and sign announcement
-        let announcement = DiscoveryAnnouncement::new(self.endpoint.secret_key(), relay_url);
+        let announcement = DiscoveryAnnouncement::new(self.endpoint.secret_key(), relay_url)?;
         let data = announcement.encode();
 
         // Broadcast via gossip

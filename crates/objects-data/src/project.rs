@@ -28,8 +28,12 @@ impl Project {
     /// Validates the project according to RFC-004 rules.
     ///
     /// Checks:
-    /// - `id`: 32 hex characters (16 bytes from ReplicaId)
+    /// - `id`: 32 hex characters (first 16 bytes of ReplicaId, hex-encoded)
+    /// - `name`: non-empty
     /// - `created_at <= updated_at`
+    ///
+    /// Note: This validation only checks format. It does not verify that the ID
+    /// was actually derived from a valid ReplicaId - that must be checked elsewhere.
     pub fn validate(&self) -> Result<(), Error> {
         // Validate id: hex-encoded first 16 bytes of ReplicaId (32 hex chars)
         if self.id.len() != 32 {

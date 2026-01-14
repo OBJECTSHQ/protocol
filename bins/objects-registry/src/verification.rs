@@ -17,7 +17,7 @@ use crate::error::{RegistryError, Result};
 pub fn verify_timestamp(timestamp: u64, config: &Config) -> Result<()> {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .expect("time went backwards")
+        .map_err(|e| RegistryError::Internal(format!("system clock error: {}", e)))?
         .as_secs();
 
     // Check not too far in the future

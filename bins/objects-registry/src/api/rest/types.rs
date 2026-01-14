@@ -104,14 +104,21 @@ pub struct IdentityResponse {
     pub updated_at: u64,
 }
 
-impl From<IdentityRow> for IdentityResponse {
-    fn from(row: IdentityRow) -> Self {
+impl TryFrom<IdentityRow> for IdentityResponse {
+    type Error = String;
+
+    fn try_from(row: IdentityRow) -> Result<Self, Self::Error> {
         let signer_type = match row.signer_type {
             1 => "PASSKEY",
             2 => "WALLET",
-            _ => "UNKNOWN",
+            unknown => {
+                return Err(format!(
+                    "invalid signer_type in database: {} (expected 1 for PASSKEY or 2 for WALLET)",
+                    unknown
+                ))
+            }
         };
-        Self {
+        Ok(Self {
             id: row.id,
             handle: row.handle,
             signer_type: signer_type.to_string(),
@@ -120,7 +127,7 @@ impl From<IdentityRow> for IdentityResponse {
             wallet_address: row.wallet_address,
             created_at: row.created_at as u64,
             updated_at: row.updated_at as u64,
-        }
+        })
     }
 }
 
