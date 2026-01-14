@@ -9,6 +9,17 @@ use crate::error::{RegistryError, Result};
 ///
 /// Returns the inserted row on success.
 /// Returns `HandleTaken` or `SignerExists` on unique constraint violation.
+///
+/// # Atomicity
+/// This function uses a single INSERT statement, which is inherently atomic.
+/// A database transaction is not needed because:
+/// - The operation is a single statement (INSERT into one table)
+/// - Either the entire insert succeeds or fails completely
+/// - Unique constraints are enforced atomically by PostgreSQL
+/// - No related tables need to be updated in the current schema
+///
+/// If future schema changes add related tables (e.g., audit logs, identity history),
+/// this function should be updated to use a transaction via `pool.begin()`.
 pub async fn insert_identity(pool: &PgPool, row: &IdentityRow) -> Result<IdentityRow> {
     let result = sqlx::query_as::<_, IdentityRow>(
         r#"

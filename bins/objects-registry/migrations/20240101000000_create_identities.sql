@@ -44,5 +44,8 @@ CREATE UNIQUE INDEX idx_identities_signer ON identities (signer_public_key);
 CREATE UNIQUE INDEX idx_identities_wallet ON identities (wallet_address)
     WHERE wallet_address IS NOT NULL;
 
--- Index for timestamp-based queries (optional, useful for admin)
+-- Index for timestamp-based queries (DESC ordering for recent-first queries)
+-- This index supports potential future admin endpoints that list recent identities,
+-- such as "GET /admin/identities?limit=100" for monitoring and moderation.
+-- The DESC ordering optimizes queries that want newest identities first.
 CREATE INDEX idx_identities_created_at ON identities (created_at DESC);
