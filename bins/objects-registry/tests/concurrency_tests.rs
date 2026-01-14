@@ -2,12 +2,11 @@
 //!
 //! These tests verify that race conditions are handled correctly.
 
-use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
 use objects_identity::IdentityId;
 use objects_registry::db::{IdentityRow, insert_identity, signer_type_to_i16};
 use objects_registry::error::RegistryError;
 use p256::ecdsa::SigningKey as P256SigningKey;
-use rand::rngs::OsRng;
+use rand_core::OsRng;
 use sqlx::PgPool;
 use tokio::task::JoinSet;
 
@@ -24,7 +23,7 @@ async fn test_concurrent_identity_creation_with_same_handle(pool: PgPool) {
     let mut tasks = JoinSet::new();
     let handle = "alice";
 
-    for i in 0..10 {
+    for _i in 0..10 {
         let pool = pool.clone();
         let signing_key = test_passkey_key();
         let public_key: [u8; 33] = signing_key

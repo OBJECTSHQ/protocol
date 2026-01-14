@@ -49,6 +49,7 @@ tracing-subscriber.workspace = true
 p256 = { version = "0.13", features = ["ecdsa"] }
 k256 = { version = "0.13", features = ["ecdsa"] }
 rand.workspace = true
+rand_core = "0.6"
 sha2.workspace = true
 hex.workspace = true
 alloy-primitives.workspace = true
