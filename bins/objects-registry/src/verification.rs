@@ -113,8 +113,8 @@ pub fn verify_signature(signature: &Signature, message: &[u8]) -> Result<()> {
 /// For passkey signatures, the public_key field must match.
 /// For wallet signatures, we don't verify public key (address is verified instead).
 pub fn verify_public_key_matches(signature: &Signature, expected: &[u8]) -> Result<()> {
-    match &signature.public_key {
-        Some(pk) if pk.as_slice() == expected => Ok(()),
+    match signature.public_key_bytes() {
+        Some(pk) if pk == expected => Ok(()),
         Some(pk) => Err(RegistryError::InvalidSignature(format!(
             "signature public key does not match request public key (signature: {} bytes, request: {} bytes)",
             pk.len(),

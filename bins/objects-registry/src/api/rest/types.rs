@@ -26,7 +26,7 @@ pub struct CreateIdentityRequest {
 }
 
 /// Signature data in request.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct SignatureRequest {
     /// Base64-encoded signature bytes
     pub signature: String,
@@ -83,7 +83,7 @@ pub struct ResolveQuery {
 }
 
 /// Identity response.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct IdentityResponse {
     /// Identity ID (obj_ + base58)
     pub id: String,
