@@ -11,20 +11,78 @@ use crate::Error;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Project {
     /// Unique identifier (derived from ReplicaId).
-    pub id: String,
+    id: String,
     /// Human-readable name.
-    pub name: String,
+    name: String,
     /// Project description.
-    pub description: Option<String>,
+    description: Option<String>,
     /// Identity ID of the project owner (RFC-001).
-    pub owner_id: IdentityId,
+    owner_id: IdentityId,
     /// Unix timestamp (seconds) when project was created.
-    pub created_at: u64,
+    created_at: u64,
     /// Unix timestamp (seconds) when project was last updated.
-    pub updated_at: u64,
+    updated_at: u64,
 }
 
 impl Project {
+    /// Creates a new Project with validated fields.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidProject`] if validation fails:
+    /// - `id`: must be 32 hex characters
+    /// - `name`: must be non-empty
+    /// - `created_at <= updated_at`
+    pub fn new(
+        id: String,
+        name: String,
+        description: Option<String>,
+        owner_id: IdentityId,
+        created_at: u64,
+        updated_at: u64,
+    ) -> Result<Self, Error> {
+        let project = Self {
+            id,
+            name,
+            description,
+            owner_id,
+            created_at,
+            updated_at,
+        };
+        project.validate()?;
+        Ok(project)
+    }
+
+    /// Returns the project ID.
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    /// Returns the project name.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Returns the project description.
+    pub fn description(&self) -> Option<&str> {
+        self.description.as_deref()
+    }
+
+    /// Returns the owner identity ID.
+    pub fn owner_id(&self) -> &IdentityId {
+        &self.owner_id
+    }
+
+    /// Returns the creation timestamp.
+    pub fn created_at(&self) -> u64 {
+        self.created_at
+    }
+
+    /// Returns the last update timestamp.
+    pub fn updated_at(&self) -> u64 {
+        self.updated_at
+    }
+
     /// Validates the project according to RFC-004 rules.
     ///
     /// Checks:
@@ -34,7 +92,7 @@ impl Project {
     ///
     /// Note: This validation only checks format. It does not verify that the ID
     /// was actually derived from a valid ReplicaId - that must be checked elsewhere.
-    pub fn validate(&self) -> Result<(), Error> {
+    fn validate(&self) -> Result<(), Error> {
         // Validate id: hex-encoded first 16 bytes of ReplicaId (32 hex chars)
         if self.id.len() != 32 {
             return Err(Error::InvalidProject(
@@ -72,62 +130,98 @@ mod tests {
     }
 
     fn valid_project() -> Project {
-        Project {
-            id: "a".repeat(32), // 32 hex chars
-            name: "Test Project".to_string(),
-            description: Some("A test project".to_string()),
-            owner_id: test_owner_id(),
-            created_at: 1704542400,
-            updated_at: 1704542500,
-        }
+        Project::new(
+            "a".repeat(32),
+            "Test Project".to_string(),
+            Some("A test project".to_string()),
+            test_owner_id(),
+            1704542400,
+            1704542500,
+        )
+        .unwrap()
     }
 
     #[test]
     fn test_project_validate_valid() {
         let project = valid_project();
-        assert!(project.validate().is_ok());
+        assert_eq!(project.id(), &"a".repeat(32));
     }
 
     #[test]
     fn test_project_validate_invalid_id_length_short() {
-        let mut project = valid_project();
-        project.id = "abc".to_string(); // too short
-        assert!(project.validate().is_err());
+        let result = Project::new(
+            "abc".to_string(),
+            "Test Project".to_string(),
+            Some("A test project".to_string()),
+            test_owner_id(),
+            1704542400,
+            1704542500,
+        );
+        assert!(result.is_err());
     }
 
     #[test]
     fn test_project_validate_invalid_id_length_long() {
-        let mut project = valid_project();
-        project.id = "a".repeat(33); // too long
-        assert!(project.validate().is_err());
+        let result = Project::new(
+            "a".repeat(33),
+            "Test Project".to_string(),
+            Some("A test project".to_string()),
+            test_owner_id(),
+            1704542400,
+            1704542500,
+        );
+        assert!(result.is_err());
     }
 
     #[test]
     fn test_project_validate_invalid_id_chars() {
-        let mut project = valid_project();
-        project.id = "g".repeat(32); // 'g' is not hex
-        assert!(project.validate().is_err());
+        let result = Project::new(
+            "g".repeat(32),
+            "Test Project".to_string(),
+            Some("A test project".to_string()),
+            test_owner_id(),
+            1704542400,
+            1704542500,
+        );
+        assert!(result.is_err());
     }
 
     #[test]
     fn test_project_validate_valid_hex_id() {
-        let mut project = valid_project();
-        project.id = "0123456789abcdef0123456789abcdef".to_string();
-        assert!(project.validate().is_ok());
+        let result = Project::new(
+            "0123456789abcdef0123456789abcdef".to_string(),
+            "Test Project".to_string(),
+            Some("A test project".to_string()),
+            test_owner_id(),
+            1704542400,
+            1704542500,
+        );
+        assert!(result.is_ok());
     }
 
     #[test]
     fn test_project_validate_empty_name() {
-        let mut project = valid_project();
-        project.name = "".to_string();
-        assert!(project.validate().is_err());
+        let result = Project::new(
+            "a".repeat(32),
+            "".to_string(),
+            Some("A test project".to_string()),
+            test_owner_id(),
+            1704542400,
+            1704542500,
+        );
+        assert!(result.is_err());
     }
 
     #[test]
     fn test_project_validate_timestamps() {
-        let mut project = valid_project();
-        project.created_at = 200;
-        project.updated_at = 100; // created_at > updated_at
-        assert!(project.validate().is_err());
+        let result = Project::new(
+            "a".repeat(32),
+            "Test Project".to_string(),
+            Some("A test project".to_string()),
+            test_owner_id(),
+            200,
+            100,
+        );
+        assert!(result.is_err());
     }
 }
