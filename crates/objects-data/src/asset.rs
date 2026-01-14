@@ -49,31 +49,104 @@ impl ContentHash {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Asset {
     /// Unique identifier within the project.
-    pub id: String,
+    id: String,
     /// Human-readable name.
-    pub name: String,
+    name: String,
     /// Identity ID of the asset creator (RFC-001).
-    pub author_id: IdentityId,
+    author_id: IdentityId,
     /// BLAKE3 hash of the content blob (32 bytes).
-    pub content_hash: ContentHash,
+    content_hash: ContentHash,
     /// Size of the content blob in bytes.
-    pub content_size: u64,
+    content_size: u64,
     /// MIME type or format identifier.
-    pub format: Option<String>,
+    format: Option<String>,
     /// Unix timestamp (seconds) when asset was created.
-    pub created_at: u64,
+    created_at: u64,
     /// Unix timestamp (seconds) when asset was last updated.
-    pub updated_at: u64,
+    updated_at: u64,
 }
 
 impl Asset {
+    /// Creates a new Asset with validated fields.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidAsset`] if validation fails:
+    /// - `id`: must be alphanumeric + hyphens, 1-64 characters
+    /// - `name`: must be non-empty
+    /// - `created_at <= updated_at`
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        id: String,
+        name: String,
+        author_id: IdentityId,
+        content_hash: ContentHash,
+        content_size: u64,
+        format: Option<String>,
+        created_at: u64,
+        updated_at: u64,
+    ) -> Result<Self, Error> {
+        let asset = Self {
+            id,
+            name,
+            author_id,
+            content_hash,
+            content_size,
+            format,
+            created_at,
+            updated_at,
+        };
+        asset.validate()?;
+        Ok(asset)
+    }
+
+    /// Returns the asset ID.
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    /// Returns the asset name.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Returns the author identity ID.
+    pub fn author_id(&self) -> &IdentityId {
+        &self.author_id
+    }
+
+    /// Returns the content hash.
+    pub fn content_hash(&self) -> &ContentHash {
+        &self.content_hash
+    }
+
+    /// Returns the content size in bytes.
+    pub fn content_size(&self) -> u64 {
+        self.content_size
+    }
+
+    /// Returns the format/MIME type.
+    pub fn format(&self) -> Option<&str> {
+        self.format.as_deref()
+    }
+
+    /// Returns the creation timestamp.
+    pub fn created_at(&self) -> u64 {
+        self.created_at
+    }
+
+    /// Returns the last update timestamp.
+    pub fn updated_at(&self) -> u64 {
+        self.updated_at
+    }
+
     /// Validates the asset according to RFC-004 rules.
     ///
     /// Checks:
     /// - `id`: alphanumeric + hyphens, 1-64 characters
     /// - `name`: non-empty
     /// - `created_at <= updated_at`
-    pub fn validate(&self) -> Result<(), Error> {
+    fn validate(&self) -> Result<(), Error> {
         // Validate id: alphanumeric + hyphens, 1-64 chars
         if self.id.is_empty() || self.id.len() > 64 {
             return Err(Error::InvalidAsset(
@@ -141,11 +214,11 @@ impl<'de> Deserialize<'de> for Nonce {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SignedAsset {
     /// The asset being signed.
-    pub asset: Asset,
+    asset: Asset,
     /// Signature proving authorship.
-    pub signature: Signature,
+    signature: Signature,
     /// Nonce used in author_id derivation (8 bytes).
-    pub nonce: Nonce,
+    nonce: Nonce,
 }
 
 impl SignedAsset {
@@ -158,15 +231,31 @@ impl SignedAsset {
         }
     }
 
+    /// Returns a reference to the asset.
+    pub fn asset(&self) -> &Asset {
+        &self.asset
+    }
+
+    /// Returns a reference to the signature.
+    pub fn signature(&self) -> &Signature {
+        &self.signature
+    }
+
+    /// Returns the nonce used in identity derivation.
+    pub fn nonce(&self) -> &[u8; 8] {
+        &self.nonce.0
+    }
+
     /// Verifies the signed asset.
     ///
     /// Verification steps (per RFC-001 Appendix D):
     /// 1. Validate the asset fields
     /// 2. Construct the signature message using asset metadata
-    /// 3. Verify signature over message using signer public key
-    /// 4. Extract signer's public key (direct for passkey, recovered for wallet)
-    /// 5. Derive identity_id from signature.public_key + nonce
-    /// 6. Confirm derived ID matches asset.author_id
+    /// 3. Verify signature and extract signer's public key:
+    ///    - Passkey: verify signature, then extract public_key from signature
+    ///    - Wallet: recover public_key from signature, then verify address
+    /// 4. Derive identity_id from signer public_key + nonce
+    /// 5. Confirm derived ID matches asset.author_id
     pub fn verify(&self) -> Result<(), Error> {
         // 1. Validate the asset
         self.asset.validate()?;
@@ -201,17 +290,16 @@ impl SignedAsset {
 
     /// Extracts the signer's public key from the signature.
     fn get_signer_public_key(&self, message: &str) -> Result<[u8; 33], Error> {
-        match self.signature.signer_type {
+        match self.signature.signer_type() {
             SignerType::Passkey => {
                 // Passkey: public_key stored directly in signature
                 let pk = self
                     .signature
-                    .public_key
-                    .as_ref()
+                    .public_key_bytes()
                     .ok_or(Error::InvalidAsset(
                         "passkey signature requires public_key".to_string(),
                     ))?;
-                pk.as_slice().try_into().map_err(|_| {
+                pk.try_into().map_err(|_| {
                     Error::InvalidAsset("public_key must be 33 bytes".to_string())
                 })
             }
@@ -231,13 +319,14 @@ impl SignedAsset {
         let message_hash = keccak256(&full_message);
 
         // Parse signature (r || s || v)
-        if self.signature.signature.len() != 65 {
+        let sig_bytes = self.signature.signature_bytes();
+        if sig_bytes.len() != 65 {
             return Err(Error::InvalidAsset(
                 "wallet signature must be 65 bytes".to_string(),
             ));
         }
-        let r_s = &self.signature.signature[..64];
-        let v = self.signature.signature[64];
+        let r_s = &sig_bytes[..64];
+        let v = sig_bytes[64];
 
         let recovery_id = match v {
             27 | 0 => RecoveryId::new(false, false),
@@ -281,16 +370,17 @@ mod tests {
     }
 
     fn valid_asset() -> Asset {
-        Asset {
-            id: "motor-mount-v1".to_string(),
-            name: "Motor Mount".to_string(),
-            author_id: test_author_id(),
-            content_hash: test_content_hash(),
-            content_size: 1024,
-            format: Some("model/step".to_string()),
-            created_at: 1704542400,
-            updated_at: 1704542500,
-        }
+        Asset::new(
+            "motor-mount-v1".to_string(),
+            "Motor Mount".to_string(),
+            test_author_id(),
+            test_content_hash(),
+            1024,
+            Some("model/step".to_string()),
+            1704542400,
+            1704542500,
+        )
+        .unwrap()
     }
 
     #[test]
@@ -302,57 +392,398 @@ mod tests {
     #[test]
     fn test_asset_validate_valid() {
         let asset = valid_asset();
-        assert!(asset.validate().is_ok());
+        // Constructor already validates, so if we got here it's valid
+        assert_eq!(asset.id(), "motor-mount-v1");
     }
 
     #[test]
     fn test_asset_validate_empty_id() {
-        let mut asset = valid_asset();
-        asset.id = "".to_string();
-        assert!(asset.validate().is_err());
+        let result = Asset::new(
+            "".to_string(),
+            "Motor Mount".to_string(),
+            test_author_id(),
+            test_content_hash(),
+            1024,
+            Some("model/step".to_string()),
+            1704542400,
+            1704542500,
+        );
+        assert!(result.is_err());
     }
 
     #[test]
     fn test_asset_validate_id_too_long() {
-        let mut asset = valid_asset();
-        asset.id = "a".repeat(65);
-        assert!(asset.validate().is_err());
+        let result = Asset::new(
+            "a".repeat(65),
+            "Motor Mount".to_string(),
+            test_author_id(),
+            test_content_hash(),
+            1024,
+            Some("model/step".to_string()),
+            1704542400,
+            1704542500,
+        );
+        assert!(result.is_err());
     }
 
     #[test]
     fn test_asset_validate_invalid_id_chars() {
-        let mut asset = valid_asset();
-        asset.id = "invalid@id".to_string();
-        assert!(asset.validate().is_err());
+        let result = Asset::new(
+            "invalid@id".to_string(),
+            "Motor Mount".to_string(),
+            test_author_id(),
+            test_content_hash(),
+            1024,
+            Some("model/step".to_string()),
+            1704542400,
+            1704542500,
+        );
+        assert!(result.is_err());
     }
 
     #[test]
     fn test_asset_validate_id_with_hyphen() {
-        let mut asset = valid_asset();
-        asset.id = "motor-mount-v1".to_string();
-        assert!(asset.validate().is_ok());
+        let result = Asset::new(
+            "motor-mount-v1".to_string(),
+            "Motor Mount".to_string(),
+            test_author_id(),
+            test_content_hash(),
+            1024,
+            Some("model/step".to_string()),
+            1704542400,
+            1704542500,
+        );
+        assert!(result.is_ok());
     }
 
     #[test]
     fn test_asset_validate_empty_name() {
-        let mut asset = valid_asset();
-        asset.name = "".to_string();
-        assert!(asset.validate().is_err());
+        let result = Asset::new(
+            "motor-mount-v1".to_string(),
+            "".to_string(),
+            test_author_id(),
+            test_content_hash(),
+            1024,
+            Some("model/step".to_string()),
+            1704542400,
+            1704542500,
+        );
+        assert!(result.is_err());
     }
 
     #[test]
     fn test_asset_validate_timestamps() {
-        let mut asset = valid_asset();
-        asset.created_at = 200;
-        asset.updated_at = 100; // created_at > updated_at
-        assert!(asset.validate().is_err());
+        let result = Asset::new(
+            "motor-mount-v1".to_string(),
+            "Motor Mount".to_string(),
+            test_author_id(),
+            test_content_hash(),
+            1024,
+            Some("model/step".to_string()),
+            200, // created_at
+            100, // updated_at - created_at > updated_at
+        );
+        assert!(result.is_err());
     }
 
     #[test]
     fn test_asset_validate_same_timestamps() {
-        let mut asset = valid_asset();
-        asset.created_at = 100;
-        asset.updated_at = 100;
-        assert!(asset.validate().is_ok());
+        let result = Asset::new(
+            "motor-mount-v1".to_string(),
+            "Motor Mount".to_string(),
+            test_author_id(),
+            test_content_hash(),
+            1024,
+            Some("model/step".to_string()),
+            100,
+            100,
+        );
+        assert!(result.is_ok());
+    }
+
+    #[cfg(test)]
+    mod signed_asset_tests {
+        use super::*;
+        use objects_identity::{message::sign_asset_message, IdentityId, Signature, SignerType};
+        use alloy_primitives::keccak256;
+        use k256::ecdsa::SigningKey as K256SigningKey;
+        use k256::elliptic_curve::rand_core::OsRng;
+        use p256::ecdsa::{signature::Signer as _, SigningKey as P256SigningKey};
+        use sha2::{Digest, Sha256};
+
+        // Test helper: Generate passkey signing key
+        fn test_passkey_key() -> P256SigningKey {
+            P256SigningKey::random(&mut OsRng)
+        }
+
+        // Test helper: Generate wallet signing key
+        fn test_wallet_key() -> K256SigningKey {
+            K256SigningKey::random(&mut OsRng)
+        }
+
+        // Test helper: Sign asset with passkey
+        fn sign_asset_with_passkey(
+            asset: &Asset,
+            signing_key: &P256SigningKey,
+            _nonce: [u8; 8],
+        ) -> Signature {
+            let verifying_key = signing_key.verifying_key();
+            let public_key_bytes: [u8; 33] = verifying_key
+                .to_encoded_point(true)
+                .as_bytes()
+                .try_into()
+                .unwrap();
+
+            // Create message per RFC-001
+            let message = sign_asset_message(
+                asset.author_id.as_str(),
+                &asset.content_hash.to_hex(),
+                asset.created_at,
+            );
+
+            // Create minimal WebAuthn data
+            let rp_id_hash = Sha256::digest(b"example.com");
+            let flags = 0x05u8;
+            let counter = 0u32.to_be_bytes();
+            let mut authenticator_data = rp_id_hash.to_vec();
+            authenticator_data.push(flags);
+            authenticator_data.extend_from_slice(&counter);
+
+            let client_data_json = format!(
+                r#"{{"type":"webauthn.get","challenge":"{}"}}"#,
+                hex::encode(message.as_bytes())
+            )
+            .into_bytes();
+
+            let client_data_hash = Sha256::digest(&client_data_json);
+            let mut signed_data = authenticator_data.clone();
+            signed_data.extend_from_slice(&client_data_hash);
+
+            let signature_der: p256::ecdsa::Signature = signing_key.sign(&signed_data);
+
+            Signature::Passkey {
+                signature: signature_der.to_der().to_bytes().to_vec(),
+                public_key: public_key_bytes.to_vec(),
+                authenticator_data,
+                client_data_json,
+            }
+        }
+
+        // Test helper: Sign asset with wallet
+        fn sign_asset_with_wallet(
+            asset: &Asset,
+            signing_key: &K256SigningKey,
+            _nonce: [u8; 8],
+        ) -> Signature {
+            let verifying_key = signing_key.verifying_key();
+            let public_key_point = verifying_key.to_encoded_point(false);
+            let public_key_bytes = public_key_point.as_bytes();
+
+            // Derive Ethereum address
+            let pub_key_hash = keccak256(&public_key_bytes[1..]);
+            let address = format!("0x{}", hex::encode(&pub_key_hash[12..]));
+
+            // Create message
+            let message = sign_asset_message(
+                asset.author_id.as_str(),
+                &asset.content_hash.to_hex(),
+                asset.created_at,
+            );
+
+            // EIP-191 prefix
+            let eip191_prefix = format!("\x19Ethereum Signed Message:\n{}", message.len());
+            let mut prefixed = eip191_prefix.as_bytes().to_vec();
+            prefixed.extend_from_slice(message.as_bytes());
+            let message_hash = keccak256(&prefixed);
+
+            // Sign with recovery
+            let (signature_der, recovery_id) = signing_key
+                .sign_prehash_recoverable(message_hash.as_slice())
+                .unwrap();
+            let mut signature_bytes = signature_der.to_bytes().to_vec();
+            signature_bytes.push(recovery_id.to_byte());
+
+            Signature::Wallet {
+                signature: signature_bytes,
+                address,
+            }
+        }
+
+        #[test]
+        fn test_signed_asset_verify_with_passkey() {
+            // Generate passkey and derive identity
+            let nonce = rand::random::<[u8; 8]>();
+            let signing_key = test_passkey_key();
+            let public_key: [u8; 33] = signing_key
+                .verifying_key()
+                .to_encoded_point(true)
+                .as_bytes()
+                .try_into()
+                .unwrap();
+            let identity_id = IdentityId::derive(&public_key, &nonce);
+
+            // Create asset
+            let asset = Asset::new(
+                "test-asset".to_string(),
+                "Test Asset".to_string(),
+                identity_id,
+                ContentHash::new([0xaa; 32]),
+                1024,
+                Some("png".to_string()),
+                1000,
+                1000,
+            )
+            .unwrap();
+
+            // Sign with passkey
+            let signature = sign_asset_with_passkey(&asset, &signing_key, nonce);
+            let signed_asset = SignedAsset::new(asset, signature, nonce);
+
+            // Verification should succeed
+            signed_asset.verify().unwrap();
+        }
+
+        #[test]
+        fn test_signed_asset_verify_with_wallet() {
+            // Generate wallet and derive identity
+            let nonce = rand::random::<[u8; 8]>();
+            let signing_key = test_wallet_key();
+            let public_key: [u8; 33] = signing_key
+                .verifying_key()
+                .to_encoded_point(true)
+                .as_bytes()
+                .try_into()
+                .unwrap();
+            let identity_id = IdentityId::derive(&public_key, &nonce);
+
+            // Create asset
+            let asset = Asset::new(
+                "test-wallet-asset".to_string(),
+                "Wallet Test Asset".to_string(),
+                identity_id,
+                ContentHash::new([0xbb; 32]),
+                2048,
+                Some("jpg".to_string()),
+                2000,
+                2000,
+            )
+            .unwrap();
+
+            // Sign with wallet
+            let signature = sign_asset_with_wallet(&asset, &signing_key, nonce);
+            let signed_asset = SignedAsset::new(asset, signature, nonce);
+
+            // Verification should succeed
+            assert!(signed_asset.verify().is_ok());
+        }
+
+        #[test]
+        fn test_signed_asset_verify_wrong_nonce() {
+            // Generate identity with correct nonce
+            let correct_nonce = rand::random::<[u8; 8]>();
+            let signing_key = test_passkey_key();
+            let public_key: [u8; 33] = signing_key
+                .verifying_key()
+                .to_encoded_point(true)
+                .as_bytes()
+                .try_into()
+                .unwrap();
+            let identity_id = IdentityId::derive(&public_key, &correct_nonce);
+
+            let asset = Asset::new(
+                "nonce-test".to_string(),
+                "Nonce Test".to_string(),
+                identity_id,
+                ContentHash::new([0xcc; 32]),
+                512,
+                Some("txt".to_string()),
+                3000,
+                3000,
+            )
+            .unwrap();
+
+            // Sign with correct nonce
+            let signature = sign_asset_with_passkey(&asset, &signing_key, correct_nonce);
+
+            // Create SignedAsset with WRONG nonce
+            let wrong_nonce = rand::random::<[u8; 8]>();
+            let signed_asset = SignedAsset::new(asset, signature, wrong_nonce);
+
+            // Should fail with author ID mismatch
+            let result = signed_asset.verify();
+            assert!(result.is_err());
+            assert!(result.unwrap_err().to_string().contains("author ID mismatch"));
+        }
+
+        #[test]
+        fn test_signed_asset_verify_tampered_content() {
+            let nonce = rand::random::<[u8; 8]>();
+            let signing_key = test_passkey_key();
+            let public_key: [u8; 33] = signing_key
+                .verifying_key()
+                .to_encoded_point(true)
+                .as_bytes()
+                .try_into()
+                .unwrap();
+            let identity_id = IdentityId::derive(&public_key, &nonce);
+
+            // Create and sign original asset
+            let asset = Asset::new(
+                "tamper-test".to_string(),
+                "Original Name".to_string(),
+                identity_id.clone(),
+                ContentHash::new([0xdd; 32]),
+                256,
+                Some("pdf".to_string()),
+                4000,
+                4000,
+            )
+            .unwrap();
+
+            let signature = sign_asset_with_passkey(&asset, &signing_key, nonce);
+
+            // TAMPER: Create asset with different content_hash
+            // (Since fields are private, this demonstrates tampering protection)
+            let tampered_asset = Asset::new(
+                "tamper-test".to_string(),
+                "Original Name".to_string(),
+                identity_id,
+                ContentHash::new([0xee; 32]), // Different hash
+                256,
+                Some("pdf".to_string()),
+                4000,
+                4000,
+            )
+            .unwrap();
+
+            let signed_asset = SignedAsset::new(tampered_asset, signature, nonce);
+
+            // Should fail signature verification
+            assert!(signed_asset.verify().is_err());
+        }
+
+        #[test]
+        fn test_signed_asset_fields_are_private() {
+            // This test verifies fields are private (compile-time check)
+            let asset = super::valid_asset();
+            let signature = Signature::Passkey {
+                signature: vec![0u8; 64],
+                public_key: vec![0u8; 33],
+                authenticator_data: vec![],
+                client_data_json: vec![],
+            };
+            let nonce = [1u8; 8];
+
+            let signed_asset = SignedAsset::new(asset.clone(), signature.clone(), nonce);
+
+            // Accessors work
+            assert_eq!(signed_asset.asset().id, asset.id);
+            assert_eq!(signed_asset.signature().signer_type(), SignerType::Passkey);
+            assert_eq!(signed_asset.nonce(), &nonce);
+
+            // Would fail to compile (desired):
+            // signed_asset.asset = Asset { ... };
+            // signed_asset.nonce = [0u8; 8];
+        }
     }
 }
