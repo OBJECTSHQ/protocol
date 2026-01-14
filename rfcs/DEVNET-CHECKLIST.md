@@ -103,7 +103,7 @@ gcloud compute instances add-access-config objects-relay --access-config-name="e
 - [ ] Create Compute Engine instance
 - [ ] Deploy Iroh relay binary
 - [ ] Configure TLS certificate
-- [ ] Map `relay.objects.network` domain
+- [ ] Map `relay.objects.foundation` domain
 - [ ] Document relay NodeId
 
 ### Bootstrap Nodes
@@ -235,7 +235,7 @@ All items above complete, plus:
 | Parameter | Value |
 |-----------|-------|
 | ALPN | `/objects/0.1` |
-| Relay | `https://relay.objects.network` |
+| Relay | `https://relay.objects.foundation` |
 | Registry | `https://registry.objects.network` |
 | Discovery Topic | `/objects/devnet/0.1/discovery` |
 | Bootstrap Node 1 | TBD |

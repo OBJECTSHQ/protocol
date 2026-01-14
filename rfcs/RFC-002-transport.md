@@ -275,7 +275,7 @@ All conforming nodes MUST use the following network parameters to participate in
 | Parameter | Value |
 |-----------|-------|
 | ALPN Identifier | `/objects/0.1` |
-| Relay URL | `https://relay.objects.network` |
+| Relay URL | `https://relay.objects.foundation` |
 | Discovery Topic | `/objects/devnet/0.1/discovery` |
 
 ### 4.2. Bootstrap Nodes
@@ -297,7 +297,7 @@ Bootstrap nodes:
 
 ### 4.3. Relay Infrastructure
 
-The OBJECTS relay (`relay.objects.network`) provides:
+The OBJECTS relay (`relay.objects.foundation`) provides:
 
 - NAT traversal assistance via holepunching coordination
 - Fallback relaying when direct connections fail
@@ -514,7 +514,7 @@ use iroh::{Endpoint, NodeAddr, NodeId};
 // Create endpoint
 let endpoint = Endpoint::builder()
     .alpns(vec![b"/objects/0.1".to_vec()])
-    .relay_url("https://relay.objects.network")
+    .relay_url("https://relay.objects.foundation")
     .bind()
     .await?;
 

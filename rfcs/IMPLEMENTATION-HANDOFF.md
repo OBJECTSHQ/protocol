@@ -32,7 +32,7 @@ Context and decisions from the RFC review session to bootstrap implementation.
 |-----------|-------|
 | ALPN | `/objects/0.1` |
 | Discovery Topic | `/objects/devnet/0.1/discovery` (NOT mainnet) |
-| Relay | `https://relay.objects.network` |
+| Relay | `https://relay.objects.foundation` |
 | Registry | `https://registry.objects.network` |
 
 ---
@@ -157,11 +157,10 @@ objects-sync = { path = "crates/objects-sync" }
 objects-data = { path = "crates/objects-data" }
 
 # Iroh
-iroh = "0.33"
-iroh-blobs = "0.33"
-iroh-docs = "0.33"
-iroh-gossip = "0.33"
-iroh-relay = "0.33"
+iroh = "0.95"
+iroh-blobs = "0.97"
+iroh-docs = "0.95"
+iroh-gossip = "0.95"
 
 # Crypto
 ed25519-dalek = "2"
@@ -175,16 +174,16 @@ tokio = { version = "1", features = ["full"] }
 futures = "0.3"
 
 # Serialization
-prost = "0.13"
-prost-types = "0.13"
+prost = "0.14"
+prost-types = "0.14"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 # Web/API
-axum = "0.7"
-tonic = "0.12"
-tower = "0.4"
-reqwest = { version = "0.12", features = ["json"] }
+axum = "0.8"
+tonic = "0.14"
+tower = "0.5"
+reqwest = { version = "0.13", features = ["json"] }
 
 # Database
 sqlx = { version = "0.8", features = ["postgres", "runtime-tokio"] }
@@ -307,7 +306,7 @@ Do NOT require registry for asset acceptance.
 
 ### Iroh Relay
 
-You're running your own relay at `relay.objects.network`. The Iroh relay binary is separate from the Iroh library. See: https://github.com/n0-computer/iroh/tree/main/iroh-relay
+You're running your own relay at `relay.objects.foundation`. The Iroh relay binary is separate from the Iroh library. See: https://github.com/n0-computer/iroh/tree/main/iroh-relay
 
 ---
 
@@ -322,7 +321,7 @@ Input:
   nonce: 0102030405060708
 
 Output:
-  identity_id: obj_5KJvsngHeMpm88rD
+  identity_id: obj_2dMiYc8RhnYkorPc5pVh9
 ```
 
 **Handle Validation:**

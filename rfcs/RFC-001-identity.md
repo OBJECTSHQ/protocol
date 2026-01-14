@@ -1151,14 +1151,14 @@ nonce (hex): 0102030405060708
 **Derivation:**
 ```
 concat (hex): 02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee50102030405060708
-sha256 (hex): 3b47c832e3f7a1b2c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7
-truncated (hex): 3b47c832e3f7a1b2c4d5e6f7a8b9c0
-base58: 5KJvsngHeMpm88rD
+sha256 (hex): 3a26513646a95b6cefac3cbe0a6b8053401956aaaa4c374e1f83521be5ab0a1f
+truncated (hex): 3a26513646a95b6cefac3cbe0a6b80
+base58: 2dMiYc8RhnYkorPc5pVh9
 ```
 
 **Output:**
 ```
-identity_id: obj_5KJvsngHeMpm88rD
+identity_id: obj_2dMiYc8RhnYkorPc5pVh9
 ```
 
 ### B.2. Handle Validation
@@ -1182,7 +1182,7 @@ identity_id: obj_5KJvsngHeMpm88rD
 
 **Input:**
 ```
-message: "OBJECTS Identity Protocol v1\nAction: Create Identity\nIdentity: obj_5KJvsngHeMpm88rD\nHandle: montez\nTimestamp: 1704542400"
+message: "OBJECTS Identity Protocol v1\nAction: Create Identity\nIdentity: obj_2dMiYc8RhnYkorPc5pVh9\nHandle: montez\nTimestamp: 1704542400"
 private_key (hex): 0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 ```
 
@@ -1251,7 +1251,7 @@ POST /v1/identities
 
 ```json
 {
-  "id": "obj_5KJvsngHeMpm88rD",
+  "id": "obj_2dMiYc8RhnYkorPc5pVh9",
   "handle": "montez",
   "signer_type": "PASSKEY",
   "signer_public_key": "<base64>",
@@ -1272,7 +1272,7 @@ GET /v1/identities/{identity_id}
 
 ```json
 {
-  "id": "obj_5KJvsngHeMpm88rD",
+  "id": "obj_2dMiYc8RhnYkorPc5pVh9",
   "handle": "montez",
   "signer_type": "PASSKEY",
   "signer_public_key": "<base64>",

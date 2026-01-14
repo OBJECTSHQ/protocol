@@ -425,7 +425,7 @@ data_dir = "/var/lib/objects-backup"
 
 [network]
 # Connect to OBJECTS relay for NAT traversal
-relay_url = "https://relay.objects.network"
+relay_url = "https://relay.objects.foundation"
 
 [storage]
 # Where to store blobs
@@ -454,7 +454,7 @@ services:
       - "7824:7824/udp"  # QUIC
       - "8081:8081"      # API (optional)
     environment:
-      - OBJECTS_RELAY_URL=https://relay.objects.network
+      - OBJECTS_RELAY_URL=https://relay.objects.foundation
     restart: unless-stopped
 
 volumes:
@@ -511,7 +511,7 @@ POST /v1/replicas
 
 ```json
 {
-  "identity_id": "obj_5KJvsngHeMpm88rD",
+  "identity_id": "obj_2dMiYc8RhnYkorPc5pVh9",
   "replica_id": "namespace_abc123...",
   "ticket": "docabc123...",
   "timestamp": 1704542400,
@@ -546,7 +546,7 @@ DELETE /v1/replicas/{replica_id}
 
 ```json
 {
-  "identity_id": "obj_5KJvsngHeMpm88rD",
+  "identity_id": "obj_2dMiYc8RhnYkorPc5pVh9",
   "timestamp": 1704542500,
   "signature": {...}
 }
@@ -572,7 +572,7 @@ GET /v1/identities/{identity_id}/backups
 
 ```json
 {
-  "identity_id": "obj_5KJvsngHeMpm88rD",
+  "identity_id": "obj_2dMiYc8RhnYkorPc5pVh9",
   "replicas": [
     {
       "replica_id": "namespace_abc123...",
@@ -595,7 +595,7 @@ GET /v1/identities/{identity_id}/quota
 
 ```json
 {
-  "identity_id": "obj_5KJvsngHeMpm88rD",
+  "identity_id": "obj_2dMiYc8RhnYkorPc5pVh9",
   "bytes_used": 52428800,
   "bytes_limit": 1073741824,
   "replica_count": 1,
