@@ -121,7 +121,9 @@ Entry key format for Sync layer:
 
 ## Dependencies
 
-Prefer tested, audited libraries over custom implementations, especially for security-critical code.
+**Core Principle:** Always prefer battle-tested, widely-adopted libraries over custom implementations. This applies to ALL aspects of the codebase: cryptography, networking, testing, data structures, API frameworks, etc.
+
+### Battle-Tested Libraries
 
 | Purpose | Library | Notes |
 |---------|---------|-------|
@@ -132,12 +134,37 @@ Prefer tested, audited libraries over custom implementations, especially for sec
 | secp256k1 | `k256` | RustCrypto, constant-time |
 | Random bytes | `rand` with `OsRng` | OS-provided entropy |
 | Hashing | `sha2`, `blake3` | Standard implementations |
+| P2P networking | `iroh` | Built by n0, handles Ed25519 crypto |
+| REST API testing | `tower::ServiceExt::oneshot()` | Official Axum pattern |
 
-**Rules:**
-- Never implement cryptographic primitives manually
-- Prefer libraries with security audits for auth/crypto
-- Check for CVEs before adding new dependencies (`cargo audit`)
-- Pin major versions in workspace dependencies
+### Finding Battle-Tested Solutions
+
+When adding new functionality or facing implementation choices:
+
+1. **Use Context7 to research:** Query for latest documentation and best practices
+   - Example: "How to test Axum REST APIs 2025"
+   - Example: "Latest alloy.rs EIP-191 signature verification"
+
+2. **Prefer official recommendations:** Follow patterns from official docs and examples
+   - Axum testing → Use `tower::ServiceExt::oneshot()`
+   - Iroh networking → Use their crypto primitives, don't wrap them
+
+3. **Verify with ecosystem:** Check if a library is:
+   - Actively maintained (recent commits, releases)
+   - Widely adopted (used by major projects)
+   - Security audited (when relevant)
+   - Well documented (official docs, examples)
+
+4. **When in doubt, ask:** Use the general-purpose agent to research before implementing
+
+### Dependency Rules
+
+- **Never implement cryptographic primitives manually**
+- **Never roll custom implementations** of well-solved problems (hex encoding, base64, etc.)
+- **Always check for CVEs** before adding new dependencies (`cargo audit`)
+- **Prefer libraries with security audits** for auth/crypto/networking
+- **Pin major versions** in workspace dependencies
+- **Use Context7** to ensure you're using the latest APIs and best practices
 
 ## Agent Execution
 
