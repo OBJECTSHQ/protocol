@@ -7,7 +7,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use alloy_primitives::keccak256;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
-use base64::{Engine, engine::general_purpose::{STANDARD as BASE64, URL_SAFE_NO_PAD}};
+use base64::{
+    Engine,
+    engine::general_purpose::{STANDARD as BASE64, URL_SAFE_NO_PAD},
+};
 use http_body_util::BodyExt;
 use k256::ecdsa::SigningKey as K256SigningKey;
 use objects_identity::IdentityId;
