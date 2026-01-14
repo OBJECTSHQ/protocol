@@ -3503,8 +3503,10 @@ dependencies = [
 name = "objects-data"
 version = "0.1.0"
 dependencies = [
+ "alloy-primitives",
  "blake3",
  "hex",
+ "k256",
  "objects-identity",
  "prost",
  "prost-build",

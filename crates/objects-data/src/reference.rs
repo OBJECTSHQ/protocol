@@ -3,6 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::asset::ContentHash;
+use crate::Error;
 
 /// Type of relationship between assets.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -37,6 +38,31 @@ pub struct Reference {
     pub created_at: u64,
 }
 
+impl Reference {
+    /// Validates the reference according to RFC-004 rules.
+    ///
+    /// Checks:
+    /// - `id`: non-empty
+    /// - `source_asset_id`: non-empty
+    /// - `target_asset_id`: non-empty
+    pub fn validate(&self) -> Result<(), Error> {
+        if self.id.is_empty() {
+            return Err(Error::InvalidReference("id is required".to_string()));
+        }
+        if self.source_asset_id.is_empty() {
+            return Err(Error::InvalidReference(
+                "source_asset_id is required".to_string(),
+            ));
+        }
+        if self.target_asset_id.is_empty() {
+            return Err(Error::InvalidReference(
+                "target_asset_id is required".to_string(),
+            ));
+        }
+        Ok(())
+    }
+}
+
 /// A reference to an asset in another project.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CrossProjectReference {
@@ -54,4 +80,63 @@ pub struct CrossProjectReference {
     pub reference_type: ReferenceType,
     /// Unix timestamp (seconds) when reference was created.
     pub created_at: u64,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn valid_reference() -> Reference {
+        Reference {
+            id: "ref-1".to_string(),
+            source_asset_id: "motor-mount".to_string(),
+            target_asset_id: "gear-assembly".to_string(),
+            target_content_hash: None,
+            reference_type: ReferenceType::Contains,
+            created_at: 1704542400,
+        }
+    }
+
+    #[test]
+    fn test_reference_validate_valid() {
+        let reference = valid_reference();
+        assert!(reference.validate().is_ok());
+    }
+
+    #[test]
+    fn test_reference_validate_empty_id() {
+        let mut reference = valid_reference();
+        reference.id = "".to_string();
+        assert!(reference.validate().is_err());
+    }
+
+    #[test]
+    fn test_reference_validate_empty_source() {
+        let mut reference = valid_reference();
+        reference.source_asset_id = "".to_string();
+        assert!(reference.validate().is_err());
+    }
+
+    #[test]
+    fn test_reference_validate_empty_target() {
+        let mut reference = valid_reference();
+        reference.target_asset_id = "".to_string();
+        assert!(reference.validate().is_err());
+    }
+
+    #[test]
+    fn test_reference_type_values() {
+        assert_eq!(ReferenceType::Unspecified as u32, 0);
+        assert_eq!(ReferenceType::Contains as u32, 1);
+        assert_eq!(ReferenceType::DependsOn as u32, 2);
+        assert_eq!(ReferenceType::DerivedFrom as u32, 3);
+        assert_eq!(ReferenceType::References as u32, 4);
+    }
+
+    #[test]
+    fn test_reference_with_content_hash() {
+        let mut reference = valid_reference();
+        reference.target_content_hash = Some(ContentHash::new([0xab; 32]));
+        assert!(reference.validate().is_ok());
+    }
 }
