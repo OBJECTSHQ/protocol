@@ -35,6 +35,7 @@ rand = "0.9"
 hex = "0.4"
 hkdf = "0.12"
 chacha20poly1305 = "0.10"
+base64 = "0.22"
 
 # Ethereum (Alloy)
 alloy-primitives = "1"

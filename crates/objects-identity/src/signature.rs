@@ -7,6 +7,7 @@
 
 use alloy_primitives::Address as AlloyAddress;
 use alloy_signer::Signature as AlloySig;
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use p256::ecdsa::{signature::Verifier, Signature as P256Sig, VerifyingKey as P256VerifyingKey};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -157,7 +158,7 @@ impl Signature {
     /// Verifies a passkey (P-256) signature following WebAuthn spec.
     ///
     /// Uses p256 (RustCrypto, audited) for ECDSA verification with proper WebAuthn validation:
-    /// - Validates challenge matches expected message (hex-encoded in client_data_json)
+    /// - Validates challenge matches expected message (base64url-encoded per WebAuthn spec)
     /// - Validates type is "webauthn.get"
     /// - Parses and validates authenticator_data structure
     /// - Validates user presence flag (UP bit 0x01)
@@ -194,9 +195,10 @@ impl Signature {
             )));
         }
 
-        // 3. Validate challenge matches expected message (hex-encoded)
-        let expected_challenge_hex = hex::encode(message);
-        if client_data.challenge != expected_challenge_hex {
+        // 3. Validate challenge matches expected message (base64url-encoded per WebAuthn spec)
+        // Per W3C WebAuthn spec: challenge must be base64url-encoded without padding
+        let expected_challenge = URL_SAFE_NO_PAD.encode(message);
+        if client_data.challenge != expected_challenge {
             return Err(Error::InvalidSignature(
                 "challenge mismatch".to_string(),
             ));
@@ -279,12 +281,12 @@ mod tests {
         authenticator_data.push(flags);
         authenticator_data.extend_from_slice(&counter);
 
-        // Create message and client_data_json with hex-encoded challenge
+        // Create message and client_data_json with base64url-encoded challenge per WebAuthn spec
         let message = b"test message";
-        let challenge_hex = hex::encode(message);
+        let challenge_b64 = URL_SAFE_NO_PAD.encode(message);
         let client_data_json = format!(
             r#"{{"type":"webauthn.get","challenge":"{}"}}"#,
-            challenge_hex
+            challenge_b64
         ).into_bytes();
 
         // Compute client_data_hash
@@ -324,12 +326,12 @@ mod tests {
         authenticator_data.push(flags);
         authenticator_data.extend_from_slice(&counter);
 
-        // Create message and client_data_json with hex-encoded challenge
+        // Create message and client_data_json with base64url-encoded challenge per WebAuthn spec
         let message = b"test message";
-        let challenge_hex = hex::encode(message);
+        let challenge_b64 = URL_SAFE_NO_PAD.encode(message);
         let client_data_json = format!(
             r#"{{"type":"webauthn.get","challenge":"{}"}}"#,
-            challenge_hex
+            challenge_b64
         ).into_bytes();
         let client_data_hash = Sha256::digest(&client_data_json);
 
