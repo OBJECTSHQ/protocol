@@ -11,6 +11,7 @@ objects-identity.workspace = true
 
 # Crypto
 blake3.workspace = true
+hex.workspace = true
 
 # Serialization
 prost.workspace = true
