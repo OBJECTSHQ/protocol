@@ -16,6 +16,7 @@ bs58.workspace = true
 rand.workspace = true
 hex.workspace = true
 hkdf.workspace = true
+base64.workspace = true
 
 # Iroh (for vault namespace types)
 iroh-docs.workspace = true
