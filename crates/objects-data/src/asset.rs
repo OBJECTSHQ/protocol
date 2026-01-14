@@ -71,6 +71,7 @@ impl Asset {
     ///
     /// Checks:
     /// - `id`: alphanumeric + hyphens, 1-64 characters
+    /// - `name`: non-empty
     /// - `created_at <= updated_at`
     pub fn validate(&self) -> Result<(), Error> {
         // Validate id: alphanumeric + hyphens, 1-64 chars
@@ -161,9 +162,11 @@ impl SignedAsset {
     ///
     /// Verification steps (per RFC-001 Appendix D):
     /// 1. Validate the asset fields
-    /// 2. Verify signature over message using signer public key
-    /// 3. Derive identity_id from signature.public_key + nonce
-    /// 4. Confirm derived ID matches asset.author_id
+    /// 2. Construct the signature message using asset metadata
+    /// 3. Verify signature over message using signer public key
+    /// 4. Extract signer's public key (direct for passkey, recovered for wallet)
+    /// 5. Derive identity_id from signature.public_key + nonce
+    /// 6. Confirm derived ID matches asset.author_id
     pub fn verify(&self) -> Result<(), Error> {
         // 1. Validate the asset
         self.asset.validate()?;

@@ -35,7 +35,7 @@ pub fn generate_nonce() -> [u8; NONCE_SIZE] {
 }
 
 /// An OBJECTS identity identifier.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize)]
 pub struct IdentityId(String);
 
 impl IdentityId {
@@ -100,6 +100,16 @@ impl IdentityId {
 impl std::fmt::Display for IdentityId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for IdentityId {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        Self::parse(&s).map_err(serde::de::Error::custom)
     }
 }
 

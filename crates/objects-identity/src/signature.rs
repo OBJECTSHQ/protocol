@@ -60,8 +60,9 @@ impl Signature {
 
     /// Verifies the signature against a message.
     ///
-    /// For passkey signatures, the message is used indirectly - the actual signed data
-    /// is derived from the authenticator_data and client_data_json per WebAuthn spec.
+    /// For passkey signatures, the `message` parameter is not used. The signed data
+    /// is constructed from the authenticator_data and client_data_json fields stored
+    /// in the signature per WebAuthn spec (see verify_passkey() for details).
     ///
     /// For wallet signatures, the message is prefixed per EIP-191 and the signer
     /// address is recovered from the signature.
