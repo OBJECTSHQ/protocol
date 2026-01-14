@@ -51,6 +51,7 @@ Design data is trapped in platforms. Switching tools means re-uploading, re-orga
 - Assets and reputation travel with them
 - Apps compete on UX, not data gravity
 - Finance primitives (payments, licensing) have a stable anchor
+- Apps can discover user's data via private vault pattern (signing key required)
 
 ### 1.2. Scope
 
@@ -1463,7 +1464,56 @@ If verification fails, the asset is rejected.
 
 ---
 
-## Appendix E: Changelog
+## Appendix E: User Vault Discovery
+
+Identities enable cross-app data discovery via the User Vault pattern (RFC-004 Section 4.4).
+
+**Vault Namespace Derivation (Private):**
+
+Vault namespace is derived from the identity's **signing key secret** using HKDF-SHA256:
+
+```
+Input: signer_secret_bytes (32 bytes, from identity signing key)
+Info: "OBJECTS-protocol-vault-namespace-v1"
+
+Process:
+  hkdf = HKDF-SHA256(ikm=signer_secret_bytes, salt=None)
+  okm = hkdf.expand(info, 64 bytes)
+  namespace_seed = okm[0:32]
+  catalog_encryption_key = okm[32:64]
+
+Output:
+  namespace_secret = Ed25519SecretKey::from_bytes(namespace_seed)
+  namespace_id = namespace_secret.verifying_key()
+```
+
+**Privacy Property:** Vault namespace ID cannot be computed without the identity signing key. This ensures project catalogs remain private by default.
+
+**Application Discovery Flow:**
+
+Applications do NOT derive vault IDs themselves. Instead:
+1. App authenticates user (obtains identity_id)
+2. App requests vault access from wallet/keyring
+3. Wallet derives namespace ID from signing key
+4. Wallet returns read-only DocTicket to app
+5. App syncs vault and discovers projects
+
+**Example:**
+
+```
+Identity: obj_2dMiYc8RhnYkorPc5pVh9
+Signing Key: (secret, known only to user's wallet)
+  ↓ HKDF-SHA256
+Vault NamespaceId: <32-byte Ed25519 public key>
+  ↓ Only computable by wallet
+DocTicket provided to app for vault access
+```
+
+See RFC-004 Section 4.4 for complete vault specification.
+
+---
+
+## Appendix F: Changelog
 
 | Version | Date | Changes |
 |---------|------|---------|

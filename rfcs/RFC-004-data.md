@@ -31,6 +31,7 @@ This document defines the OBJECTS Data Protocol, a system for representing and o
 2. [Protocol Overview](#2-protocol-overview)
 3. [Data Types](#3-data-types)
 4. [Storage Conventions](#4-storage-conventions)
+   - 4.4. [User Vault](#44-user-vault)
 5. [Operations](#5-operations)
 6. [Versioning](#6-versioning)
 7. [Security Considerations](#7-security-considerations)
@@ -438,6 +439,142 @@ Entry: /assets/motor-mount
 
 The Asset entry references the content blob by hash. Nodes fetch the content blob separately via Blob Sync (RFC-003).
 
+### 4.4. User Vault
+
+#### 4.4.1. Definition
+
+A User Vault is a special-purpose replica containing an encrypted catalog of all projects owned by an identity. The vault enables cross-app project discovery without centralized infrastructure while preserving user privacy.
+
+#### 4.4.2. Vault Namespace Derivation (Private)
+
+**Privacy-by-Default:** Vault replica namespace is derived from the identity's **signing key secret**, not from the public identity ID. Only the identity owner can compute the vault namespace.
+
+**Derivation Algorithm:**
+
+```
+Input: signer_secret_bytes (32 bytes, from secp256r1 or secp256k1 signing key)
+Info: "OBJECTS-protocol-vault-namespace-v1"
+
+Step 1: HKDF-Extract-and-Expand
+  hkdf = HKDF-SHA256(ikm=signer_secret_bytes, salt=None)
+  okm = hkdf.expand(info, 64 bytes)
+
+Step 2: Split output
+  namespace_seed = okm[0:32]
+  catalog_encryption_key = okm[32:64]
+
+Step 3: Derive Iroh namespace keypair
+  namespace_secret = Ed25519SecretKey::from_bytes(namespace_seed)
+  namespace_id = namespace_secret.verifying_key()  // Public key
+
+Output:
+  - Vault ReplicaId = namespace_id (NamespaceId, 32 bytes)
+  - Vault write capability = namespace_secret (NamespaceSecret)
+  - Catalog encryption key = catalog_encryption_key (32 bytes)
+```
+
+**Properties:**
+- **Private:** Only identity owner (who has signing key) can compute vault ID
+- **Deterministic:** Same signing key → same vault namespace
+- **No storage:** All keys derived on-demand from signing key
+- **Multi-purpose:** Single HKDF invocation provides namespace + encryption keys
+
+**Security Note:** This derivation MUST only occur in wallet/keyring/passkey services that possess the identity signing key. Applications MUST NOT attempt to derive vault keys themselves. Applications request vault access via capability tickets from the user's wallet.
+
+#### 4.4.3. Catalog Entry Schema
+
+Vault entries use key format: `/catalog/{project_id}`
+
+Entry value is an **encrypted** `ProjectCatalogEntry`:
+
+**Protobuf Schema (plaintext):**
+
+```protobuf
+message ProjectCatalogEntry {
+  // REQUIRED. Unique project identifier.
+  string project_id = 1;
+
+  // REQUIRED. NamespaceId of the project replica (32 bytes).
+  bytes replica_id = 2;
+
+  // REQUIRED. Human-readable project name.
+  string project_name = 3;
+
+  // REQUIRED. Unix timestamp (seconds) when project was created.
+  uint64 created_at = 4;
+}
+```
+
+**Storage Format:**
+
+```
+Entry Key: /catalog/{project_id}
+Entry Value: nonce (24 bytes) || XChaCha20-Poly1305(ProjectCatalogEntry)
+```
+
+Encryption: XChaCha20-Poly1305 AEAD with key derived from signing key (Section 4.4.2).
+
+#### 4.4.4. Vault Access Control and Privacy
+
+**Write Access:**
+- Requires vault namespace secret (derived from identity signing key)
+- Only identity owner can write to vault
+- Implemented by wallet/keyring/passkey services
+
+**Read Access:**
+- Requires vault namespace ID (derived from identity signing key)
+- Only identity owner can compute namespace ID
+- Apps request read-only DocTicket from user's wallet
+
+**Privacy Guarantees:**
+
+| Aspect | Privacy Level | Mechanism |
+|--------|---------------|-----------|
+| Vault ID | Private | HKDF from secret key |
+| Catalog entry keys | Private | Keys visible only after vault access |
+| Catalog entry values | Private | XChaCha20-Poly1305 encryption |
+| Project replica IDs | Private | Encrypted in catalog entries |
+
+**No public enumeration:** Without the identity signing key, vault namespace ID cannot be computed. This prevents:
+- Discovering what projects exist
+- Enumerating user's project count
+- Correlating vaults across identities
+
+#### 4.4.5. Vault Lifecycle
+
+**Creation:**
+Vault created automatically when user creates their first project. Wallet/keyring derives namespace secret, creates replica.
+
+**Updates:**
+Vault updated by wallet/keyring when:
+- New project created → add encrypted catalog entry
+- Project renamed → update encrypted catalog entry
+- Project deleted → remove catalog entry
+
+**Synchronization:**
+Vault syncs via standard Iroh docs protocol (RFC-003). User's devices (wallet instances) sync vault state via P2P replication.
+
+**Cross-App Discovery:**
+1. User authenticates to new app
+2. App requests vault access from wallet
+3. Wallet derives namespace ID, creates read-only DocTicket
+4. App syncs vault replica using ticket
+5. App requests decryption key from wallet
+6. Wallet provides catalog encryption key
+7. App decrypts catalog entries, discovers projects
+
+#### 4.4.6. Security Considerations
+
+**Key Material:**
+- Vault namespace secret = signing key secret → Same recovery requirements as identity
+- Key compromise = vault write capability compromised
+- Multi-signer support (RFC-001 Section 5.6) will enable vault recovery
+
+**Privacy Trade-off:**
+- **Pro:** Full privacy for project catalog
+- **Con:** No public portfolio discovery (users must explicitly share if desired)
+- **Migration:** Can add opt-in public catalog mode in v0.2
+
 ---
 
 ## 5. Operations
@@ -641,6 +778,23 @@ message Project {
   string owner_id = 4;
   uint64 created_at = 5;
   uint64 updated_at = 6;
+}
+
+// ProjectCatalogEntry represents a project in the user's vault catalog.
+// This message is encrypted with XChaCha20-Poly1305 before storage.
+// Stored in user vault replica at key: /catalog/{project_id}
+message ProjectCatalogEntry {
+  // REQUIRED. Unique project identifier.
+  string project_id = 1;
+
+  // REQUIRED. NamespaceId of the project replica (32 bytes).
+  bytes replica_id = 2;
+
+  // REQUIRED. Human-readable project name.
+  string project_name = 3;
+
+  // REQUIRED. Unix timestamp (seconds) when project was created.
+  uint64 created_at = 4;
 }
 
 // ReferenceType defines the type of relationship between assets.

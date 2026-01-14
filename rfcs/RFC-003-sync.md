@@ -421,6 +421,74 @@ Tickets are designed for:
 
 Nodes MUST treat write tickets as secrets. Sharing a write ticket grants full write access to the replica.
 
+### 5.5. Vault Discovery Pattern (Private Vaults)
+
+Applications MAY use the User Vault pattern (RFC-004 Section 4.4) for private, decentralized project discovery.
+
+#### 5.5.1. Vault Access Flow (Capability-Based)
+
+**IMPORTANT:** Applications CANNOT derive vault namespace ID themselves. They MUST request vault access from the user's wallet/keyring.
+
+```
+1. User authenticates to app (signs challenge with identity signer)
+2. App requests vault access from wallet/keyring
+3. Wallet derives vault namespace ID from identity secret key (HKDF-SHA256)
+4. Wallet creates read-only DocTicket:
+   - capability: Capability::Read(namespace_id)
+   - nodes: user's device addresses
+5. Wallet returns DocTicket to app
+6. App syncs vault replica using ticket
+7. App queries encrypted catalog entries: /catalog/*
+8. App requests catalog decryption key from wallet
+9. Wallet returns catalog_encryption_key (derived with namespace)
+10. App decrypts entries, discovers project replica IDs
+11. App syncs each discovered project replica
+```
+
+**Capability Ticket Format:**
+
+Wallet creates read-only ticket for vault access:
+
+```rust
+DocTicket {
+    capability: Capability::Read(namespace_id),  // Derived from signing key
+    nodes: Vec<NodeAddr>,  // User's device addresses
+}
+```
+
+#### 5.5.2. Cold Start Discovery
+
+On first app launch, vault replica may not be in local sync cache. Applications SHOULD:
+
+1. Request vault ticket from wallet (wallet derives namespace ID from signing key)
+2. Query bootstrap nodes for vault availability using provided namespace ID
+3. Sync vault via DocTicket from wallet
+4. Request decryption key from wallet
+5. Cache decrypted catalog locally for future app launches
+
+**Privacy Note:** Without the identity signing key, vault namespace ID cannot be computed. Apps depend entirely on wallet to provide access.
+
+#### 5.5.3. Vault Availability and Hosting
+
+Vault replicas MAY be hosted by:
+- User's devices (phones, laptops, tablets) - where wallet/keyring runs
+- User's self-hosted nodes
+- Foundation-operated seed nodes (optional, for redundancy)
+- Third-party vault hosting services (optional, user's choice)
+
+The protocol does not mandate vault hosting location. Vaults sync via standard Iroh docs replication (Section 3).
+
+**Fallback Strategies:**
+
+If vault is unavailable (user offline, no seed nodes):
+- Apps SHOULD fall back to explicit project ticket sharing
+- Apps SHOULD cache previously discovered projects
+- Apps MAY prompt user to enable vault seeding
+
+#### 5.5.4. Implementation Note
+
+This specification normatively references [Iroh](https://docs.iroh.computer/) for blob transfer and docs sync. The protocol is designed such that the Data layer (RFC-004) remains independent of the Sync implementation. Alternative sync layers could implement RFC-003's requirements using different primitives (e.g., IPFS, Willow Protocol, custom P2P) without changing the Data layer schemas or vault derivation algorithm.
+
 ---
 
 ## 6. Consistency Model
