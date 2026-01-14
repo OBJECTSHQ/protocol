@@ -6,8 +6,19 @@ license.workspace = true
 repository.workspace = true
 description = "Identity registry service for OBJECTS Protocol"
 
+[[bin]]
+name = "objects-registry"
+path = "src/main.rs"
+
+[lib]
+name = "objects_registry"
+path = "src/lib.rs"
+
 [dependencies]
 objects-identity.workspace = true
+
+# Encoding
+base64 = "0.22"
 
 # Web/API
 axum.workspace = true
@@ -33,6 +44,16 @@ thiserror.workspace = true
 # Logging
 tracing.workspace = true
 tracing-subscriber.workspace = true
+
+[dev-dependencies]
+p256 = { version = "0.13", features = ["ecdsa"] }
+k256 = { version = "0.13", features = ["ecdsa"] }
+rand.workspace = true
+sha2.workspace = true
+hex.workspace = true
+alloy-primitives.workspace = true
+hyper = { version = "1.0", features = ["full"] }
+http-body-util = "0.1"
 
 [build-dependencies]
 prost-build.workspace = true

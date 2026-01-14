@@ -33,10 +33,10 @@ pub mod endpoint;
 mod error;
 
 // Re-export our types
-pub use config::{NetworkConfig, NetworkConfigBuilder};
+pub use config::NetworkConfig;
 pub use connection::Connection;
 pub use endpoint::ObjectsEndpoint;
-pub use error::{ConfigError, Error, Result};
+pub use error::{Error, Result};
 
 // Re-export Iroh types with RFC-002 terminology.
 // This provides protocol independence - if we switch from Iroh,
