@@ -6,11 +6,19 @@ license.workspace = true
 repository.workspace = true
 description = "Asset, Project, and Reference types for OBJECTS Protocol"
 
+[features]
+codegen = []
+
 [dependencies]
 objects-identity.workspace = true
 
 # Crypto
 blake3.workspace = true
+hex.workspace = true
+k256.workspace = true
+alloy-primitives.workspace = true
+chacha20poly1305.workspace = true
+rand.workspace = true
 
 # Serialization
 prost.workspace = true
@@ -21,6 +29,8 @@ thiserror.workspace = true
 
 [dev-dependencies]
 tokio-test.workspace = true
+p256.workspace = true
+sha2.workspace = true
 
 [build-dependencies]
 prost-build.workspace = true

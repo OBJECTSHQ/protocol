@@ -5,6 +5,7 @@
 //! identity_id = "obj_" || base58(truncate(sha256(signer_public_key || nonce), 15))
 //! ```
 
+use rand::RngCore;
 use sha2::{Digest, Sha256};
 
 use crate::Error;
@@ -21,8 +22,20 @@ pub const IDENTITY_ENCODED_MAX_LEN: usize = 21;
 /// Number of bytes to truncate the SHA-256 hash to.
 const TRUNCATE_BYTES: usize = 15;
 
+/// Size of the nonce in bytes.
+pub const NONCE_SIZE: usize = 8;
+
+/// Generates a cryptographically secure random nonce for identity derivation.
+///
+/// Uses the operating system's cryptographic random number generator.
+pub fn generate_nonce() -> [u8; NONCE_SIZE] {
+    let mut nonce = [0u8; NONCE_SIZE];
+    rand::rng().fill_bytes(&mut nonce);
+    nonce
+}
+
 /// An OBJECTS identity identifier.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize)]
 pub struct IdentityId(String);
 
 impl IdentityId {
@@ -87,6 +100,16 @@ impl IdentityId {
 impl std::fmt::Display for IdentityId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for IdentityId {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        Self::parse(&s).map_err(serde::de::Error::custom)
     }
 }
 

@@ -21,4 +21,7 @@ pub enum Error {
 
     #[error("unsupported signer type: {0}")]
     UnsupportedSignerType(u32),
+
+    #[error("vault derivation failed: {0}")]
+    VaultDerivation(String),
 }

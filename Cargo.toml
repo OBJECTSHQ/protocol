@@ -32,6 +32,19 @@ blake3 = "1"
 sha2 = "0.10"
 bs58 = "0.5"
 rand = "0.9"
+hex = "0.4"
+hkdf = "0.12"
+chacha20poly1305 = "0.10"
+base64 = "0.22"
+
+# Ethereum (Alloy)
+alloy-primitives = "1"
+alloy-sol-types = "1"
+alloy-signer = "0.7"
+alloy-signer-local = "0.7"
+
+# WebAuthn
+webauthn-rs-core = "0.5"
 
 # Async
 tokio = { version = "1", features = ["full"] }

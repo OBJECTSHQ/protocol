@@ -119,6 +119,70 @@ Entry key format for Sync layer:
 /refs/{id}                  → Reference record
 ```
 
+## Dependencies
+
+**Core Principle:** Always prefer battle-tested, widely-adopted libraries over custom implementations. This applies to ALL aspects of the codebase: cryptography, networking, testing, data structures, API frameworks, etc.
+
+### Battle-Tested Libraries
+
+| Purpose | Library | Notes |
+|---------|---------|-------|
+| Hex encoding | `hex` | Never roll custom hex |
+| Ethereum/EIP-191 | `alloy-primitives` | Replaces deprecated ethers-rs |
+| WebAuthn/Passkey | `webauthn-rs-core` | Security audited by SUSE |
+| P-256 ECDSA | `p256` | RustCrypto, constant-time |
+| secp256k1 | `k256` | RustCrypto, constant-time |
+| Random bytes | `rand` with `OsRng` | OS-provided entropy |
+| Hashing | `sha2`, `blake3` | Standard implementations |
+| P2P networking | `iroh` | Built by n0, handles Ed25519 crypto |
+| REST API testing | `tower::ServiceExt::oneshot()` | Official Axum pattern |
+
+### Finding Battle-Tested Solutions
+
+When adding new functionality or facing implementation choices:
+
+1. **Use Context7 to research:** Query for latest documentation and best practices
+   - Example: "How to test Axum REST APIs 2025"
+   - Example: "Latest alloy.rs EIP-191 signature verification"
+
+2. **Prefer official recommendations:** Follow patterns from official docs and examples
+   - Axum testing → Use `tower::ServiceExt::oneshot()`
+   - Iroh networking → Use their crypto primitives, don't wrap them
+
+3. **Verify with ecosystem:** Check if a library is:
+   - Actively maintained (recent commits, releases)
+   - Widely adopted (used by major projects)
+   - Security audited (when relevant)
+   - Well documented (official docs, examples)
+
+4. **When in doubt, ask:** Use the general-purpose agent to research before implementing
+
+### Dependency Rules
+
+- **Never implement cryptographic primitives manually**
+- **Never roll custom implementations** of well-solved problems (hex encoding, base64, etc.)
+- **Always check for CVEs** before adding new dependencies (`cargo audit`)
+- **Prefer libraries with security audits** for auth/crypto/networking
+- **Pin major versions** in workspace dependencies
+- **Use Context7** to ensure you're using the latest APIs and best practices
+
+## Agent Execution
+
+**Parallel execution:** When multiple independent operations are needed, execute them in parallel using multiple tool calls in a single message. Examples:
+- Reading multiple files simultaneously
+- Running independent searches across different areas
+- Building/testing multiple crates at once
+
+**Sequential execution:** Chain dependent operations with `&&`:
+```bash
+cargo build --workspace && cargo test --workspace && cargo clippy --workspace
+```
+
+**Use subagents for:**
+- Exploring unfamiliar parts of the codebase (`Explore` agent)
+- Planning complex multi-step implementations (`Plan` agent)
+- Code review before commits (`code-reviewer` agent)
+
 ## Boundaries
 
 **Always:**
@@ -126,6 +190,7 @@ Entry key format for Sync layer:
 - Use test vectors from RFC-001 Appendix B for identity tests
 - Include nonce in SignedAsset for author_id derivation
 - Use BLAKE3 for content hashes, SHA-256 for identity derivation
+- Use well-tested libraries for cryptographic operations
 
 **Ask first:**
 - Adding new signer types beyond PASSKEY/WALLET
