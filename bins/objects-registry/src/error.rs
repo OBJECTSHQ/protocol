@@ -27,6 +27,9 @@ pub enum RegistryError {
     #[error("invalid handle: {0}")]
     InvalidHandle(String),
 
+    #[error("invalid wallet address: {0}")]
+    InvalidWalletAddress(String),
+
     #[error("invalid identity ID: expected {expected}, derived {derived}")]
     InvalidIdentityId { expected: String, derived: String },
 
@@ -57,6 +60,7 @@ impl RegistryError {
             Self::WalletLinked(_) => "WALLET_LINKED",
             Self::InvalidSignature(_) => "INVALID_SIGNATURE",
             Self::InvalidHandle(_) => "INVALID_HANDLE",
+            Self::InvalidWalletAddress(_) => "INVALID_WALLET_ADDRESS",
             Self::InvalidIdentityId { .. } => "INVALID_IDENTITY_ID",
             Self::TimestampInvalid => "TIMESTAMP_INVALID",
             Self::NotFound(_) => "NOT_FOUND",
@@ -78,6 +82,7 @@ impl RegistryError {
             // 400 Bad Request - invalid input
             Self::InvalidSignature(_)
             | Self::InvalidHandle(_)
+            | Self::InvalidWalletAddress(_)
             | Self::InvalidIdentityId { .. }
             | Self::TimestampInvalid
             | Self::Identity(_) => StatusCode::BAD_REQUEST,
@@ -130,6 +135,7 @@ impl From<RegistryError> for tonic::Status {
             // INVALID_ARGUMENT
             RegistryError::InvalidSignature(_)
             | RegistryError::InvalidHandle(_)
+            | RegistryError::InvalidWalletAddress(_)
             | RegistryError::InvalidIdentityId { .. }
             | RegistryError::TimestampInvalid
             | RegistryError::Identity(_) => tonic::Code::InvalidArgument,

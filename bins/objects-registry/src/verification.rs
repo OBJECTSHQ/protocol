@@ -68,6 +68,39 @@ pub fn verify_handle(handle: &str) -> Result<Handle> {
     Handle::parse(handle).map_err(|e| RegistryError::InvalidHandle(e.to_string()))
 }
 
+/// Validate an Ethereum wallet address format.
+///
+/// Valid format: "0x" followed by exactly 40 hexadecimal characters.
+/// Example: "0x742d35Cc6634C0532925a3b844Bc9e7595f1dE21"
+///
+/// Returns the validated wallet address on success.
+pub fn verify_wallet_address(address: &str) -> Result<&str> {
+    // Must be exactly 42 characters: "0x" + 40 hex chars
+    if address.len() != 42 {
+        return Err(RegistryError::InvalidWalletAddress(format!(
+            "expected 42 characters, got {}",
+            address.len()
+        )));
+    }
+
+    // Must start with "0x"
+    if !address.starts_with("0x") {
+        return Err(RegistryError::InvalidWalletAddress(
+            "must start with '0x'".to_string(),
+        ));
+    }
+
+    // Remaining 40 characters must be valid hexadecimal
+    let hex_part = &address[2..];
+    if !hex_part.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err(RegistryError::InvalidWalletAddress(
+            "must contain only hexadecimal characters after '0x'".to_string(),
+        ));
+    }
+
+    Ok(address)
+}
+
 /// Verify a signature over a message.
 pub fn verify_signature(signature: &Signature, message: &[u8]) -> Result<()> {
     signature
@@ -194,5 +227,54 @@ mod tests {
         assert!(verify_handle("_alice").is_err());
         assert!(verify_handle("Alice").is_err());
         assert!(verify_handle("admin").is_err());
+    }
+
+    #[test]
+    fn test_verify_wallet_address_valid() {
+        // Lowercase hex
+        assert!(verify_wallet_address("0x742d35cc6634c0532925a3b844bc9e7595f1de21").is_ok());
+        // Uppercase hex
+        assert!(verify_wallet_address("0x742D35CC6634C0532925A3B844BC9E7595F1DE21").is_ok());
+        // Mixed case hex
+        assert!(verify_wallet_address("0x742d35Cc6634C0532925a3b844Bc9e7595f1dE21").is_ok());
+        // All zeros
+        assert!(verify_wallet_address("0x0000000000000000000000000000000000000000").is_ok());
+    }
+
+    #[test]
+    fn test_verify_wallet_address_invalid_length() {
+        // Too short
+        let result = verify_wallet_address("0x742d35cc");
+        assert!(matches!(result, Err(RegistryError::InvalidWalletAddress(_))));
+
+        // Too long
+        let result = verify_wallet_address("0x742d35cc6634c0532925a3b844bc9e7595f1de21ab");
+        assert!(matches!(result, Err(RegistryError::InvalidWalletAddress(_))));
+
+        // Empty
+        let result = verify_wallet_address("");
+        assert!(matches!(result, Err(RegistryError::InvalidWalletAddress(_))));
+    }
+
+    #[test]
+    fn test_verify_wallet_address_invalid_prefix() {
+        // Missing 0x prefix
+        let result = verify_wallet_address("742d35cc6634c0532925a3b844bc9e7595f1de21");
+        assert!(matches!(result, Err(RegistryError::InvalidWalletAddress(_))));
+
+        // Wrong prefix
+        let result = verify_wallet_address("0X742d35cc6634c0532925a3b844bc9e7595f1de21");
+        assert!(matches!(result, Err(RegistryError::InvalidWalletAddress(_))));
+    }
+
+    #[test]
+    fn test_verify_wallet_address_invalid_hex() {
+        // Contains non-hex character 'g'
+        let result = verify_wallet_address("0x742d35cc6634c0532925a3b844bc9e7595f1deg1");
+        assert!(matches!(result, Err(RegistryError::InvalidWalletAddress(_))));
+
+        // Contains space
+        let result = verify_wallet_address("0x742d35cc6634c0532925a3b844bc9e7595f1de 1");
+        assert!(matches!(result, Err(RegistryError::InvalidWalletAddress(_))));
     }
 }
