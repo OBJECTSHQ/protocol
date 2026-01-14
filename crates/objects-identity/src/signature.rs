@@ -7,13 +7,13 @@
 
 use alloy_primitives::Address as AlloyAddress;
 use alloy_signer::Signature as AlloySig;
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
-use p256::ecdsa::{signature::Verifier, Signature as P256Sig, VerifyingKey as P256VerifyingKey};
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+use p256::ecdsa::{Signature as P256Sig, VerifyingKey as P256VerifyingKey, signature::Verifier};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use crate::signer::SignerType;
 use crate::Error;
+use crate::signer::SignerType;
 
 /// A signature over a message.
 ///
@@ -114,7 +114,9 @@ impl Signature {
                 authenticator_data,
                 client_data_json,
             ),
-            Self::Wallet { signature, address } => Self::verify_wallet_with_alloy(message, signature, address),
+            Self::Wallet { signature, address } => {
+                Self::verify_wallet_with_alloy(message, signature, address)
+            }
         }
     }
 
@@ -182,10 +184,8 @@ impl Signature {
             challenge: String,
         }
 
-        let client_data: ClientData =
-            serde_json::from_slice(client_data_json_bytes).map_err(|e| {
-                Error::InvalidSignature(format!("invalid client_data_json: {}", e))
-            })?;
+        let client_data: ClientData = serde_json::from_slice(client_data_json_bytes)
+            .map_err(|e| Error::InvalidSignature(format!("invalid client_data_json: {}", e)))?;
 
         // 2. Validate type field
         if client_data.type_ != "webauthn.get" {
@@ -199,9 +199,7 @@ impl Signature {
         // Per W3C WebAuthn spec: challenge must be base64url-encoded without padding
         let expected_challenge = URL_SAFE_NO_PAD.encode(message);
         if client_data.challenge != expected_challenge {
-            return Err(Error::InvalidSignature(
-                "challenge mismatch".to_string(),
-            ));
+            return Err(Error::InvalidSignature("challenge mismatch".to_string()));
         }
 
         // 4. Parse and validate authenticator_data
@@ -250,10 +248,10 @@ impl Signature {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use p256::ecdsa::{signature::Signer as _, SigningKey as P256SigningKey};
     use k256::ecdsa::SigningKey as K256SigningKey;
-    use sha2::{Digest, Sha256};
     use k256::elliptic_curve::rand_core::OsRng;
+    use p256::ecdsa::{SigningKey as P256SigningKey, signature::Signer as _};
+    use sha2::{Digest, Sha256};
 
     // Helper: Generate test passkey signing key
     fn test_passkey_key() -> P256SigningKey {
@@ -287,7 +285,8 @@ mod tests {
         let client_data_json = format!(
             r#"{{"type":"webauthn.get","challenge":"{}"}}"#,
             challenge_b64
-        ).into_bytes();
+        )
+        .into_bytes();
 
         // Compute client_data_hash
         let client_data_hash = Sha256::digest(&client_data_json);
@@ -332,7 +331,8 @@ mod tests {
         let client_data_json = format!(
             r#"{{"type":"webauthn.get","challenge":"{}"}}"#,
             challenge_b64
-        ).into_bytes();
+        )
+        .into_bytes();
         let client_data_hash = Sha256::digest(&client_data_json);
 
         let mut signed_data = authenticator_data.clone();
@@ -379,7 +379,9 @@ mod tests {
         let message_hash = keccak256(&prefixed);
 
         // Sign with recovery
-        let (signature_der, recovery_id) = signing_key.sign_prehash_recoverable(message_hash.as_slice()).unwrap();
+        let (signature_der, recovery_id) = signing_key
+            .sign_prehash_recoverable(message_hash.as_slice())
+            .unwrap();
         let mut signature_bytes = signature_der.to_bytes().to_vec(); // 64 bytes r||s
         signature_bytes.push(recovery_id.to_byte()); // Append v
 
@@ -408,7 +410,9 @@ mod tests {
         prefixed.extend_from_slice(original_message);
         let message_hash = keccak256(&prefixed);
 
-        let (signature_der, recovery_id) = signing_key.sign_prehash_recoverable(message_hash.as_slice()).unwrap();
+        let (signature_der, recovery_id) = signing_key
+            .sign_prehash_recoverable(message_hash.as_slice())
+            .unwrap();
         let mut signature_bytes = signature_der.to_bytes().to_vec();
         signature_bytes.push(recovery_id.to_byte());
 

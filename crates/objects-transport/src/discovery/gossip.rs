@@ -8,18 +8,18 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use futures::stream::BoxStream;
 use futures::StreamExt;
+use futures::stream::BoxStream;
 use iroh_gossip::api::{Event, GossipTopic};
 use iroh_gossip::net::Gossip;
-use tokio::sync::{broadcast, RwLock};
+use tokio::sync::{RwLock, broadcast};
 use tokio::task::JoinHandle;
 use tracing::{debug, info, trace, warn};
 
 use crate::announcement::DiscoveryAnnouncement;
 use crate::discovery::{Discovery, PeerTable};
 use crate::endpoint::ObjectsEndpoint;
-use crate::{Error, NodeAddr, NodeId, Result, DISCOVERY_TOPIC_DEVNET};
+use crate::{DISCOVERY_TOPIC_DEVNET, Error, NodeAddr, NodeId, Result};
 
 /// Configuration for gossip discovery.
 #[derive(Debug, Clone)]
@@ -47,7 +47,7 @@ impl Default for DiscoveryConfig {
     fn default() -> Self {
         Self {
             announce_interval: Duration::from_secs(3600), // 1 hour
-            stale_threshold: Duration::from_secs(86400), // 24 hours
+            stale_threshold: Duration::from_secs(86400),  // 24 hours
             rate_limit_per_peer: 10,
             max_peers: 1000,
         }
@@ -60,8 +60,8 @@ impl DiscoveryConfig {
     /// More aggressive intervals for faster iteration.
     pub fn devnet() -> Self {
         Self {
-            announce_interval: Duration::from_secs(60),    // 1 minute
-            stale_threshold: Duration::from_secs(3600),   // 1 hour
+            announce_interval: Duration::from_secs(60), // 1 minute
+            stale_threshold: Duration::from_secs(3600), // 1 hour
             rate_limit_per_peer: 20,
             max_peers: 100,
         }
@@ -286,10 +286,7 @@ impl GossipDiscovery {
                         // Notify subscribers
                         match announcement_tx.send(announcement) {
                             Ok(_) => {
-                                debug!(
-                                    "Notified subscribers of peer {} discovery",
-                                    node_id_str
-                                );
+                                debug!("Notified subscribers of peer {} discovery", node_id_str);
                             }
                             Err(_) => {
                                 debug!(
@@ -325,11 +322,7 @@ impl GossipDiscovery {
     }
 
     /// Background loop for periodic announcements.
-    async fn announce_loop(
-        endpoint: Arc<ObjectsEndpoint>,
-        gossip: Gossip,
-        interval: Duration,
-    ) {
+    async fn announce_loop(endpoint: Arc<ObjectsEndpoint>, gossip: Gossip, interval: Duration) {
         debug!("Starting periodic announce loop (interval: {:?})", interval);
 
         let topic_id = blake3::hash(DISCOVERY_TOPIC_DEVNET.as_bytes()).into();

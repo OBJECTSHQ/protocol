@@ -63,12 +63,8 @@ impl VaultKeys {
         hkdf.expand(VAULT_NAMESPACE_INFO, &mut okm)
             .map_err(|_| Error::VaultDerivation("HKDF expansion failed".to_string()))?;
 
-        let namespace_seed: [u8; 32] = okm[0..32]
-            .try_into()
-            .expect("slice is exactly 32 bytes");
-        let catalog_key: [u8; 32] = okm[32..64]
-            .try_into()
-            .expect("slice is exactly 32 bytes");
+        let namespace_seed: [u8; 32] = okm[0..32].try_into().expect("slice is exactly 32 bytes");
+        let catalog_key: [u8; 32] = okm[32..64].try_into().expect("slice is exactly 32 bytes");
 
         // Derive Ed25519 namespace secret from seed
         let namespace_secret = NamespaceSecret::from_bytes(&namespace_seed);

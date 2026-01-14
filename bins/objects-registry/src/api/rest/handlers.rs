@@ -1,16 +1,16 @@
 //! REST API handlers for OBJECTS Registry.
 
+use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
-use axum::Json;
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
 use objects_identity::IdentityId;
 use sqlx::PgPool;
 use tracing::error;
 
 use crate::api::rest::types::*;
 use crate::config::Config;
-use crate::db::{self, signer_type_to_i16, IdentityRow};
+use crate::db::{self, IdentityRow, signer_type_to_i16};
 use crate::error::{RegistryError, Result};
 use crate::verification;
 
@@ -66,12 +66,11 @@ pub async fn create_identity(
     Json(req): Json<CreateIdentityRequest>,
 ) -> Result<(StatusCode, Json<IdentityResponse>)> {
     // 1. Parse and validate inputs
-    let public_key: [u8; 33] =
-        decode_base64_array(&req.signer_public_key, "signer_public_key")
-            .map_err(RegistryError::InvalidSignature)?;
-
-    let nonce: [u8; 8] = decode_base64_array(&req.nonce, "nonce")
+    let public_key: [u8; 33] = decode_base64_array(&req.signer_public_key, "signer_public_key")
         .map_err(RegistryError::InvalidSignature)?;
+
+    let nonce: [u8; 8] =
+        decode_base64_array(&req.nonce, "nonce").map_err(RegistryError::InvalidSignature)?;
 
     let signer_type =
         parse_signer_type(&req.signer_type).map_err(RegistryError::InvalidSignature)?;
@@ -86,11 +85,8 @@ pub async fn create_identity(
     verification::verify_timestamp(req.timestamp, &state.config)?;
 
     // 5. Build message and verify signature
-    let message = verification::create_identity_message(
-        derived_id.as_str(),
-        handle.as_str(),
-        req.timestamp,
-    );
+    let message =
+        verification::create_identity_message(derived_id.as_str(), handle.as_str(), req.timestamp);
 
     let signature = req
         .signature
@@ -118,8 +114,14 @@ pub async fn create_identity(
 
     let identity_id = identity.id.clone();
     let response = identity.try_into().map_err(|e| {
-        error!("Data integrity error: failed to convert IdentityRow {} to response: {}", identity_id, e);
-        RegistryError::Internal(format!("database contains invalid identity record {}: {}", identity_id, e))
+        error!(
+            "Data integrity error: failed to convert IdentityRow {} to response: {}",
+            identity_id, e
+        );
+        RegistryError::Internal(format!(
+            "database contains invalid identity record {}: {}",
+            identity_id, e
+        ))
     })?;
     Ok((StatusCode::CREATED, Json(response)))
 }
@@ -142,8 +144,14 @@ pub async fn get_identity(
     let identity = db::get_identity_by_id(&state.pool, &id).await?;
     let identity_id = identity.id.clone();
     let response = identity.try_into().map_err(|e| {
-        error!("Data integrity error: failed to convert IdentityRow {} to response: {}", identity_id, e);
-        RegistryError::Internal(format!("database contains invalid identity record {}: {}", identity_id, e))
+        error!(
+            "Data integrity error: failed to convert IdentityRow {} to response: {}",
+            identity_id, e
+        );
+        RegistryError::Internal(format!(
+            "database contains invalid identity record {}: {}",
+            identity_id, e
+        ))
     })?;
     Ok(Json(response))
 }
@@ -193,7 +201,7 @@ pub async fn resolve_identity(
         match db::get_identity_by_handle(&state.pool, &handle).await {
             Ok(identity) => identity,
             Err(RegistryError::NotFound(_)) => {
-                return Err(RegistryError::NotFound(format!("handle:{}", handle)))
+                return Err(RegistryError::NotFound(format!("handle:{}", handle)));
             }
             Err(RegistryError::Database(e)) => {
                 error!("Database error during identity lookup by handle: {}", e);
@@ -202,13 +210,13 @@ pub async fn resolve_identity(
             Err(e) => return Err(e),
         }
     } else if let Some(signer) = query.signer {
-        let public_key = BASE64
-            .decode(&signer)
-            .map_err(|e| RegistryError::InvalidSignature(format!("invalid signer base64: {}", e)))?;
+        let public_key = BASE64.decode(&signer).map_err(|e| {
+            RegistryError::InvalidSignature(format!("invalid signer base64: {}", e))
+        })?;
         match db::get_identity_by_signer(&state.pool, &public_key).await {
             Ok(identity) => identity,
             Err(RegistryError::NotFound(_)) => {
-                return Err(RegistryError::NotFound("signer".to_string()))
+                return Err(RegistryError::NotFound("signer".to_string()));
             }
             Err(RegistryError::Database(e)) => {
                 error!("Database error during identity lookup by signer: {}", e);
@@ -222,7 +230,7 @@ pub async fn resolve_identity(
         match db::get_identity_by_wallet(&state.pool, &wallet).await {
             Ok(identity) => identity,
             Err(RegistryError::NotFound(_)) => {
-                return Err(RegistryError::NotFound(format!("wallet:{}", wallet)))
+                return Err(RegistryError::NotFound(format!("wallet:{}", wallet)));
             }
             Err(RegistryError::Database(e)) => {
                 error!("Database error during identity lookup by wallet: {}", e);
@@ -234,8 +242,14 @@ pub async fn resolve_identity(
 
     let identity_id = identity.id.clone();
     let response = identity.try_into().map_err(|e| {
-        error!("Data integrity error: failed to convert IdentityRow {} to response: {}", identity_id, e);
-        RegistryError::Internal(format!("database contains invalid identity record {}: {}", identity_id, e))
+        error!(
+            "Data integrity error: failed to convert IdentityRow {} to response: {}",
+            identity_id, e
+        );
+        RegistryError::Internal(format!(
+            "database contains invalid identity record {}: {}",
+            identity_id, e
+        ))
     })?;
     Ok(Json(response))
 }
@@ -314,8 +328,14 @@ pub async fn link_wallet(
 
     let identity_id = updated.id.clone();
     let response = updated.try_into().map_err(|e| {
-        error!("Data integrity error: failed to convert IdentityRow {} to response: {}", identity_id, e);
-        RegistryError::Internal(format!("database contains invalid identity record {}: {}", identity_id, e))
+        error!(
+            "Data integrity error: failed to convert IdentityRow {} to response: {}",
+            identity_id, e
+        );
+        RegistryError::Internal(format!(
+            "database contains invalid identity record {}: {}",
+            identity_id, e
+        ))
     })?;
     Ok(Json(response))
 }
@@ -362,8 +382,7 @@ pub async fn change_handle(
     verification::verify_timestamp(req.timestamp, &state.config)?;
 
     // 4. Build message
-    let message =
-        verification::change_handle_message(&id, new_handle.as_str(), req.timestamp);
+    let message = verification::change_handle_message(&id, new_handle.as_str(), req.timestamp);
 
     // 5. Get identity's signer type
     let signer_type = identity.signer_type_enum().ok_or_else(|| {
@@ -386,8 +405,14 @@ pub async fn change_handle(
 
     let identity_id = updated.id.clone();
     let response = updated.try_into().map_err(|e| {
-        error!("Data integrity error: failed to convert IdentityRow {} to response: {}", identity_id, e);
-        RegistryError::Internal(format!("database contains invalid identity record {}: {}", identity_id, e))
+        error!(
+            "Data integrity error: failed to convert IdentityRow {} to response: {}",
+            identity_id, e
+        );
+        RegistryError::Internal(format!(
+            "database contains invalid identity record {}: {}",
+            identity_id, e
+        ))
     })?;
     Ok(Json(response))
 }

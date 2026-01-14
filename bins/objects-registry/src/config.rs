@@ -32,8 +32,8 @@ impl Config {
     /// - `REST_PORT`: REST API port (default: 8080)
     /// - `GRPC_PORT`: gRPC server port (default: 9090)
     pub fn from_env() -> Result<Self, ConfigError> {
-        let database_url = env::var("DATABASE_URL")
-            .map_err(|_| ConfigError::MissingEnv("DATABASE_URL"))?;
+        let database_url =
+            env::var("DATABASE_URL").map_err(|_| ConfigError::MissingEnv("DATABASE_URL"))?;
 
         let rest_port = env::var("REST_PORT")
             .ok()
@@ -50,8 +50,8 @@ impl Config {
             rest_port,
             grpc_port,
             // RFC-001 recommended bounds
-            timestamp_future_max: Duration::from_secs(5 * 60),      // 5 minutes
-            timestamp_past_max: Duration::from_secs(24 * 60 * 60),  // 24 hours
+            timestamp_future_max: Duration::from_secs(5 * 60), // 5 minutes
+            timestamp_past_max: Duration::from_secs(24 * 60 * 60), // 24 hours
         })
     }
 

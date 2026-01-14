@@ -2,7 +2,7 @@
 
 use alloy_primitives::keccak256;
 use k256::ecdsa::{RecoveryId, Signature as K256Sig, VerifyingKey};
-use objects_identity::{message::sign_asset_message, IdentityId, Signature, SignerType};
+use objects_identity::{IdentityId, Signature, SignerType, message::sign_asset_message};
 use serde::{Deserialize, Serialize};
 
 use crate::Error;
@@ -299,9 +299,8 @@ impl SignedAsset {
                     .ok_or(Error::InvalidAsset(
                         "passkey signature requires public_key".to_string(),
                     ))?;
-                pk.try_into().map_err(|_| {
-                    Error::InvalidAsset("public_key must be 33 bytes".to_string())
-                })
+                pk.try_into()
+                    .map_err(|_| Error::InvalidAsset("public_key must be 33 bytes".to_string()))
             }
             SignerType::Wallet => {
                 // Wallet: recover public key from signature
@@ -331,12 +330,7 @@ impl SignedAsset {
         let recovery_id = match v {
             27 | 0 => RecoveryId::new(false, false),
             28 | 1 => RecoveryId::new(true, false),
-            _ => {
-                return Err(Error::InvalidAsset(format!(
-                    "invalid recovery id: {}",
-                    v
-                )))
-            }
+            _ => return Err(Error::InvalidAsset(format!("invalid recovery id: {}", v))),
         };
 
         let sig = K256Sig::try_from(r_s)
@@ -504,11 +498,11 @@ mod tests {
     #[cfg(test)]
     mod signed_asset_tests {
         use super::*;
-        use objects_identity::{message::sign_asset_message, IdentityId, Signature, SignerType};
         use alloy_primitives::keccak256;
         use k256::ecdsa::SigningKey as K256SigningKey;
         use k256::elliptic_curve::rand_core::OsRng;
-        use p256::ecdsa::{signature::Signer as _, SigningKey as P256SigningKey};
+        use objects_identity::{IdentityId, Signature, SignerType, message::sign_asset_message};
+        use p256::ecdsa::{SigningKey as P256SigningKey, signature::Signer as _};
         use sha2::{Digest, Sha256};
 
         // Test helper: Generate passkey signing key
@@ -712,7 +706,12 @@ mod tests {
             // Should fail with author ID mismatch
             let result = signed_asset.verify();
             assert!(result.is_err());
-            assert!(result.unwrap_err().to_string().contains("author ID mismatch"));
+            assert!(
+                result
+                    .unwrap_err()
+                    .to_string()
+                    .contains("author ID mismatch")
+            );
         }
 
         #[test]

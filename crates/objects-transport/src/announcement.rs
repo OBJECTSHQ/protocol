@@ -158,8 +158,8 @@ impl DiscoveryAnnouncement {
         let node_id_bytes: [u8; 32] = bytes[offset..offset + 32]
             .try_into()
             .map_err(|_| Error::Decode("invalid node_id".into()))?;
-        let node_id =
-            NodeId::from_bytes(&node_id_bytes).map_err(|_| Error::Decode("invalid node_id".into()))?;
+        let node_id = NodeId::from_bytes(&node_id_bytes)
+            .map_err(|_| Error::Decode("invalid node_id".into()))?;
         offset += 32;
 
         // relay_url_len (2 bytes)

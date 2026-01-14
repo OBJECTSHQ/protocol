@@ -21,7 +21,7 @@ pub use peer_table::{PeerInfo, PeerTable};
 use async_trait::async_trait;
 use futures::stream::BoxStream;
 
-use crate::{announcement::DiscoveryAnnouncement, NodeAddr, Result};
+use crate::{NodeAddr, Result, announcement::DiscoveryAnnouncement};
 
 /// Discovery service abstraction.
 ///
