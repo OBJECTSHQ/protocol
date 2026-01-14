@@ -24,7 +24,8 @@ cargo test identity_derivation          # Single test
 
 # Lint
 cargo clippy --workspace -- -D warnings
-cargo fmt --all -- --check
+cargo fmt --all -- --check              # Check formatting
+cargo fmt --all                          # Fix formatting
 
 # Generate protobufs
 cargo build -p objects-identity --features codegen
@@ -44,6 +45,20 @@ cargo deny check                        # License/dependency policy
 cargo tarpaulin                         # Code coverage
 cargo upgrade                           # Update Cargo.toml versions (cargo-edit)
 ```
+
+## Code Quality & Formatting
+
+**Always format code before committing:**
+
+```bash
+cargo fmt --all
+git add -u
+git commit -m "your message"
+```
+
+**Recommended setup:**
+- Configure your editor to format on save
+- Optional: Set up a pre-commit git hook to enforce formatting
 
 ## Architecture
 
