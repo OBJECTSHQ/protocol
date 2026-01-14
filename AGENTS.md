@@ -119,6 +119,26 @@ Entry key format for Sync layer:
 /refs/{id}                  → Reference record
 ```
 
+## Dependencies
+
+Prefer tested, audited libraries over custom implementations, especially for security-critical code.
+
+| Purpose | Library | Notes |
+|---------|---------|-------|
+| Hex encoding | `hex` | Never roll custom hex |
+| Ethereum/EIP-191 | `alloy-primitives` | Replaces deprecated ethers-rs |
+| WebAuthn/Passkey | `webauthn-rs-core` | Security audited by SUSE |
+| P-256 ECDSA | `p256` | RustCrypto, constant-time |
+| secp256k1 | `k256` | RustCrypto, constant-time |
+| Random bytes | `rand` with `OsRng` | OS-provided entropy |
+| Hashing | `sha2`, `blake3` | Standard implementations |
+
+**Rules:**
+- Never implement cryptographic primitives manually
+- Prefer libraries with security audits for auth/crypto
+- Check for CVEs before adding new dependencies (`cargo audit`)
+- Pin major versions in workspace dependencies
+
 ## Boundaries
 
 **Always:**
@@ -126,6 +146,7 @@ Entry key format for Sync layer:
 - Use test vectors from RFC-001 Appendix B for identity tests
 - Include nonce in SignedAsset for author_id derivation
 - Use BLAKE3 for content hashes, SHA-256 for identity derivation
+- Use well-tested libraries for cryptographic operations
 
 **Ask first:**
 - Adding new signer types beyond PASSKEY/WALLET
