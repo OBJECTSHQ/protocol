@@ -5,6 +5,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::Error;
 
+/// Derives a Project ID from a ReplicaId per RFC-004.
+///
+/// Project ID is the hex encoding of the first 16 bytes of the ReplicaId (32 hex characters).
+pub fn project_id_from_replica(replica_id: &[u8; 32]) -> String {
+    hex::encode(&replica_id[..16])
+}
+
 /// A project representing an organizational grouping of assets.
 ///
 /// A Project maps 1:1 with a Sync layer Replica (RFC-003).
