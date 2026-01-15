@@ -33,6 +33,7 @@ tokio = { workspace = true, features = ["macros"] }
 p256.workspace = true
 sha2.workspace = true
 base64.workspace = true
+hex.workspace = true
 rstest.workspace = true
 proptest.workspace = true
 serde_json.workspace = true
