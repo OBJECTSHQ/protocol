@@ -16,6 +16,12 @@ pub enum Error {
     #[error("invalid ticket: {0}")]
     InvalidTicket(String),
 
+    #[error("replica not found: {0}")]
+    ReplicaNotFound(String),
+
+    #[error("entry not found: {0}")]
+    EntryNotFound(String),
+
     #[error("transport error: {0}")]
     Transport(#[from] objects_transport::Error),
 

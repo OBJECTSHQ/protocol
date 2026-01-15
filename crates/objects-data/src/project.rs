@@ -60,6 +60,25 @@ impl Project {
         Ok(project)
     }
 
+    /// Derives a project ID from a ReplicaId.
+    ///
+    /// Per RFC-004 Section 3.2: Project ID is the first 16 bytes
+    /// of the ReplicaId, hex-encoded (32 hex characters).
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use objects_data::Project;
+    ///
+    /// let replica_id: [u8; 32] = [0xab; 32];
+    /// let project_id = Project::project_id_from_replica(&replica_id);
+    /// assert_eq!(project_id.len(), 32); // 16 bytes = 32 hex chars
+    /// assert_eq!(project_id, "ab".repeat(16));
+    /// ```
+    pub fn project_id_from_replica(replica_id: &[u8; 32]) -> String {
+        hex::encode(&replica_id[..16])
+    }
+
     /// Returns the project ID.
     pub fn id(&self) -> &str {
         &self.id
