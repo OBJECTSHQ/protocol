@@ -22,8 +22,6 @@ use rstest::*;
 // SignedAsset Workflows
 // ============================================================================
 
-// TODO: Requires proper WebAuthn client_data_json setup from identity integration branch
-#[ignore]
 #[rstest]
 #[tokio::test]
 async fn test_signed_asset_passkey_full_lifecycle() {
@@ -35,11 +33,10 @@ async fn test_signed_asset_passkey_full_lifecycle() {
     assert_eq!(asset.author_id(), &identity_id);
 
     // Verify the signature
-    let verify_result = signed_asset.verify();
-    if let Err(e) = &verify_result {
-        eprintln!("Verification error: {:?}", e);
-    }
-    assert!(verify_result.is_ok());
+    assert!(
+        signed_asset.verify().is_ok(),
+        "passkey signature verification should succeed"
+    );
 
     // Verify nonce matches
     assert_eq!(signed_asset.nonce(), &nonce);
@@ -108,8 +105,41 @@ async fn test_signed_asset_tampered_content_fails() {
     assert!(tampered_signed.verify().is_err());
 }
 
-// TODO: Requires proper WebAuthn client_data_json setup from identity integration branch
-#[ignore]
+#[rstest]
+#[tokio::test]
+async fn test_signed_asset_signature_replay_attack_fails() {
+    // Create first signed asset
+    let (_asset1, signed1, identity_id, _, nonce1) =
+        create_signed_asset_passkey_full("asset-original");
+
+    // Verify first asset signature is valid
+    assert!(signed1.verify().is_ok());
+
+    // Create a different asset with same author (different content)
+    let different_hash = test_content_hash(255); // Different content
+    let asset2 = Asset::new(
+        "asset-different".to_string(),
+        "Different Asset".to_string(),
+        identity_id,
+        different_hash,
+        2048,
+        Some("text/plain".to_string()),
+        now(),
+        now(),
+    )
+    .expect("valid asset");
+
+    // Attempt to replay the signature from asset1 onto asset2
+    // This should fail because the signature was created over asset1's content_hash
+    let replayed_signed = SignedAsset::new(asset2, signed1.signature().clone(), nonce1);
+
+    // Verification should fail - signature replay attack detected
+    assert!(
+        replayed_signed.verify().is_err(),
+        "signature replay attack should fail: cannot reuse signature for different asset"
+    );
+}
+
 #[rstest]
 #[tokio::test]
 async fn test_multiple_assets_same_identity() {
@@ -128,8 +158,6 @@ async fn test_multiple_assets_same_identity() {
     assert_ne!(identity1, identity2);
 }
 
-// TODO: Requires proper WebAuthn client_data_json setup from identity integration branch
-#[ignore]
 #[rstest]
 #[tokio::test]
 async fn test_signed_asset_deterministic_verification() {
@@ -143,8 +171,6 @@ async fn test_signed_asset_deterministic_verification() {
     assert!(signed_asset.verify().is_ok());
 }
 
-// TODO: Requires proper WebAuthn client_data_json setup from identity integration branch
-#[ignore]
 #[rstest]
 #[tokio::test]
 async fn test_signed_asset_mixed_signer_types() {
@@ -159,12 +185,11 @@ async fn test_signed_asset_mixed_signer_types() {
     assert!(signed2.verify().is_ok());
 }
 
-// TODO: Requires proper WebAuthn client_data_json setup from identity integration branch
-#[ignore]
 #[rstest]
 #[tokio::test]
 async fn test_signed_asset_serialization_roundtrip() {
-    // Create signed asset
+    // Verifies that SignedAssets can be safely persisted and restored from storage.
+    // This is critical for the sync layer which stores signed assets as JSON documents.
     let (_asset, signed_asset, _identity_id, _signing_key, _nonce) =
         create_signed_asset_passkey_full("test-asset-6");
 
@@ -266,8 +291,6 @@ async fn test_project_timestamp_validation() {
     assert!(result.is_err());
 }
 
-// TODO: Requires proper WebAuthn client_data_json setup from identity integration branch
-#[ignore]
 #[rstest]
 #[tokio::test]
 async fn test_project_with_owner_identity() {
@@ -279,11 +302,11 @@ async fn test_project_with_owner_identity() {
     assert_eq!(project.name(), "My Project");
 }
 
-// TODO: Requires proper WebAuthn client_data_json setup from identity integration branch
-#[ignore]
 #[rstest]
 #[tokio::test]
 async fn test_project_serialization_roundtrip() {
+    // Verifies that Projects can be safely persisted and restored from storage.
+    // This is critical for the sync layer which stores project metadata as JSON documents.
     let owner_id = test_identity_id();
     let project = test_project("Test Project", owner_id);
 
@@ -581,7 +604,9 @@ async fn test_catalog_entry_tampered_ciphertext() {
     let key = test_encryption_key();
     let mut encrypted = encryption::encrypt_catalog_entry(&entry, &key).expect("encrypt");
 
-    // Tamper with ciphertext (skip nonce, modify actual ciphertext)
+    // Tamper with ciphertext after the nonce
+    // XChaCha20-Poly1305 nonce is 24 bytes, so byte 25 is the first ciphertext byte
+    // This modification should cause authentication to fail
     if encrypted.len() > 25 {
         encrypted[25] ^= 0xFF;
     }
@@ -632,8 +657,6 @@ async fn test_catalog_entry_too_short_data() {
 // Cross-Module Integration
 // ============================================================================
 
-// TODO: Requires proper WebAuthn client_data_json setup from identity integration branch
-#[ignore]
 #[rstest]
 #[tokio::test]
 async fn test_asset_with_identity_verification() {
@@ -725,8 +748,6 @@ async fn test_full_project_graph() {
     assert_eq!(project.id().len(), 32); // RFC-004 compliance
 }
 
-// TODO: Requires proper WebAuthn client_data_json setup from identity integration branch
-#[ignore]
 #[rstest]
 #[tokio::test]
 async fn test_signed_assets_in_project_context() {

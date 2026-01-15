@@ -402,8 +402,6 @@ proptest! {
 
     /// Property: SignedAsset verification ensures RFC-001 identity derivation
     /// (This property test verifies that the workflow maintains identity integrity)
-    // TODO: Requires proper WebAuthn client_data_json setup from identity integration branch
-    #[ignore]
     #[test]
     fn prop_signed_asset_identity_derivation(
         seed in any::<u8>(),

@@ -1,11 +1,13 @@
 //! Common test utilities for objects-data integration tests.
 
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use k256::ecdsa::SigningKey as K256SigningKey;
-use k256::elliptic_curve::rand_core::{OsRng, RngCore}; // Following asset.rs pattern
+use k256::elliptic_curve::rand_core::{OsRng, RngCore}; // Use OsRng for cryptographic randomness per CLAUDE.md
 use objects_data::{Asset, ContentHash, Project, Reference, ReferenceType, SignedAsset};
 use objects_identity::message::sign_asset_message;
 use objects_identity::{IdentityId, Signature};
 use p256::ecdsa::{SigningKey as P256SigningKey, signature::Signer as P256Signer};
+use sha2::{Digest, Sha256};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Generate a random P-256 (secp256r1) signing key for passkey tests.
@@ -76,7 +78,7 @@ pub fn test_asset(id: &str, author_id: IdentityId) -> Asset {
         now(),
         now(),
     )
-    .expect("valid asset")
+    .unwrap_or_else(|e| panic!("test_asset failed for id='{}': {:?}", id, e))
 }
 
 /// Create a test Asset with specific content hash.
@@ -92,13 +94,13 @@ pub fn test_asset_with_hash(id: &str, author_id: IdentityId, hash: ContentHash) 
         now(),
         now(),
     )
-    .expect("valid asset")
+    .unwrap_or_else(|e| panic!("test_asset_with_hash failed for id='{}': {:?}", id, e))
 }
 
 /// Create a test Project.
 #[allow(dead_code)]
 pub fn test_project(name: &str, owner_id: IdentityId) -> Project {
-    let id = format!("{:064x}", rand::random::<u128>());
+    let id = format!("{:032x}", rand::random::<u128>());
     Project::new(
         id,
         name.to_string(),
@@ -107,7 +109,7 @@ pub fn test_project(name: &str, owner_id: IdentityId) -> Project {
         now(),
         now(),
     )
-    .expect("valid project")
+    .unwrap_or_else(|e| panic!("test_project failed for name='{}': {:?}", name, e))
 }
 
 /// Create a test Project from a ReplicaId.
@@ -123,7 +125,13 @@ pub fn test_project_from_replica(replica_id: [u8; 32]) -> Project {
         now(),
         now(),
     )
-    .expect("valid project")
+    .unwrap_or_else(|e| {
+        panic!(
+            "test_project_from_replica failed for replica_id={}: {:?}",
+            hex::encode(replica_id),
+            e
+        )
+    })
 }
 
 /// Create a test Reference.
@@ -163,7 +171,12 @@ pub fn create_signed_asset_passkey_full(
         timestamp,
         timestamp,
     )
-    .expect("valid asset");
+    .unwrap_or_else(|e| {
+        panic!(
+            "create_signed_asset_passkey_full failed for asset_id='{}': {:?}",
+            asset_id, e
+        )
+    });
 
     // Create message per RFC-001 Section 5.3 (uses author_id, content_hash, created_at)
     let message = sign_asset_message(
@@ -172,16 +185,35 @@ pub fn create_signed_asset_passkey_full(
         asset.created_at(),
     );
 
-    // Sign with P-256
-    let p256_sig: p256::ecdsa::Signature = signing_key.sign(message.as_bytes());
+    // Create WebAuthn authenticator_data (minimal valid format per WebAuthn Level 3 spec)
+    // Format: RP ID hash (32 bytes) + flags (1 byte) + signature counter (4 bytes) = 37 bytes
+    let rp_id_hash = Sha256::digest(b"objects.foundation");
+    let flags = 0x05u8; // UP (User Present) + UV (User Verified) flags
+    let counter = 0u32.to_be_bytes();
+    let mut authenticator_data = rp_id_hash.to_vec();
+    authenticator_data.push(flags);
+    authenticator_data.extend_from_slice(&counter);
 
-    // Minimal valid WebAuthn client_data_json for testing
-    let client_data_json = r#"{"type":"webauthn.get","challenge":"test"}"#.as_bytes().to_vec();
+    // Create client_data_json with base64url-encoded challenge
+    let challenge_b64 = URL_SAFE_NO_PAD.encode(message.as_bytes());
+    let client_data_json = format!(
+        r#"{{"type":"webauthn.get","challenge":"{}"}}"#,
+        challenge_b64
+    )
+    .into_bytes();
+
+    // Compute what WebAuthn signs: authenticator_data || SHA256(client_data_json)
+    let client_data_hash = Sha256::digest(&client_data_json);
+    let mut signed_data = authenticator_data.clone();
+    signed_data.extend_from_slice(&client_data_hash);
+
+    // Sign with P-256
+    let p256_sig: p256::ecdsa::Signature = signing_key.sign(&signed_data);
 
     let signature = Signature::Passkey {
         signature: p256_sig.to_der().to_bytes().to_vec(),
         public_key: public_key_bytes.to_vec(),
-        authenticator_data: vec![0; 37], // Minimal valid authenticator data (37 bytes minimum)
+        authenticator_data,
         client_data_json,
     };
 
