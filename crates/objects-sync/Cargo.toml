@@ -15,6 +15,7 @@ objects-transport.workspace = true
 iroh.workspace = true
 iroh-blobs.workspace = true
 iroh-docs.workspace = true
+iroh-gossip.workspace = true
 
 # Crypto
 blake3.workspace = true
@@ -25,6 +26,8 @@ futures.workspace = true
 
 # Serialization
 serde.workspace = true
+serde_json.workspace = true
+bytes = "1"
 
 # Error handling
 thiserror.workspace = true
@@ -35,3 +38,5 @@ tracing.workspace = true
 
 [dev-dependencies]
 tokio-test.workspace = true
+tempfile = "3"
+hex.workspace = true
