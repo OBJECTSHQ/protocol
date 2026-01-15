@@ -236,7 +236,7 @@ All items above complete, plus:
 |-----------|-------|
 | ALPN | `/objects/0.1` |
 | Relay | `https://relay.objects.foundation` |
-| Registry | `https://registry.objects.network` |
+| Registry | `https://registry.objects.foundation` |
 | Discovery Topic | `/objects/devnet/0.1/discovery` |
 | Bootstrap Node 1 | TBD |
 | Bootstrap Node 2 | TBD |
