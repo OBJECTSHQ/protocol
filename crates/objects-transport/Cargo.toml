@@ -39,3 +39,6 @@ tracing.workspace = true
 
 [dev-dependencies]
 tokio-test.workspace = true
+rstest = { workspace = true }
+proptest = { workspace = true }
+anyhow.workspace = true
