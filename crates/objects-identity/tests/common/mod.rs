@@ -1,79 +1,72 @@
 //! Common test utilities for objects-identity integration tests.
+//!
+//! **DEPRECATED:** This module now forwards to `objects-test-utils`.
+//! Use `objects_test_utils` directly instead.
+//!
+//! These functions remain for backward compatibility during migration
+//! but will be removed in a future PR.
 
 use k256::ecdsa::SigningKey as K256SigningKey;
-use k256::elliptic_curve::rand_core::OsRng; // Following source pattern
 use objects_identity::IdentityId;
+use objects_test_utils::{crypto, identity, time};
 use p256::ecdsa::SigningKey as P256SigningKey;
-use rand::RngCore;
-use std::time::{SystemTime, UNIX_EPOCH};
 
-/// Generate a random P-256 (secp256r1) signing key for passkey tests.
-/// Follows the pattern from signature.rs test module.
+/// **DEPRECATED:** Use `objects_test_utils::crypto::passkey_keypair().signing_key` instead.
+#[deprecated(
+    since = "0.1.0",
+    note = "Use objects_test_utils::crypto::passkey_keypair().signing_key instead"
+)]
 pub fn test_passkey_key() -> P256SigningKey {
-    P256SigningKey::random(&mut OsRng)
+    crypto::passkey_keypair().signing_key
 }
 
-/// Generate a random secp256k1 signing key for wallet tests.
-/// Follows the pattern from signature.rs test module.
+/// **DEPRECATED:** Use `objects_test_utils::crypto::wallet_keypair().signing_key` instead.
+#[deprecated(
+    since = "0.1.0",
+    note = "Use objects_test_utils::crypto::wallet_keypair().signing_key instead"
+)]
 pub fn test_wallet_key() -> K256SigningKey {
-    K256SigningKey::random(&mut OsRng)
+    crypto::wallet_keypair().signing_key
 }
 
-/// Generate a test identity ID using a passkey with a fixed nonce.
+/// **DEPRECATED:** Use `objects_test_utils::identity::test_identity_id()` instead.
+#[deprecated(
+    since = "0.1.0",
+    note = "Use objects_test_utils::identity::test_identity_id() instead"
+)]
 pub fn test_identity_id() -> IdentityId {
-    let key = test_passkey_key();
-    let verifying_key = key.verifying_key();
-
-    // Get compressed SEC1 encoding (33 bytes)
-    let public_key_bytes = verifying_key.to_encoded_point(true);
-    let public_key_array: [u8; 33] = public_key_bytes
-        .as_bytes()
-        .try_into()
-        .expect("compressed SEC1 point is 33 bytes");
-
-    let nonce = [1, 2, 3, 4, 5, 6, 7, 8];
-
-    IdentityId::derive(&public_key_array, &nonce)
+    identity::test_identity_id()
 }
 
-/// Get the current Unix timestamp in seconds.
+/// **DEPRECATED:** Use `objects_test_utils::time::now()` instead.
+#[deprecated(since = "0.1.0", note = "Use objects_test_utils::time::now() instead")]
 pub fn current_timestamp() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("system time before Unix epoch")
-        .as_secs()
+    time::now()
 }
 
-/// Generate a random 8-byte nonce for testing.
-/// Uses rand::rng() following the pattern from id.rs::generate_nonce()
+/// **DEPRECATED:** Use `objects_test_utils::crypto::random_nonce()` instead.
+#[deprecated(
+    since = "0.1.0",
+    note = "Use objects_test_utils::crypto::random_nonce() instead"
+)]
 pub fn random_nonce() -> [u8; 8] {
-    let mut nonce = [0u8; 8];
-    rand::rng().fill_bytes(&mut nonce);
-    nonce
+    crypto::random_nonce()
 }
 
-/// List of reserved handles from RFC-001.
-/// These handles cannot be registered by users.
+/// **DEPRECATED:** Use `objects_test_utils::rfc_vectors::reserved_handles()` instead.
+#[deprecated(
+    since = "0.1.0",
+    note = "Use objects_test_utils::rfc_vectors::reserved_handles() instead"
+)]
 pub fn reserved_handles() -> Vec<&'static str> {
-    vec![
-        "admin",
-        "administrator",
-        "root",
-        "system",
-        "objects",
-        "protocol",
-        "support",
-        "help",
-        "info",
-        "contact",
-        "api",
-        "www",
-        "mail",
-        "ftp",
-    ]
+    objects_test_utils::rfc_vectors::reserved_handles()
 }
 
-/// Check if a handle is reserved.
+/// **DEPRECATED:** Use `objects_test_utils::rfc_vectors::is_reserved()` instead.
+#[deprecated(
+    since = "0.1.0",
+    note = "Use objects_test_utils::rfc_vectors::is_reserved() instead"
+)]
 pub fn is_reserved(handle: &str) -> bool {
-    reserved_handles().contains(&handle)
+    objects_test_utils::rfc_vectors::is_reserved(handle)
 }

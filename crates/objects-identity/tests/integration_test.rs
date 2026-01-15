@@ -10,11 +10,11 @@
 mod common;
 
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
-use common::*;
 use k256::ecdsa::SigningKey as K256SigningKey;
 use objects_identity::{
     Handle, IdentityId, Signature, SignerType, generate_nonce, message, vault::VaultKeys,
 };
+use objects_test_utils::{crypto, identity, time};
 use p256::ecdsa::{SigningKey as P256SigningKey, signature::Signer as P256Signer};
 use rstest::*;
 use sha2::{Digest, Sha256};
@@ -22,13 +22,13 @@ use sha2::{Digest, Sha256};
 /// Fixture providing a fresh passkey signer for each test.
 #[fixture]
 fn passkey_signer() -> P256SigningKey {
-    test_passkey_key()
+    crypto::passkey_keypair().signing_key
 }
 
 /// Fixture providing a fresh wallet signer for each test.
 #[fixture]
 fn wallet_signer() -> K256SigningKey {
-    test_wallet_key()
+    crypto::wallet_keypair().signing_key
 }
 
 // ============================================================================
@@ -38,7 +38,7 @@ fn wallet_signer() -> K256SigningKey {
 #[rstest]
 #[tokio::test]
 async fn test_identity_lifecycle_passkey(passkey_signer: P256SigningKey) {
-    let nonce = random_nonce();
+    let nonce = crypto::random_nonce();
     let public_key = passkey_signer.verifying_key();
 
     // Get compressed SEC1 public key (33 bytes)
@@ -69,7 +69,7 @@ async fn test_identity_lifecycle_passkey(passkey_signer: P256SigningKey) {
 #[rstest]
 #[tokio::test]
 async fn test_identity_lifecycle_wallet(wallet_signer: K256SigningKey) {
-    let nonce = random_nonce();
+    let nonce = crypto::random_nonce();
     let public_key = wallet_signer.verifying_key();
 
     // Get compressed SEC1 public key (33 bytes)
@@ -124,7 +124,7 @@ fn test_generate_nonce_produces_unique_values() {
 #[rstest]
 #[tokio::test]
 async fn test_passkey_signature_verification_full_lifecycle(passkey_signer: P256SigningKey) {
-    let nonce = random_nonce();
+    let nonce = crypto::random_nonce();
     let verifying_key = passkey_signer.verifying_key();
     let public_key_point = verifying_key.to_encoded_point(true);
     let public_key_bytes: [u8; 33] = public_key_point.as_bytes().try_into().expect("33 bytes");
@@ -133,8 +133,7 @@ async fn test_passkey_signature_verification_full_lifecycle(passkey_signer: P256
     let identity_id = IdentityId::derive(&public_key_bytes, &nonce);
 
     // 2. Create a message to sign (RFC-001 format)
-    let message_text =
-        message::create_identity_message(identity_id.as_str(), "alice", current_timestamp());
+    let message_text = message::create_identity_message(identity_id.as_str(), "alice", time::now());
     let message_bytes = message_text.as_bytes();
 
     // 3. Create WebAuthn authenticator_data (minimal valid format)
@@ -185,7 +184,7 @@ async fn test_passkey_signature_verification_full_lifecycle(passkey_signer: P256
 async fn test_wallet_signature_verification_full_lifecycle(wallet_signer: K256SigningKey) {
     use alloy_primitives::keccak256;
 
-    let nonce = random_nonce();
+    let nonce = crypto::random_nonce();
     let verifying_key = wallet_signer.verifying_key();
 
     // Get compressed public key for identity derivation
@@ -205,8 +204,7 @@ async fn test_wallet_signature_verification_full_lifecycle(wallet_signer: K256Si
     let address = format!("0x{}", hex::encode(&pub_key_hash[12..])); // Last 20 bytes
 
     // 3. Create a message to sign (RFC-001 format)
-    let message_text =
-        message::link_wallet_message(identity_id.as_str(), &address, current_timestamp());
+    let message_text = message::link_wallet_message(identity_id.as_str(), &address, time::now());
     let message_bytes = message_text.as_bytes();
 
     // 4. Create EIP-191 prefixed message (Alloy does this internally, but we need to sign it)
@@ -319,7 +317,7 @@ async fn test_vault_key_derivation_wallet(wallet_signer: K256SigningKey) {
     assert_eq!(namespace_id.as_bytes().len(), 32);
 
     // 4. Verify uniqueness - different keys = different vaults
-    let different_key = test_wallet_key();
+    let different_key = crypto::wallet_keypair().signing_key;
     let different_secret = different_key.to_bytes();
     let different_secret_array: [u8; 32] =
         different_secret.as_slice().try_into().expect("32 bytes");
@@ -360,7 +358,7 @@ fn test_vault_key_signer_type_parameter_for_documentation() {
 
 #[test]
 fn test_message_format_create_identity() {
-    let identity_id = test_identity_id();
+    let identity_id = identity::test_identity_id();
     let timestamp = 1704067200; // 2024-01-01 00:00:00 UTC
 
     let message = message::create_identity_message(identity_id.as_str(), "alice", timestamp);
@@ -374,9 +372,9 @@ fn test_message_format_create_identity() {
 
 #[test]
 fn test_message_format_link_wallet() {
-    let identity_id = test_identity_id();
+    let identity_id = identity::test_identity_id();
     let wallet_address = "0x1234567890abcdef1234567890abcdef12345678";
-    let timestamp = current_timestamp();
+    let timestamp = time::now();
 
     let message = message::link_wallet_message(identity_id.as_str(), wallet_address, timestamp);
 
@@ -388,9 +386,9 @@ fn test_message_format_link_wallet() {
 
 #[test]
 fn test_message_format_sign_asset() {
-    let identity_id = test_identity_id();
+    let identity_id = identity::test_identity_id();
     let content_hash = "deadbeef".repeat(8); // 64 hex chars
-    let timestamp = current_timestamp();
+    let timestamp = time::now();
 
     let message = message::sign_asset_message(identity_id.as_str(), &content_hash, timestamp);
 
@@ -404,7 +402,7 @@ fn test_message_format_sign_asset() {
 fn test_message_format_authenticate() {
     let app_domain = "app.example.com";
     let challenge = hex::encode(&[0xde, 0xad, 0xbe, 0xef].repeat(16)); // 64 hex chars
-    let timestamp = current_timestamp();
+    let timestamp = time::now();
 
     let message = message::authenticate_message(app_domain, &challenge, timestamp);
 
@@ -416,9 +414,9 @@ fn test_message_format_authenticate() {
 
 #[test]
 fn test_message_format_change_handle() {
-    let identity_id = test_identity_id();
+    let identity_id = identity::test_identity_id();
     let new_handle = "bob";
-    let timestamp = current_timestamp();
+    let timestamp = time::now();
 
     let message = message::change_handle_message(identity_id.as_str(), new_handle, timestamp);
 

@@ -2,10 +2,8 @@
 //!
 //! Tests cryptographic and validation invariants using proptest.
 
-mod common;
-
-use common::{reserved_handles, test_passkey_key};
 use objects_identity::{Handle, IdentityId};
+use objects_test_utils::{crypto, rfc_vectors};
 use proptest::prelude::*;
 
 proptest! {
@@ -16,7 +14,7 @@ proptest! {
     /// Property: All derived identity IDs must have "obj_" prefix
     #[test]
     fn identity_id_always_has_obj_prefix(nonce in prop::array::uniform8(any::<u8>())) {
-        let key = test_passkey_key();
+        let key = crypto::passkey_keypair().signing_key;
         let public_key = key.verifying_key();
         let public_key_point = public_key.to_encoded_point(true);
         let public_key_bytes: [u8; 33] = public_key_point.as_bytes()
@@ -35,7 +33,7 @@ proptest! {
     /// Property: Identity ID length must be within RFC-001 bounds (23-25 chars)
     #[test]
     fn identity_id_length_within_bounds(nonce in prop::array::uniform8(any::<u8>())) {
-        let key = test_passkey_key();
+        let key = crypto::passkey_keypair().signing_key;
         let public_key = key.verifying_key();
         let public_key_point = public_key.to_encoded_point(true);
         let public_key_bytes: [u8; 33] = public_key_point.as_bytes()
@@ -55,7 +53,7 @@ proptest! {
     /// Property: Identity derivation is deterministic (same inputs = same output)
     #[test]
     fn identity_id_deterministic(nonce in prop::array::uniform8(any::<u8>())) {
-        let key = test_passkey_key();
+        let key = crypto::passkey_keypair().signing_key;
         let public_key = key.verifying_key();
         let public_key_point = public_key.to_encoded_point(true);
         let public_key_bytes: [u8; 33] = public_key_point.as_bytes()
@@ -71,7 +69,7 @@ proptest! {
     /// Property: Identity ID parsing is lossless (derive → to_string → parse = identity)
     #[test]
     fn identity_id_parse_roundtrip(nonce in prop::array::uniform8(any::<u8>())) {
-        let key = test_passkey_key();
+        let key = crypto::passkey_keypair().signing_key;
         let public_key = key.verifying_key();
         let public_key_point = public_key.to_encoded_point(true);
         let public_key_bytes: [u8; 33] = public_key_point.as_bytes()
@@ -96,7 +94,7 @@ proptest! {
     #[test]
     fn valid_handle_pattern_accepted(handle in "[a-z][a-z0-9_.]{0,28}[a-z0-9]") {
         // Filter out invalid edge cases that the regex doesn't catch
-        let is_valid = !reserved_handles().contains(&handle.as_str())
+        let is_valid = !rfc_vectors::reserved_handles().contains(&handle.as_str())
             && !handle.contains("..")       // No consecutive periods
             && !handle.starts_with('_')     // No leading underscore
             && !handle.starts_with('.')     // No leading period
@@ -179,7 +177,7 @@ proptest! {
     /// Property: Display representation matches original valid input
     #[test]
     fn handle_display_matches_original(handle in "[a-z][a-z0-9_.]{0,28}[a-z0-9]") {
-        let is_valid = !reserved_handles().contains(&handle.as_str())
+        let is_valid = !rfc_vectors::reserved_handles().contains(&handle.as_str())
             && !handle.contains("..")
             && !handle.starts_with('_')
             && !handle.starts_with('.')
