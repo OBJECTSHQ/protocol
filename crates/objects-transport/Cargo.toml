@@ -39,3 +39,7 @@ tracing.workspace = true
 
 [dev-dependencies]
 tokio-test.workspace = true
+rstest.workspace = true
+proptest.workspace = true
+hex.workspace = true
+anyhow.workspace = true
