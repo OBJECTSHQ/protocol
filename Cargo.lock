@@ -4056,6 +4056,7 @@ dependencies = [
  "bytes",
  "ed25519-dalek 2.2.0",
  "futures",
+ "hex",
  "iroh",
  "iroh-gossip",
  "proptest",
