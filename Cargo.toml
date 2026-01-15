@@ -75,9 +75,10 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # Testing
 tokio-test = "0.4"
-rstest = "0.26"
+rstest = "0.26.1"
 proptest = "1.4"
 wiremock = "0.6"
+serde_test = "1"
 
 # Build
 prost-build = "0.14"
