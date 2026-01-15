@@ -39,3 +39,6 @@ tracing.workspace = true
 
 [dev-dependencies]
 tokio-test.workspace = true
+rstest = "0.26.1"           # Fixtures and parameterized tests
+proptest = "1.4"            # Property-based testing
+hex = "0.4"                 # Hex encoding for test data
