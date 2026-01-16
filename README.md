@@ -50,6 +50,10 @@ bins/
 └── objects-registry   # Identity registry service
 ```
 
+## Contributing
+
+[Report a Bug](https://github.com/OBJECTSHQ/protocol/issues/new?template=bug_report.yml) · [Request a Feature](https://github.com/OBJECTSHQ/protocol/issues/new?template=feature_request.yml) · [Open a Pull Request](https://github.com/OBJECTSHQ/protocol/compare)
+
 ## License
 
 Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or [MIT license](LICENSE-MIT) at your option.
