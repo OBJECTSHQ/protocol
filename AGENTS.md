@@ -217,6 +217,29 @@ cargo build --workspace && cargo test --workspace && cargo clippy --workspace
 - Make registry required for local asset verification
 - Use mainnet discovery topic (`/objects/mainnet/...`) - we're on devnet
 
+## Test Utilities
+
+Use shared test utilities from `objects-test-utils` instead of duplicating helpers.
+
+```rust
+use objects_test_utils::{crypto, identity, data};
+
+#[test]
+fn my_test() {
+    let id = identity::test_identity_id();  // RFC-001 canonical vector
+    let bundle = data::signed_asset_passkey("asset-123");
+    assert!(bundle.signed_asset.verify().is_ok());
+}
+```
+
+**Available modules:**
+- `crypto` - Keypairs, nonces, encryption keys, deterministic test data
+- `time` - Timestamps and time utilities
+- `identity` - Identity factories and RFC-001 test vectors
+- `data` - Asset, Project, Reference, SignedAsset factories
+- `transport` - Endpoint and network config factories
+- `sync` - SyncEngine utilities
+
 ## Test Patterns
 
 **Cryptographic test data:**
