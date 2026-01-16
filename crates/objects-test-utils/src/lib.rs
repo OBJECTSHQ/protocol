@@ -23,7 +23,8 @@
 //! **Tier 3 - Transport:**
 //! - [`transport`] - Network endpoints, configurations, and connection testing
 //!
-//! Higher-tier modules (sync) will be added in subsequent PRs.
+//! **Tier 4 - Sync:**
+//! - [`sync`] - Sync engine factories and sync operation testing
 //!
 //! ## Quick Start
 //!
@@ -46,6 +47,7 @@
 pub mod crypto;
 pub mod data;
 pub mod identity;
+pub mod sync;
 pub mod time;
 pub mod transport;
 

@@ -3,15 +3,14 @@
 //! These tests verify sync operations between multiple nodes,
 //! including blob sync, metadata sync, and ticket-based sharing.
 
-mod test_utils;
-use test_utils::*;
-
-use objects_sync::{SyncEngine, tickets::parse_ticket};
-use objects_transport::ObjectsEndpoint;
+use objects_data::{Asset, ContentHash};
+use objects_sync::SyncEngine;
+use objects_sync::tickets::parse_ticket;
+use objects_test_utils::{identity, sync, transport};
 
 #[tokio::test]
 async fn test_blob_storage_and_retrieval() -> objects_sync::Result<()> {
-    let sync = create_test_sync_engine().await?;
+    let sync = sync::sync_engine().await?;
 
     // Add a blob
     let test_data = b"Hello, OBJECTS Protocol!";
@@ -29,7 +28,7 @@ async fn test_blob_storage_and_retrieval() -> objects_sync::Result<()> {
 
 #[tokio::test]
 async fn test_blob_from_file() -> objects_sync::Result<()> {
-    let sync = create_test_sync_engine().await?;
+    let sync = sync::sync_engine().await?;
 
     // Create a temporary file
     let temp_dir =
@@ -50,7 +49,7 @@ async fn test_blob_from_file() -> objects_sync::Result<()> {
 
 #[tokio::test]
 async fn test_blob_ticket_creation() -> objects_sync::Result<()> {
-    let endpoint = ObjectsEndpoint::builder().bind().await?;
+    let endpoint = transport::endpoint().await;
     let node_addr = endpoint.node_addr();
     let sync = SyncEngine::new(endpoint).await?;
 
@@ -73,7 +72,7 @@ async fn test_blob_ticket_creation() -> objects_sync::Result<()> {
 
 #[tokio::test]
 async fn test_replica_creation_and_entries() -> objects_sync::Result<()> {
-    let sync = create_test_sync_engine().await?;
+    let sync = sync::sync_engine().await?;
 
     // Create replica and author
     let replica_id = sync.docs().create_replica().await?;
@@ -104,7 +103,7 @@ async fn test_replica_creation_and_entries() -> objects_sync::Result<()> {
 
 #[tokio::test]
 async fn test_doc_ticket_creation() -> objects_sync::Result<()> {
-    let endpoint = ObjectsEndpoint::builder().bind().await?;
+    let endpoint = transport::endpoint().await;
     let node_addr = endpoint.node_addr();
     let sync = SyncEngine::new(endpoint).await?;
 
@@ -127,7 +126,7 @@ async fn test_doc_ticket_creation() -> objects_sync::Result<()> {
 
 #[tokio::test]
 async fn test_query_entries_by_prefix() -> objects_sync::Result<()> {
-    let sync = create_test_sync_engine().await?;
+    let sync = sync::sync_engine().await?;
 
     let replica_id = sync.docs().create_replica().await?;
     let author = sync.docs().create_author().await?;
@@ -158,7 +157,7 @@ async fn test_helpers_with_objects_types() -> objects_sync::Result<()> {
     use objects_data::{Asset, ContentHash};
     use objects_sync::helpers::{content_hash_to_hash, hash_to_content_hash};
 
-    let sync = create_test_sync_engine().await?;
+    let sync = sync::sync_engine().await?;
 
     // Test hash conversion helpers
     let test_hash = sync.blobs().add_bytes(&b"test"[..]).await?;
@@ -171,7 +170,7 @@ async fn test_helpers_with_objects_types() -> objects_sync::Result<()> {
     let blob_hash = sync.blobs().add_bytes(&asset_content[..]).await?;
     let asset_content_hash = hash_to_content_hash(blob_hash);
 
-    let test_author_id = test_identity_id();
+    let test_author_id = identity::test_identity_id();
 
     // Create asset with matching content hash
     let asset = Asset::new(
@@ -219,13 +218,13 @@ async fn test_helpers_with_objects_types() -> objects_sync::Result<()> {
 async fn test_storage_with_project_and_assets() -> objects_sync::Result<()> {
     use objects_data::ContentHash;
 
-    let sync = create_test_sync_engine().await?;
+    let sync = sync::sync_engine().await?;
 
     let replica_id = sync.docs().create_replica().await?;
     let author = sync.docs().create_author().await?;
 
     // Create and store project using RFC-004 derivation helper
-    let project = test_project_from_replica(replica_id, "Test Project")?;
+    let project = sync::project_from_replica(replica_id, "Test Project")?;
     sync.docs()
         .store_project(replica_id, author, &project)
         .await?;
@@ -237,7 +236,7 @@ async fn test_storage_with_project_and_assets() -> objects_sync::Result<()> {
     assert_eq!(retrieved_project.name(), project.name());
 
     // Create and store asset using test helper
-    let asset = test_asset("asset-1", ContentHash([1u8; 32]))?;
+    let asset = sync::asset("asset-1", ContentHash([1u8; 32]))?;
     sync.docs().store_asset(replica_id, author, &asset).await?;
 
     // Retrieve asset
@@ -254,7 +253,7 @@ async fn test_storage_with_project_and_assets() -> objects_sync::Result<()> {
 
 #[tokio::test]
 async fn test_replica_deletion() -> objects_sync::Result<()> {
-    let sync = create_test_sync_engine().await?;
+    let sync = sync::sync_engine().await?;
 
     // Create a replica but don't access it
     // (In iroh-docs, you can only delete replicas that aren't currently open)
@@ -282,7 +281,7 @@ async fn test_replica_deletion() -> objects_sync::Result<()> {
 
 #[tokio::test]
 async fn test_multiple_authors_same_replica() -> objects_sync::Result<()> {
-    let sync = create_test_sync_engine().await?;
+    let sync = sync::sync_engine().await?;
 
     let replica_id = sync.docs().create_replica().await?;
     let author1 = sync.docs().create_author().await?;
@@ -305,7 +304,7 @@ async fn test_multiple_authors_same_replica() -> objects_sync::Result<()> {
 
 #[tokio::test]
 async fn test_concurrent_writes_same_key() -> objects_sync::Result<()> {
-    let sync = create_test_sync_engine().await?;
+    let sync = sync::sync_engine().await?;
 
     let replica_id = sync.docs().create_replica().await?;
     let author1 = sync.docs().create_author().await?;
@@ -335,7 +334,7 @@ async fn test_concurrent_writes_same_key() -> objects_sync::Result<()> {
 
 #[tokio::test]
 async fn test_concurrent_writes_different_keys() -> objects_sync::Result<()> {
-    let sync = create_test_sync_engine().await?;
+    let sync = sync::sync_engine().await?;
 
     let replica_id = sync.docs().create_replica().await?;
     let author1 = sync.docs().create_author().await?;
@@ -380,10 +379,10 @@ async fn test_download_from_invalid_ticket() -> objects_sync::Result<()> {
     use iroh_blobs::ticket::BlobTicket;
     use iroh_blobs::{BlobFormat, Hash};
 
-    let sync = create_test_sync_engine().await?;
+    let sync = sync::sync_engine().await?;
 
     // Create a second endpoint to get a valid peer ID (but we won't make it reachable)
-    let fake_endpoint = ObjectsEndpoint::builder().bind().await?;
+    let fake_endpoint = transport::endpoint().await;
     let fake_peer = fake_endpoint.node_addr();
 
     // Create a ticket with a non-existent hash
@@ -399,12 +398,12 @@ async fn test_download_from_invalid_ticket() -> objects_sync::Result<()> {
 
 #[tokio::test]
 async fn test_sync_with_unreachable_peer() -> objects_sync::Result<()> {
-    let sync = create_test_sync_engine().await?;
+    let sync = sync::sync_engine().await?;
 
     let replica_id = sync.docs().create_replica().await?;
 
     // Create a second endpoint to get a valid peer ID (but don't share the replica with it)
-    let fake_endpoint = ObjectsEndpoint::builder().bind().await?;
+    let fake_endpoint = transport::endpoint().await;
     let fake_peer = fake_endpoint.node_addr();
 
     // Attempting to sync with a peer that doesn't have the replica
