@@ -5,8 +5,11 @@ edition.workspace = true
 description = "Shared test utilities for OBJECTS Protocol"
 
 [dependencies]
-# Crypto - Tier 0 only (no objects-* dependencies)
+# Tier 0: Crypto primitives
 p256.workspace = true
 k256.workspace = true
 hex.workspace = true
 rand.workspace = true
+
+# Tier 1: Identity
+objects-identity.workspace = true
