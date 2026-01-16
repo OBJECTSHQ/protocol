@@ -23,9 +23,11 @@ use objects_sync::{ReplicaId, SyncEngine};
 ///     // Use engine for blob/doc operations
 /// }
 /// ```
-pub async fn sync_engine() -> objects_sync::Result<SyncEngine> {
+pub async fn sync_engine() -> anyhow::Result<SyncEngine> {
     let endpoint = transport::endpoint().await;
-    SyncEngine::new(endpoint).await
+    SyncEngine::new(endpoint)
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to create sync engine: {}", e))
 }
 
 /// Creates a test project derived from a replica using RFC-004 derivation.
@@ -45,7 +47,7 @@ pub async fn sync_engine() -> objects_sync::Result<SyncEngine> {
 pub fn project_from_replica(
     replica_id: ReplicaId,
     name: impl Into<String>,
-) -> objects_sync::Result<Project> {
+) -> anyhow::Result<Project> {
     let project_id = objects_data::project_id_from_replica(replica_id.as_bytes());
     Project::new(
         project_id,
@@ -55,7 +57,7 @@ pub fn project_from_replica(
         time::TEST_TIMESTAMP,
         time::TEST_TIMESTAMP,
     )
-    .map_err(|e| objects_sync::Error::Iroh(anyhow::anyhow!(e)))
+    .map_err(|e| anyhow::anyhow!("Failed to create test project: {}", e))
 }
 
 /// Creates a test asset with valid data.
@@ -75,7 +77,7 @@ pub fn project_from_replica(
 ///     assert_eq!(asset.id(), "asset-1");
 /// }
 /// ```
-pub fn asset(id: impl Into<String>, content_hash: ContentHash) -> objects_sync::Result<Asset> {
+pub fn asset(id: impl Into<String>, content_hash: ContentHash) -> anyhow::Result<Asset> {
     Asset::new(
         id.into(),
         "Test Asset".to_string(),
@@ -86,7 +88,7 @@ pub fn asset(id: impl Into<String>, content_hash: ContentHash) -> objects_sync::
         time::TEST_TIMESTAMP,
         time::TEST_TIMESTAMP,
     )
-    .map_err(|e| objects_sync::Error::Iroh(anyhow::anyhow!(e)))
+    .map_err(|e| anyhow::anyhow!("Failed to create test asset: {}", e))
 }
 
 #[cfg(test)]
