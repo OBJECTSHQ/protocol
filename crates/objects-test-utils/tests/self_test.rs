@@ -3,7 +3,8 @@
 //! These tests validate the correctness of the test utilities themselves,
 //! ensuring that test fixtures provide consistent, correct behavior.
 
-use objects_test_utils::{crypto, time};
+use objects_identity::IdentityId;
+use objects_test_utils::{crypto, identity, time};
 
 // ============================================================================
 // Crypto Module Tests
@@ -121,4 +122,95 @@ fn test_future_timestamp_adds_offset() {
 fn test_timestamp_constant_is_correct() {
     // 2024-01-06 12:00:00 UTC
     assert_eq!(time::TEST_TIMESTAMP, 1704542400);
+}
+
+// ============================================================================
+// Identity Module Tests
+// ============================================================================
+
+#[test]
+fn test_identity_id_is_canonical() {
+    let id = identity::test_identity_id();
+    assert_eq!(
+        id.as_str(),
+        "obj_2dMiYc8RhnYkorPc5pVh9",
+        "test_identity_id must return canonical identity"
+    );
+}
+
+#[test]
+fn test_random_passkey_identity_derivation() {
+    let identity = identity::random_passkey_identity();
+
+    // Verify the identity ID was correctly derived from public key + nonce
+    let derived = IdentityId::derive(&identity.keypair.public_key, &identity.nonce);
+    assert_eq!(
+        identity.identity_id, derived,
+        "stored identity_id must match derived value"
+    );
+
+    // Verify ID format
+    assert!(identity.identity_id.as_str().starts_with("obj_"));
+    assert!(identity.identity_id.as_str().len() >= 23);
+    assert!(identity.identity_id.as_str().len() <= 25);
+}
+
+#[test]
+fn test_random_wallet_identity_derivation() {
+    let identity = identity::random_wallet_identity();
+
+    // Verify the identity ID was correctly derived from public key + nonce
+    let derived = IdentityId::derive(&identity.keypair.public_key, &identity.nonce);
+    assert_eq!(
+        identity.identity_id, derived,
+        "stored identity_id must match derived value"
+    );
+
+    // Verify ID format
+    assert!(identity.identity_id.as_str().starts_with("obj_"));
+}
+
+#[test]
+fn test_random_passkey_identities_are_unique() {
+    let id1 = identity::random_passkey_identity();
+    let id2 = identity::random_passkey_identity();
+
+    // Statistically should never be equal
+    assert_ne!(id1.identity_id, id2.identity_id, "identities should differ");
+    assert_ne!(id1.nonce, id2.nonce, "nonces should differ");
+}
+
+#[test]
+fn test_random_wallet_identities_are_unique() {
+    let id1 = identity::random_wallet_identity();
+    let id2 = identity::random_wallet_identity();
+
+    // Statistically should never be equal
+    assert_ne!(id1.identity_id, id2.identity_id, "identities should differ");
+    assert_ne!(id1.nonce, id2.nonce, "nonces should differ");
+}
+
+// ============================================================================
+// Integration Tests (Cross-Module)
+// ============================================================================
+
+#[test]
+fn test_passkey_keypair_can_derive_identity() {
+    let keypair = crypto::passkey_keypair();
+    let nonce = crypto::random_nonce();
+    let identity_id = IdentityId::derive(&keypair.public_key, &nonce);
+
+    // Should produce a valid identity ID
+    assert!(identity_id.as_str().starts_with("obj_"));
+    assert!(identity_id.as_str().len() >= 23);
+}
+
+#[test]
+fn test_wallet_keypair_can_derive_identity() {
+    let keypair = crypto::wallet_keypair();
+    let nonce = crypto::random_nonce();
+    let identity_id = IdentityId::derive(&keypair.public_key, &nonce);
+
+    // Should produce a valid identity ID
+    assert!(identity_id.as_str().starts_with("obj_"));
 }

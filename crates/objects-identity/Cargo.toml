@@ -35,6 +35,7 @@ serde_json.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
+objects-test-utils.workspace = true
 tokio-test.workspace = true
 tokio = { workspace = true, features = ["macros"] }
 rstest = { workspace = true }
