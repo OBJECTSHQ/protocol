@@ -94,6 +94,21 @@ impl Handle {
         Ok(Self(s.to_string()))
     }
 
+    /// Check if a handle string is reserved.
+    ///
+    /// Returns `true` if the handle is in the reserved list and cannot be registered.
+    pub fn is_reserved(s: &str) -> bool {
+        RESERVED_HANDLES.contains(&s)
+    }
+
+    /// Get the list of reserved handles.
+    ///
+    /// These handles cannot be registered by users and are reserved for
+    /// protocol, administrative, or system use.
+    pub fn reserved_handles() -> &'static [&'static str] {
+        RESERVED_HANDLES
+    }
+
     /// Returns the handle as a string (without @ prefix).
     pub fn as_str(&self) -> &str {
         &self.0
