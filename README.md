@@ -8,7 +8,7 @@ Design engineering protocol for modern craftspeople.
 
 ## What is OBJECTS?
 
-OBJECTS is an API for building design apps with identity and sync built in. Developers get a network of users and their data through simple API calls. The protocol handles discovery, connections, and sync regardless of NAT, firewalls, or network topology.
+OBJECTS is a protocol for building design apps with identity and sync built in. Developers get a network of users and their data through simple API calls. The protocol handles discovery, connections, and sync regardless of NAT, firewalls, or network topology.
 
 Data is stored locally and synced peer-to-peer over QUIC with automatic hole-punching and relay fallback. Identity and data belong to users, not apps.
 
