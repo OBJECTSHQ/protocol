@@ -6,13 +6,11 @@
 //! - Deterministic operations
 //! - RFC compliance
 
-mod common;
-
-use common::*;
 use objects_data::{
     Asset, ContentHash, KeyType, Project, Reference, ReferenceType, parse_key,
     project_id_from_replica, storage,
 };
+use objects_test_utils::{crypto, data, identity, time};
 use proptest::prelude::*;
 
 proptest! {
@@ -26,9 +24,9 @@ proptest! {
         id in "[a-zA-Z0-9-]{1,64}",
         name in ".+",
     ) {
-        let author_id = test_identity_id();
-        let content_hash = test_content_hash(42);
-        let timestamp = now();
+        let author_id = identity::test_identity_id();
+        let content_hash = ContentHash::new(crypto::deterministic_bytes(42));
+        let timestamp = time::now();
 
         let result = Asset::new(
             id.clone(),
@@ -55,8 +53,8 @@ proptest! {
         created in 0u64..1000000u64,
         offset in 0u64..1000u64,
     ) {
-        let author_id = test_identity_id();
-        let content_hash = test_content_hash(42);
+        let author_id = identity::test_identity_id();
+        let content_hash = ContentHash::new(crypto::deterministic_bytes(42));
         let updated = created + offset;
 
         let result = Asset::new(
@@ -88,8 +86,8 @@ proptest! {
     fn prop_project_id_format(
         id in "[0-9a-f]{32}",
     ) {
-        let owner_id = test_identity_id();
-        let timestamp = now();
+        let owner_id = identity::test_identity_id();
+        let timestamp = time::now();
 
         let result = Project::new(
             id.clone(),
@@ -119,7 +117,7 @@ proptest! {
         created in 0u64..1000000u64,
         offset in 0u64..1000u64,
     ) {
-        let owner_id = test_identity_id();
+        let owner_id = identity::test_identity_id();
         let id = "a".repeat(32);
         let updated = created + offset;
 
@@ -151,7 +149,7 @@ proptest! {
             target_asset_id: target,
             target_content_hash: None,
             reference_type: ReferenceType::References,
-            created_at: now(),
+            created_at: time::now(),
         };
 
         // Non-empty fields should always validate
@@ -169,9 +167,9 @@ proptest! {
         name in ".+",
         content_size in 0u64..1000000u64,
     ) {
-        let author_id = test_identity_id();
-        let content_hash = test_content_hash(42);
-        let timestamp = now();
+        let author_id = identity::test_identity_id();
+        let content_hash = ContentHash::new(crypto::deterministic_bytes(42));
+        let timestamp = time::now();
 
         let asset = Asset::new(
             id,
@@ -206,9 +204,9 @@ proptest! {
     fn prop_project_serialization_roundtrip(
         name in ".+",
     ) {
-        let owner_id = test_identity_id();
+        let owner_id = identity::test_identity_id();
         let id = "b".repeat(32);
-        let timestamp = now();
+        let timestamp = time::now();
 
         let project = Project::new(
             id,
@@ -250,7 +248,7 @@ proptest! {
             target_asset_id: target,
             target_content_hash: None,
             reference_type: ReferenceType::DependsOn,
-            created_at: now(),
+            created_at: time::now(),
         };
 
         // Serialize to JSON
@@ -269,7 +267,7 @@ proptest! {
     fn prop_content_hash_serialization(
         seed in any::<u8>(),
     ) {
-        let hash = test_content_hash(seed);
+        let hash = ContentHash::new(crypto::deterministic_bytes(seed));
 
         // Serialize to JSON
         let json = serde_json::to_string(&hash).expect("serialize");
@@ -333,7 +331,7 @@ proptest! {
     fn prop_content_hash_encoding_deterministic(
         seed in any::<u8>(),
     ) {
-        let hash = test_content_hash(seed);
+        let hash = ContentHash::new(crypto::deterministic_bytes(seed));
 
         // Encode multiple times
         let hex1 = hash.to_hex();
@@ -408,23 +406,22 @@ proptest! {
     ) {
         // Create a complete signed asset
         let asset_id = format!("test-{}", seed);
-        let (asset, signed_asset, identity_id, _, nonce) =
-            create_signed_asset_passkey_full(&asset_id);
+        let bundle = data::signed_asset_passkey(&asset_id);
 
         // Verification should succeed
-        prop_assert!(signed_asset.verify().is_ok());
+        prop_assert!(bundle.signed_asset.verify().is_ok());
 
         // The asset's author_id should match the derived identity
-        prop_assert_eq!(asset.author_id(), &identity_id);
+        prop_assert_eq!(bundle.asset.author_id(), &bundle.identity_id);
 
         // The nonce should match
-        prop_assert_eq!(signed_asset.nonce(), &nonce);
+        prop_assert_eq!(bundle.signed_asset.nonce(), &bundle.nonce);
 
         // Identity ID should have RFC-001 prefix
-        prop_assert!(identity_id.as_str().starts_with("obj_"));
+        prop_assert!(bundle.identity_id.as_str().starts_with("obj_"));
 
         // Identity ID length should be in valid range (23-25 chars per RFC-001)
-        let id_len = identity_id.as_str().len();
+        let id_len = bundle.identity_id.as_str().len();
         prop_assert!(
             id_len >= 23 && id_len <= 25,
             "Identity ID length {} not in valid range [23, 25]",
