@@ -216,3 +216,18 @@ cargo build --workspace && cargo test --workspace && cargo clippy --workspace
 - Store private keys in logs or error messages
 - Make registry required for local asset verification
 - Use mainnet discovery topic (`/objects/mainnet/...`) - we're on devnet
+
+## Test Patterns
+
+**Cryptographic test data:**
+- Use proper encoding patterns for cryptographic data (hashes, challenges, keys)
+- Generate test data using `crypto::deterministic_bytes()` with `hex::encode()`, not string literals
+- Test data should mirror production data flow: bytes → encoding
+
+```rust
+// Good: Mirrors production (BLAKE3 outputs bytes, then hex-encoded)
+let content_hash = hex::encode(crypto::deterministic_bytes(42)); // 32 bytes → 64 hex chars
+
+// Bad: String literal doesn't reflect actual data flow
+let content_hash = "deadbeef".repeat(8);
+```
