@@ -17,7 +17,10 @@
 //! **Tier 1 - Identity:**
 //! - [`identity`] - Identity factories and test identities
 //!
-//! Higher-tier modules (data, transport, sync) will be added in subsequent PRs.
+//! **Tier 3 - Transport:**
+//! - [`transport`] - Network endpoints, configurations, and connection testing
+//!
+//! Higher-tier modules (data, sync) will be added in subsequent PRs.
 //!
 //! ## Quick Start
 //!
@@ -40,6 +43,7 @@
 pub mod crypto;
 pub mod identity;
 pub mod time;
+pub mod transport;
 
 // Re-export commonly used types for convenience
 pub use crypto::{PasskeyKeypair, WalletKeypair};

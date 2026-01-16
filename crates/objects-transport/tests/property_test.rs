@@ -2,9 +2,6 @@
 //!
 //! Tests invariants and validation rules that must hold for all inputs.
 
-mod common;
-
-use common::*;
 use objects_transport::{ALPN, DISCOVERY_TOPIC_DEVNET, NetworkConfig, SecretKey};
 use proptest::prelude::*;
 use std::time::Duration;

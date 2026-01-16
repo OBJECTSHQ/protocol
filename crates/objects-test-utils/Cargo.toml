@@ -13,3 +13,7 @@ rand.workspace = true
 
 # Tier 1: Identity
 objects-identity.workspace = true
+
+# Tier 3: Transport
+objects-transport.workspace = true
+tokio.workspace = true

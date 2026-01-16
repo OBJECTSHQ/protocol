@@ -2,14 +2,10 @@
 //!
 //! Tests the full lifecycle and cross-module integration of the transport layer.
 
-mod common;
-
-use common::*;
+use objects_test_utils::transport;
 use objects_transport::{
     ALPN, DEFAULT_RELAY_URL, DISCOVERY_TOPIC_DEVNET, NetworkConfig, NodeAddr, ObjectsEndpoint,
-    SecretKey,
 };
-use rstest::*;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -19,7 +15,7 @@ use std::time::Duration;
 
 #[tokio::test]
 async fn test_endpoint_creation_with_defaults() {
-    let endpoint = test_endpoint().await;
+    let endpoint = transport::endpoint().await;
 
     // Verify endpoint was created successfully
     let node_id = endpoint.node_id();
@@ -37,12 +33,12 @@ async fn test_endpoint_creation_with_defaults() {
 
 #[tokio::test]
 async fn test_endpoint_creation_with_custom_key() {
-    let secret_key = random_secret_key();
+    let secret_key = transport::secret_key();
     let expected_node_id = secret_key.public();
 
-    let endpoint = test_endpoint_with_key(secret_key.clone()).await;
+    let endpoint = transport::endpoint_with_key(secret_key.clone()).await;
 
-    assert_node_ids_match(&expected_node_id, &endpoint.node_id());
+    transport::assert_node_ids_match(&expected_node_id, &endpoint.node_id());
 }
 
 #[tokio::test]
@@ -51,7 +47,7 @@ async fn test_endpoint_with_custom_config() {
         .with_max_connections(5)
         .with_idle_timeout(Duration::from_secs(10));
 
-    let endpoint = test_endpoint_with_config(config).await;
+    let endpoint = transport::endpoint_with_config(config).await;
 
     // Verify endpoint uses the config
     assert!(!endpoint.node_id().to_string().is_empty());
@@ -59,7 +55,7 @@ async fn test_endpoint_with_custom_config() {
 
 #[tokio::test]
 async fn test_endpoint_node_addr_is_retrievable() {
-    let endpoint = test_endpoint().await;
+    let endpoint = transport::endpoint().await;
     let node_addr = endpoint.node_addr();
 
     // Node address should be retrievable and contain the node ID
@@ -93,7 +89,7 @@ async fn test_network_config_defaults() {
 async fn test_network_config_builder() {
     let relay_url: objects_transport::RelayUrl =
         "https://custom-relay.example.com".parse().unwrap();
-    let bootstrap_node = NodeAddr::new(SecretKey::generate(&mut rand::rng()).public());
+    let bootstrap_node = NodeAddr::new(transport::secret_key().public());
 
     let config = NetworkConfig::devnet()
         .with_relay_url(relay_url.clone())
@@ -114,11 +110,11 @@ async fn test_network_config_builder() {
 #[tokio::test]
 #[ignore = "Requires relay server or localhost network setup"]
 async fn test_two_endpoints_can_connect() {
-    let endpoint1 = test_endpoint().await;
-    let endpoint2 = test_endpoint().await;
+    let endpoint1 = transport::endpoint().await;
+    let endpoint2 = transport::endpoint().await;
 
     // Give endpoints time to bind and discover local addresses
-    short_wait().await;
+    transport::wait_short().await;
 
     // Get endpoint2's address with local addressing
     let mut addr2 = endpoint2.node_addr();
@@ -136,14 +132,14 @@ async fn test_two_endpoints_can_connect() {
         .expect("should connect successfully");
 
     // Verify connection properties
-    assert_node_ids_match(&endpoint2.node_id(), &conn.remote_node_id());
+    transport::assert_node_ids_match(&endpoint2.node_id(), &conn.remote_node_id());
 }
 
 #[tokio::test]
 #[ignore = "Requires relay server or localhost network setup"]
 async fn test_endpoint_can_accept_connection() {
-    let endpoint1 = test_endpoint().await;
-    let endpoint2 = test_endpoint().await;
+    let endpoint1 = transport::endpoint().await;
+    let endpoint2 = transport::endpoint().await;
 
     let addr1 = endpoint1.node_addr();
 
@@ -151,7 +147,7 @@ async fn test_endpoint_can_accept_connection() {
     let accept_handle = tokio::spawn(async move { endpoint1.accept().await });
 
     // Give accept time to start listening
-    short_wait().await;
+    transport::wait_short().await;
 
     // Connect from endpoint2
     let _conn = endpoint2
@@ -165,7 +161,7 @@ async fn test_endpoint_can_accept_connection() {
         .expect("accept task should complete")
         .expect("should accept connection");
 
-    assert_node_ids_match(&endpoint2.node_id(), &accepted_conn.remote_node_id());
+    transport::assert_node_ids_match(&endpoint2.node_id(), &accepted_conn.remote_node_id());
 }
 
 // ============================================================================
@@ -175,8 +171,8 @@ async fn test_endpoint_can_accept_connection() {
 #[tokio::test]
 #[ignore = "Requires relay server or localhost network setup"]
 async fn test_bidirectional_stream_communication() {
-    let endpoint1 = test_endpoint().await;
-    let endpoint2 = test_endpoint().await;
+    let endpoint1 = transport::endpoint().await;
+    let endpoint2 = transport::endpoint().await;
 
     let addr2 = endpoint2.node_addr();
 
@@ -186,7 +182,7 @@ async fn test_bidirectional_stream_communication() {
     // Accept on endpoint2
     let accept_handle = tokio::spawn(async move { endpoint2.accept().await });
 
-    short_wait().await;
+    transport::wait_short().await;
 
     let conn2 = accept_handle
         .await
@@ -237,8 +233,8 @@ async fn test_bidirectional_stream_communication() {
 #[tokio::test]
 #[ignore = "Requires relay server or localhost network setup"]
 async fn test_unidirectional_stream_communication() {
-    let endpoint1 = test_endpoint().await;
-    let endpoint2 = test_endpoint().await;
+    let endpoint1 = transport::endpoint().await;
+    let endpoint2 = transport::endpoint().await;
 
     let addr2 = endpoint2.node_addr();
 
@@ -248,7 +244,7 @@ async fn test_unidirectional_stream_communication() {
     // Accept on endpoint2
     let accept_handle = tokio::spawn(async move { endpoint2.accept().await });
 
-    short_wait().await;
+    transport::wait_short().await;
 
     let conn2 = accept_handle
         .await
@@ -283,8 +279,8 @@ async fn test_unidirectional_stream_communication() {
 #[tokio::test]
 #[ignore = "Requires relay server or localhost network setup"]
 async fn test_multiple_streams_on_same_connection() {
-    let endpoint1 = test_endpoint().await;
-    let endpoint2 = test_endpoint().await;
+    let endpoint1 = transport::endpoint().await;
+    let endpoint2 = transport::endpoint().await;
 
     let addr2 = endpoint2.node_addr();
 
@@ -294,7 +290,7 @@ async fn test_multiple_streams_on_same_connection() {
     // Accept on endpoint2
     let accept_handle = tokio::spawn(async move { endpoint2.accept().await });
 
-    short_wait().await;
+    transport::wait_short().await;
 
     let conn2 = Arc::new(
         accept_handle
@@ -362,8 +358,8 @@ async fn test_multiple_streams_on_same_connection() {
 #[tokio::test]
 #[ignore = "Requires relay server or localhost network setup"]
 async fn test_connection_close() {
-    let endpoint1 = test_endpoint().await;
-    let endpoint2 = test_endpoint().await;
+    let endpoint1 = transport::endpoint().await;
+    let endpoint2 = transport::endpoint().await;
 
     let addr2 = endpoint2.node_addr();
 
@@ -384,10 +380,10 @@ async fn test_connection_close() {
 
 #[tokio::test]
 async fn test_connect_to_invalid_address_fails() {
-    let endpoint = test_endpoint().await;
+    let endpoint = transport::endpoint().await;
 
     // Create an invalid node address (non-existent peer)
-    let invalid_secret = SecretKey::generate(&mut rand::rng());
+    let invalid_secret = transport::secret_key();
     let invalid_addr = NodeAddr::new(invalid_secret.public());
 
     // Attempt to connect should fail or timeout
@@ -448,7 +444,7 @@ async fn test_endpoint_builder_default() {
 
 #[tokio::test]
 async fn test_endpoint_builder_with_config() {
-    let config = test_config();
+    let config = transport::network_config();
     let endpoint = ObjectsEndpoint::builder()
         .config(config)
         .bind()
@@ -460,7 +456,7 @@ async fn test_endpoint_builder_with_config() {
 
 #[tokio::test]
 async fn test_endpoint_builder_with_secret_key() {
-    let secret_key = random_secret_key();
+    let secret_key = transport::secret_key();
     let expected_node_id = secret_key.public();
 
     let endpoint = ObjectsEndpoint::builder()
@@ -469,5 +465,5 @@ async fn test_endpoint_builder_with_secret_key() {
         .await
         .expect("should build with custom secret key");
 
-    assert_node_ids_match(&expected_node_id, &endpoint.node_id());
+    transport::assert_node_ids_match(&expected_node_id, &endpoint.node_id());
 }
