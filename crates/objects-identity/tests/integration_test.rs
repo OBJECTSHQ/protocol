@@ -385,7 +385,7 @@ fn test_message_format_link_wallet() {
 #[test]
 fn test_message_format_sign_asset() {
     let identity_id = objects_test_utils::identity::test_identity_id();
-    let content_hash = "deadbeef".repeat(8); // 64 hex chars
+    let content_hash = hex::encode(crypto::deterministic_bytes(42)); // 32 bytes → 64 hex chars
     let timestamp = time::now();
 
     let message = message::sign_asset_message(identity_id.as_str(), &content_hash, timestamp);
