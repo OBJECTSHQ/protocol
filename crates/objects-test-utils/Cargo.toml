@@ -19,3 +19,7 @@ objects-identity.workspace = true
 
 # Tier 2: Data
 objects-data.workspace = true
+
+# Tier 3: Transport
+objects-transport.workspace = true
+tokio.workspace = true

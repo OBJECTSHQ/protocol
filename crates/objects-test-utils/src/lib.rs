@@ -20,6 +20,11 @@
 //! **Tier 2 - Data:**
 //! - [`data`] - Asset, Project, Reference, and SignedAsset factories
 //!
+//! **Tier 3 - Transport:**
+//! - [`transport`] - Network endpoints, configurations, and connection testing
+//!
+//! Higher-tier modules (sync) will be added in subsequent PRs.
+//!
 //! ## Quick Start
 //!
 //! ```rust
@@ -42,6 +47,7 @@ pub mod crypto;
 pub mod data;
 pub mod identity;
 pub mod time;
+pub mod transport;
 
 // Re-export commonly used types for convenience
 pub use crypto::{PasskeyKeypair, WalletKeypair};
