@@ -1,0 +1,12 @@
+[package]
+name = "objects-test-utils"
+version.workspace = true
+edition.workspace = true
+description = "Shared test utilities for OBJECTS Protocol"
+
+[dependencies]
+# Crypto - Tier 0 only (no objects-* dependencies)
+p256.workspace = true
+k256.workspace = true
+hex.workspace = true
+rand.workspace = true
