@@ -2,7 +2,8 @@
 //!
 //! Tests invariants and validation rules that must hold for all inputs.
 
-use objects_transport::{ALPN, DISCOVERY_TOPIC_DEVNET, NetworkConfig, SecretKey};
+use objects_test_utils::transport;
+use objects_transport::{ALPN, DISCOVERY_TOPIC_DEVNET, NetworkConfig};
 use proptest::prelude::*;
 use std::time::Duration;
 
@@ -68,7 +69,7 @@ proptest! {
         let mut config = NetworkConfig::devnet();
 
         for _ in 0..count {
-            let node_addr = objects_transport::NodeAddr::new(SecretKey::generate(&mut rand::rng()).public());
+            let node_addr = objects_transport::NodeAddr::new(transport::secret_key().public());
             config = config.with_bootstrap_node(node_addr);
         }
 
@@ -84,7 +85,7 @@ proptest! {
     /// Property: Generated secret keys always produce valid public keys
     #[test]
     fn prop_secret_key_generates_valid_public_key(_seed in 0u64..1000) {
-        let secret_key = SecretKey::generate(&mut rand::rng());
+        let secret_key = transport::secret_key();
         let public_key = secret_key.public();
 
         // Public key should be convertible to string (valid format)
@@ -97,7 +98,7 @@ proptest! {
     /// Property: Same secret key always produces same public key (determinism)
     #[test]
     fn prop_secret_key_deterministic(_seed in 0u64..100) {
-        let secret_key = SecretKey::generate(&mut rand::rng());
+        let secret_key = transport::secret_key();
 
         let public_key1 = secret_key.public();
         let public_key2 = secret_key.public();
@@ -188,7 +189,7 @@ proptest! {
     /// Property: NodeAddr created from public key has correct node_id
     #[test]
     fn prop_node_addr_has_correct_id(_seed in 0u64..100) {
-        let secret_key = SecretKey::generate(&mut rand::rng());
+        let secret_key = transport::secret_key();
         let public_key = secret_key.public();
         let node_addr = objects_transport::NodeAddr::new(public_key);
 
@@ -233,7 +234,7 @@ proptest! {
     /// Property: Secret key to public key is deterministic
     #[test]
     fn prop_secret_to_public_deterministic(_seed in 0u64..100) {
-        let secret = SecretKey::generate(&mut rand::rng());
+        let secret = transport::secret_key();
 
         // Multiple calls should produce identical results
         let public1 = secret.public();
@@ -249,7 +250,7 @@ proptest! {
     /// Property: NodeAddr to string and back preserves node_id
     #[test]
     fn prop_node_addr_string_roundtrip(_seed in 0u64..100) {
-        let secret = SecretKey::generate(&mut rand::rng());
+        let secret = transport::secret_key();
         let public_key = secret.public();
         let node_addr = objects_transport::NodeAddr::new(public_key);
 

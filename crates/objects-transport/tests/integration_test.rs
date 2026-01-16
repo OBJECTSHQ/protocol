@@ -3,6 +3,7 @@
 //! Tests the full lifecycle and cross-module integration of the transport layer.
 
 use objects_test_utils::transport;
+use objects_test_utils::transport::assert_node_ids_match;
 use objects_transport::{
     ALPN, DEFAULT_RELAY_URL, DISCOVERY_TOPIC_DEVNET, NetworkConfig, NodeAddr, ObjectsEndpoint,
 };
@@ -38,7 +39,7 @@ async fn test_endpoint_creation_with_custom_key() {
 
     let endpoint = transport::endpoint_with_key(secret_key.clone()).await;
 
-    transport::assert_node_ids_match(&expected_node_id, &endpoint.node_id());
+    assert_node_ids_match(&expected_node_id, &endpoint.node_id());
 }
 
 #[tokio::test]
@@ -132,7 +133,7 @@ async fn test_two_endpoints_can_connect() {
         .expect("should connect successfully");
 
     // Verify connection properties
-    transport::assert_node_ids_match(&endpoint2.node_id(), &conn.remote_node_id());
+    assert_node_ids_match(&endpoint2.node_id(), &conn.remote_node_id());
 }
 
 #[tokio::test]
@@ -161,7 +162,7 @@ async fn test_endpoint_can_accept_connection() {
         .expect("accept task should complete")
         .expect("should accept connection");
 
-    transport::assert_node_ids_match(&endpoint2.node_id(), &accepted_conn.remote_node_id());
+    assert_node_ids_match(&endpoint2.node_id(), &accepted_conn.remote_node_id());
 }
 
 // ============================================================================
@@ -465,5 +466,5 @@ async fn test_endpoint_builder_with_secret_key() {
         .await
         .expect("should build with custom secret key");
 
-    transport::assert_node_ids_match(&expected_node_id, &endpoint.node_id());
+    assert_node_ids_match(&expected_node_id, &endpoint.node_id());
 }
