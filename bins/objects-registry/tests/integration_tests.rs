@@ -2,8 +2,6 @@
 //!
 //! These tests use sqlx::test to run against a real PostgreSQL database.
 
-use std::time::{SystemTime, UNIX_EPOCH};
-
 use alloy_primitives::keccak256;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
@@ -13,34 +11,18 @@ use base64::{
 };
 use http_body_util::BodyExt;
 use k256::ecdsa::SigningKey as K256SigningKey;
+use k256::ecdsa::signature::Signer as _;
 use objects_identity::IdentityId;
 use objects_registry::api::rest::handlers::AppState;
 use objects_registry::api::rest::routes::create_router;
 use objects_registry::api::rest::types::*;
 use objects_registry::config::Config;
-use p256::ecdsa::{SigningKey as P256SigningKey, signature::Signer as _};
-use rand_core::OsRng;
+use objects_test_utils::{crypto, time};
+use p256::ecdsa::SigningKey as P256SigningKey;
+use p256::ecdsa::signature::Signer as _;
 use sha2::{Digest, Sha256};
 use sqlx::{ConnectOptions, PgPool};
 use tower::ServiceExt;
-
-/// Helper: Generate test passkey signing key
-fn test_passkey_key() -> P256SigningKey {
-    P256SigningKey::random(&mut OsRng)
-}
-
-/// Helper: Generate test wallet signing key
-fn test_wallet_key() -> K256SigningKey {
-    K256SigningKey::random(&mut OsRng)
-}
-
-/// Helper: Get current Unix timestamp in seconds
-fn current_timestamp() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs()
-}
 
 /// Helper: Create passkey signature for create identity message
 fn sign_create_identity_passkey(
@@ -150,7 +132,7 @@ async fn test_create_identity_with_passkey(pool: PgPool) {
 
     // Generate passkey and derive identity
     let nonce = rand::random::<[u8; 8]>();
-    let signing_key = test_passkey_key();
+    let signing_key = crypto::passkey_keypair().signing_key;
     let public_key: [u8; 33] = signing_key
         .verifying_key()
         .to_encoded_point(true)
@@ -160,7 +142,7 @@ async fn test_create_identity_with_passkey(pool: PgPool) {
     let identity_id = IdentityId::derive(&public_key, &nonce);
 
     let handle = "alice";
-    let timestamp = current_timestamp();
+    let timestamp = time::now();
     let signature =
         sign_create_identity_passkey(&signing_key, identity_id.as_str(), handle, timestamp);
 
@@ -200,7 +182,7 @@ async fn test_create_identity_with_wallet(pool: PgPool) {
 
     // Generate wallet and derive identity
     let nonce = rand::random::<[u8; 8]>();
-    let signing_key = test_wallet_key();
+    let signing_key = crypto::wallet_keypair().signing_key;
     let public_key: [u8; 33] = signing_key
         .verifying_key()
         .to_encoded_point(true)
@@ -210,7 +192,7 @@ async fn test_create_identity_with_wallet(pool: PgPool) {
     let identity_id = IdentityId::derive(&public_key, &nonce);
 
     let handle = "bob";
-    let timestamp = current_timestamp();
+    let timestamp = time::now();
     let (signature, _address) =
         sign_create_identity_wallet(&signing_key, identity_id.as_str(), handle, timestamp);
 
@@ -250,7 +232,7 @@ async fn test_create_identity_duplicate_handle(pool: PgPool) {
 
     // Create first identity with handle "alice"
     let nonce1 = rand::random::<[u8; 8]>();
-    let signing_key1 = test_passkey_key();
+    let signing_key1 = crypto::passkey_keypair().signing_key;
     let public_key1: [u8; 33] = signing_key1
         .verifying_key()
         .to_encoded_point(true)
@@ -260,7 +242,7 @@ async fn test_create_identity_duplicate_handle(pool: PgPool) {
     let identity_id1 = IdentityId::derive(&public_key1, &nonce1);
 
     let handle = "alice";
-    let timestamp = current_timestamp();
+    let timestamp = time::now();
     let signature1 =
         sign_create_identity_passkey(&signing_key1, identity_id1.as_str(), handle, timestamp);
 
@@ -290,7 +272,7 @@ async fn test_create_identity_duplicate_handle(pool: PgPool) {
 
     // Try to create second identity with same handle "alice"
     let nonce2 = rand::random::<[u8; 8]>();
-    let signing_key2 = test_passkey_key();
+    let signing_key2 = crypto::passkey_keypair().signing_key;
     let public_key2: [u8; 33] = signing_key2
         .verifying_key()
         .to_encoded_point(true)
@@ -333,7 +315,7 @@ async fn test_resolve_identity_by_handle(pool: PgPool) {
 
     // Create identity with handle "alice"
     let nonce = rand::random::<[u8; 8]>();
-    let signing_key = test_passkey_key();
+    let signing_key = crypto::passkey_keypair().signing_key;
     let public_key: [u8; 33] = signing_key
         .verifying_key()
         .to_encoded_point(true)
@@ -343,7 +325,7 @@ async fn test_resolve_identity_by_handle(pool: PgPool) {
     let identity_id = IdentityId::derive(&public_key, &nonce);
 
     let handle = "alice";
-    let timestamp = current_timestamp();
+    let timestamp = time::now();
     let signature =
         sign_create_identity_passkey(&signing_key, identity_id.as_str(), handle, timestamp);
 

@@ -5,15 +5,10 @@
 use objects_identity::IdentityId;
 use objects_registry::db::{IdentityRow, insert_identity, signer_type_to_i16};
 use objects_registry::error::RegistryError;
+use objects_test_utils::crypto;
 use p256::ecdsa::SigningKey as P256SigningKey;
-use rand_core::OsRng;
 use sqlx::PgPool;
 use tokio::task::JoinSet;
-
-/// Helper: Generate test passkey signing key
-fn test_passkey_key() -> P256SigningKey {
-    P256SigningKey::random(&mut OsRng)
-}
 
 #[sqlx::test]
 async fn test_concurrent_identity_creation_with_same_handle(pool: PgPool) {
@@ -25,7 +20,7 @@ async fn test_concurrent_identity_creation_with_same_handle(pool: PgPool) {
 
     for _i in 0..10 {
         let pool = pool.clone();
-        let signing_key = test_passkey_key();
+        let signing_key = crypto::passkey_keypair().signing_key;
         let public_key: [u8; 33] = signing_key
             .verifying_key()
             .to_encoded_point(true)
@@ -73,7 +68,7 @@ async fn test_concurrent_identity_creation_with_same_id(pool: PgPool) {
     // Spawn 10 tasks trying to create identity with same ID concurrently
     // Exactly 1 should succeed, 9 should fail with DuplicateId
 
-    let signing_key = test_passkey_key();
+    let signing_key = crypto::passkey_keypair().signing_key;
     let public_key: [u8; 33] = signing_key
         .verifying_key()
         .to_encoded_point(true)
@@ -127,7 +122,7 @@ async fn test_concurrent_identity_creation_with_same_id(pool: PgPool) {
 #[sqlx::test]
 async fn test_concurrent_wallet_linking(pool: PgPool) {
     // Create 2 identities
-    let signing_key1 = test_passkey_key();
+    let signing_key1 = crypto::passkey_keypair().signing_key;
     let public_key1: [u8; 33] = signing_key1
         .verifying_key()
         .to_encoded_point(true)
@@ -137,7 +132,7 @@ async fn test_concurrent_wallet_linking(pool: PgPool) {
     let nonce1 = rand::random::<[u8; 8]>();
     let identity_id1 = IdentityId::derive(&public_key1, &nonce1);
 
-    let signing_key2 = test_passkey_key();
+    let signing_key2 = crypto::passkey_keypair().signing_key;
     let public_key2: [u8; 33] = signing_key2
         .verifying_key()
         .to_encoded_point(true)

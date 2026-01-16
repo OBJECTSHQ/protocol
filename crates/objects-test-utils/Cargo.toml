@@ -23,3 +23,7 @@ objects-data.workspace = true
 # Tier 3: Transport
 objects-transport.workspace = true
 tokio.workspace = true
+
+# Tier 4: Sync
+objects-sync.workspace = true
+anyhow.workspace = true
