@@ -17,10 +17,13 @@
 //! **Tier 1 - Identity:**
 //! - [`identity`] - Identity factories and test identities
 //!
+//! **Tier 2 - Data:**
+//! - [`data`] - Asset, Project, Reference, and SignedAsset factories
+//!
 //! **Tier 3 - Transport:**
 //! - [`transport`] - Network endpoints, configurations, and connection testing
 //!
-//! Higher-tier modules (data, sync) will be added in subsequent PRs.
+//! Higher-tier modules (sync) will be added in subsequent PRs.
 //!
 //! ## Quick Start
 //!
@@ -41,10 +44,12 @@
 //! ```
 
 pub mod crypto;
+pub mod data;
 pub mod identity;
 pub mod time;
 pub mod transport;
 
 // Re-export commonly used types for convenience
 pub use crypto::{PasskeyKeypair, WalletKeypair};
+pub use data::{SignedAssetPasskeyBundle, SignedAssetWalletBundle};
 pub use identity::{RandomPasskeyIdentity, RandomWalletIdentity};
