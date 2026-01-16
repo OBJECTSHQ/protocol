@@ -45,6 +45,10 @@ pub fn now() -> u64 {
 ///
 /// Useful for creating future expiry times in tests.
 ///
+/// # Panics
+///
+/// Panics if `now() + offset_secs` would overflow `u64::MAX`.
+///
 /// # Examples
 ///
 /// ```rust
@@ -53,7 +57,9 @@ pub fn now() -> u64 {
 /// let one_hour_from_now = future_timestamp(3600);
 /// ```
 pub fn future_timestamp(offset_secs: u64) -> u64 {
-    now() + offset_secs
+    now()
+        .checked_add(offset_secs)
+        .expect("timestamp overflow: offset too large")
 }
 
 #[cfg(test)]

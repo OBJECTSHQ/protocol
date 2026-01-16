@@ -6,15 +6,7 @@ description = "Shared test utilities for OBJECTS Protocol"
 
 [dependencies]
 # Crypto - Tier 0 only (no objects-* dependencies)
-p256 = "0.13"
-k256 = "0.13"
-sha2 = "0.10"
-blake3 = "1.5"
-hex = "0.4"
-
-# Random
-rand = "0.8"
-
-[dev-dependencies]
-# For testing the utilities themselves
-hex = "0.4"
+p256.workspace = true
+k256.workspace = true
+hex.workspace = true
+rand.workspace = true

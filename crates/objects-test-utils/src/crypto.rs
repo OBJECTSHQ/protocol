@@ -140,24 +140,27 @@ pub fn encryption_key() -> [u8; 32] {
     key
 }
 
-/// Generate a test hash from a seed value for deterministic testing.
+/// Generate deterministic test bytes from a seed value.
 ///
-/// Creates a predictable 32-byte hash based on the seed, useful for tests
-/// that need consistent but distinct hash values.
+/// Creates a predictable 32-byte array based on the seed. **This is NOT a
+/// cryptographic hash function** - it simply generates deterministic bytes
+/// for testing. For actual hashing, use `sha2` or `blake3` crates.
+///
+/// Useful for tests that need consistent but distinct byte arrays.
 ///
 /// # Examples
 ///
 /// ```rust
-/// use objects_test_utils::crypto::test_hash;
+/// use objects_test_utils::crypto::deterministic_bytes;
 ///
-/// let hash1 = test_hash(42);
-/// let hash2 = test_hash(42);
-/// assert_eq!(hash1, hash2); // Same seed produces same hash
+/// let bytes1 = deterministic_bytes(42);
+/// let bytes2 = deterministic_bytes(42);
+/// assert_eq!(bytes1, bytes2); // Same seed produces same bytes
 ///
-/// let hash3 = test_hash(99);
-/// assert_ne!(hash1, hash3); // Different seeds produce different hashes
+/// let bytes3 = deterministic_bytes(99);
+/// assert_ne!(bytes1, bytes3); // Different seeds produce different bytes
 /// ```
-pub fn test_hash(seed: u8) -> [u8; 32] {
+pub fn deterministic_bytes(seed: u8) -> [u8; 32] {
     let mut bytes = [0u8; 32];
     bytes[0] = seed;
     // Fill with predictable pattern
@@ -202,12 +205,12 @@ mod tests {
     }
 
     #[test]
-    fn test_hash_is_deterministic() {
-        let hash1 = test_hash(42);
-        let hash2 = test_hash(42);
-        assert_eq!(hash1, hash2);
+    fn test_deterministic_bytes_is_deterministic() {
+        let bytes1 = deterministic_bytes(42);
+        let bytes2 = deterministic_bytes(42);
+        assert_eq!(bytes1, bytes2);
 
-        let hash3 = test_hash(99);
-        assert_ne!(hash1, hash3);
+        let bytes3 = deterministic_bytes(99);
+        assert_ne!(bytes1, bytes3);
     }
 }

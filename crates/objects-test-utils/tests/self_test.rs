@@ -69,15 +69,15 @@ fn test_encryption_keys_are_unique() {
 }
 
 #[test]
-fn test_hash_is_deterministic() {
-    let hash1 = crypto::test_hash(42);
-    let hash2 = crypto::test_hash(42);
-    assert_eq!(hash1, hash2, "same seed should produce same hash");
+fn test_deterministic_bytes_is_deterministic() {
+    let bytes1 = crypto::deterministic_bytes(42);
+    let bytes2 = crypto::deterministic_bytes(42);
+    assert_eq!(bytes1, bytes2, "same seed should produce same bytes");
 
-    let hash3 = crypto::test_hash(99);
+    let bytes3 = crypto::deterministic_bytes(99);
     assert_ne!(
-        hash1, hash3,
-        "different seeds should produce different hashes"
+        bytes1, bytes3,
+        "different seeds should produce different bytes"
     );
 }
 
