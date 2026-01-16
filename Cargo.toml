@@ -17,6 +17,7 @@ objects-identity = { path = "crates/objects-identity" }
 objects-transport = { path = "crates/objects-transport" }
 objects-sync = { path = "crates/objects-sync" }
 objects-data = { path = "crates/objects-data" }
+objects-test-utils = { path = "crates/objects-test-utils" }
 
 # Iroh
 iroh = "0.95.1"
