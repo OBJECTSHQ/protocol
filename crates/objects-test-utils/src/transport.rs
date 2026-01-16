@@ -36,6 +36,7 @@ use std::time::Duration;
 ///
 /// ```rust
 /// use objects_test_utils::transport;
+/// use std::time::Duration;
 ///
 /// let config = transport::network_config()
 ///     .with_max_connections(10)
