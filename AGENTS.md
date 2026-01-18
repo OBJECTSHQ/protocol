@@ -52,13 +52,73 @@ cargo upgrade                           # Update Cargo.toml versions (cargo-edit
 
 ```bash
 cargo fmt --all
-git add -u
-git commit -m "your message"
+/jj:commit "your message"
 ```
 
-**Recommended setup:**
-- Configure your editor to format on save
-- Optional: Set up a pre-commit git hook to enforce formatting
+**Formatting is automatic:**
+- Code is formatted on save in most editors
+- Use `cargo fmt --all` before commits to ensure consistency
+- Jujutsu hooks automatically track file changes
+
+## Version Control (Jujutsu)
+
+**This project uses Jujutsu (jj)** for version control with autonomous commit stacking and curation.
+
+**Available commands:**
+```bash
+# Commit workflow
+/jj:commit                          # Auto-generate message from changed files
+/jj:commit "feat: add user auth"    # Stack commit with custom message
+
+# Curation
+/jj:squash                          # Merge current commit into parent
+/jj:squash abc123                   # Merge specific revision
+/jj:split test                      # Split tests into separate commit
+/jj:split docs                      # Split documentation
+/jj:split "*.md"                    # Split by glob pattern
+
+# Pull requests
+jj spr diff                         # Create or update PR from current commit
+jj spr list                         # List open PRs and review status
+jj spr land                         # Merge PR after approval and clean up
+jj spr amend                        # Update commit message from GitHub PR
+jj spr close                        # Close PR without merging
+
+# Maintenance
+/jj:cleanup                         # Remove empty workspaces
+
+# Manual operations (when needed)
+jj log                              # View commit history
+jj diff                             # See current changes
+jj undo                             # Undo last operation
+```
+
+**Workflow philosophy:**
+1. **Implementation phase:** Make messy commits frequently as you work (`/jj:commit`)
+2. **Curation phase:** Clean up before review using `/jj:split` and `/jj:squash`
+3. **PR submission:** Submit curated commits with `jj spr diff`
+4. **Everything is undoable:** Use `jj undo` to reverse any operation
+
+**When agents should commit:**
+- After implementing a logical unit of work (even if messy)
+- After adding tests for a feature
+- After fixing a bug or adding documentation
+- Use `/jj:commit` without message for auto-generated commit messages
+
+**When agents should curate:**
+- Before requesting code review
+- When commits mix concerns (implementation + tests + docs)
+- Use `/jj:split test` to separate tests from implementation
+- Use `/jj:squash` to merge WIP/fixup commits
+
+**When agents should create PRs:**
+- After curating commits into clean, focused history
+- When a feature/fix is complete and ready for review
+- **CRITICAL:** Ensure commit has a description before running `jj spr diff`
+  - Undescribed commits cause `jj spr diff` to create PRs from the parent commit
+  - Use `/jj:commit "message"` or `jj describe -m "message"` first
+- Commit message becomes PR title/description automatically
+- After PR approval, use `jj spr land` to merge and clean up
 
 ## Architecture
 
@@ -79,60 +139,6 @@ proto/
 ```
 
 **Dependency order:** identity → data → transport → sync → node/cli
-
-## Identity Protocol (RFC-001)
-
-Identity ID derivation:
-```
-identity_id = "obj_" || base58(truncate(sha256(signer_public_key || nonce), 15))
-```
-
-- `signer_public_key`: 33 bytes, compressed SEC1 format
-- `nonce`: 8 bytes, cryptographically random
-- Result: 23-25 characters (`obj_` + 19-21 base58)
-
-**Test vector:**
-```
-Input:
-  signer_public_key: 02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5
-  nonce: 0102030405060708
-Derivation:
-  sha256: 3a26513646a95b6cefac3cbe0a6b8053401956aaaa4c374e1f83521be5ab0a1f
-  truncated: 3a26513646a95b6cefac3cbe0a6b80
-  base58: 2dMiYc8RhnYkorPc5pVh9
-Output:
-  identity_id: obj_2dMiYc8RhnYkorPc5pVh9
-```
-
-**Handle rules:** 1-30 chars, lowercase alphanumeric + underscore + period, no leading `_` or `.`, no trailing `.`, no consecutive `..`
-
-**Signer types:** PASSKEY (secp256r1/P-256), WALLET (secp256k1 + EIP-712)
-
-## SignedAsset Verification
-
-SignedAsset must include nonce for author_id derivation verification:
-
-```rust
-pub struct SignedAsset {
-    pub asset: Asset,
-    pub signature: Signature,
-    pub nonce: [u8; 8],  // Required for author_id verification
-}
-```
-
-Verification steps:
-1. Verify signature over message using signer public key
-2. Derive identity_id from signature.public_key + nonce
-3. Confirm derived ID matches asset.author_id
-
-## Storage Conventions
-
-Entry key format for Sync layer:
-```
-/project                    → Project metadata
-/assets/{id}                → Asset record
-/refs/{id}                  → Reference record
-```
 
 ## Dependencies
 
@@ -201,7 +207,7 @@ cargo build --workspace && cargo test --workspace && cargo clippy --workspace
 
 **Always:**
 - Verify signatures locally (no registry dependency for asset verification)
-- Use test vectors from RFC-001 Appendix B for identity tests
+- Use test utilities from `objects-test-utils` for canonical test vectors
 - Include nonce in SignedAsset for author_id derivation
 - Use BLAKE3 for content hashes, SHA-256 for identity derivation
 - Use well-tested libraries for cryptographic operations
@@ -226,7 +232,7 @@ use objects_test_utils::{crypto, identity, data};
 
 #[test]
 fn my_test() {
-    let id = identity::test_identity_id();  // RFC-001 canonical vector
+    let id = identity::test_identity_id();  // Canonical test vector
     let bundle = data::signed_asset_passkey("asset-123");
     assert!(bundle.signed_asset.verify().is_ok());
 }
@@ -235,7 +241,7 @@ fn my_test() {
 **Available modules:**
 - `crypto` - Keypairs, nonces, encryption keys, deterministic test data
 - `time` - Timestamps and time utilities
-- `identity` - Identity factories and RFC-001 test vectors
+- `identity` - Identity factories and canonical test vectors
 - `data` - Asset, Project, Reference, SignedAsset factories
 - `transport` - Endpoint and network config factories
 - `sync` - SyncEngine utilities
