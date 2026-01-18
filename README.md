@@ -16,7 +16,6 @@ Data is stored locally and synced peer-to-peer over QUIC with automatic hole-pun
 
 - **Identity** — Passkey and wallet-based identities with human-readable handles
 - **Sync** — Content-addressed blob transfer with BLAKE3 verification
-- **Metadata** — Replicated key-value store with set reconciliation
 - **Offline-first** — Work independently, sync when connected
 - **End-to-end Encrypted** — All data and communications encrypted by default
 
