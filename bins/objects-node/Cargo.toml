@@ -28,6 +28,9 @@ url.workspace = true
 anyhow.workspace = true
 thiserror.workspace = true
 
+# Random number generation
+rand.workspace = true
+
 # Logging
 tracing.workspace = true
 tracing-subscriber.workspace = true
@@ -35,5 +38,4 @@ tracing-subscriber.workspace = true
 [dev-dependencies]
 tempfile.workspace = true
 temp-env = "0.3"
-rand.workspace = true
 objects-test-utils.workspace = true
