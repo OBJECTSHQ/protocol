@@ -1,5 +1,7 @@
 //! Node daemon for OBJECTS Protocol.
 
+pub mod config;
+
 use tracing::info;
 
 #[tokio::main]
