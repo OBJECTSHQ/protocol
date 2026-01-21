@@ -1,6 +1,7 @@
 //! Node daemon for OBJECTS Protocol.
 
 pub mod config;
+pub mod state;
 
 use tracing::info;
 

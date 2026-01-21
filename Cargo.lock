@@ -3983,6 +3983,7 @@ dependencies = [
  "objects-identity",
  "objects-sync",
  "objects-transport",
+ "rand 0.9.2",
  "serde",
  "serde_json",
  "temp-env",
