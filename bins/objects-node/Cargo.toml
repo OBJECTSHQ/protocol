@@ -19,10 +19,17 @@ futures.workspace = true
 # Serialization
 serde.workspace = true
 serde_json.workspace = true
+toml = "0.8"
 
 # Error handling
 anyhow.workspace = true
+thiserror.workspace = true
 
 # Logging
 tracing.workspace = true
 tracing-subscriber.workspace = true
+
+[dev-dependencies]
+tempfile = "3"
+temp-env = "0.3"
+rand.workspace = true
