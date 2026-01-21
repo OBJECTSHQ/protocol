@@ -79,21 +79,23 @@ impl NodeConfig {
     pub fn load_or_create(path: &Path) -> Result<Self> {
         tracing::debug!(path = %path.display(), "Loading or creating configuration");
 
-        if path.exists() {
+        let mut config = if path.exists() {
             tracing::debug!(path = %path.display(), "Configuration file exists, loading");
-            let mut config = Self::load(path)?;
-            config.apply_env_overrides();
-            config.validate()?;
-            Ok(config)
+            Self::load(path)?
         } else {
             tracing::info!(path = %path.display(), "Configuration file doesn't exist, creating with defaults");
-            let mut config = Self::default();
-            config.apply_env_overrides();
-            config.validate()?;
+            Self::default()
+        };
+
+        config.apply_env_overrides();
+        config.validate()?;
+
+        if !path.exists() {
             config.save(path)?;
             tracing::info!(path = %path.display(), "Created configuration file");
-            Ok(config)
         }
+
+        Ok(config)
     }
 
     /// Load configuration from a TOML file.
