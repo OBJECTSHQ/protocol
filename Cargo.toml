@@ -83,5 +83,9 @@ wiremock = "0.6"
 serde_test = "1"
 tempfile = "3"
 
+# Config
+toml = "0.8"
+url = "2"
+
 # Build
 prost-build = "0.14"
