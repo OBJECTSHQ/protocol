@@ -36,3 +36,4 @@ tracing-subscriber.workspace = true
 tempfile.workspace = true
 temp-env = "0.3"
 rand.workspace = true
+objects-test-utils.workspace = true
