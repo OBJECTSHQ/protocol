@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::net::IpAddr;
 use std::path::Path;
 use thiserror::Error;
+use url::Url;
 
 /// Errors that can occur during configuration loading and validation.
 #[derive(Debug, Error)]
@@ -60,9 +61,14 @@ impl NodeConfig {
     ///
     /// Starts with default values and applies environment variable overrides.
     pub fn from_env() -> Result<Self> {
+        tracing::debug!("Loading configuration from environment variables");
         let mut config = Self::default();
         config.apply_env_overrides();
-        config.validate()?;
+        config.validate().map_err(|e| {
+            tracing::error!(error = %e, "Configuration validation failed");
+            e
+        })?;
+        tracing::info!("Successfully loaded configuration from environment");
         Ok(config)
     }
 
@@ -71,16 +77,21 @@ impl NodeConfig {
     /// If the file exists, it is loaded and environment variables are applied as overrides.
     /// If the file doesn't exist, a default configuration is created and saved to the file.
     pub fn load_or_create(path: &Path) -> Result<Self> {
+        tracing::debug!(path = %path.display(), "Loading or creating configuration");
+
         if path.exists() {
+            tracing::debug!(path = %path.display(), "Configuration file exists, loading");
             let mut config = Self::load(path)?;
             config.apply_env_overrides();
             config.validate()?;
             Ok(config)
         } else {
+            tracing::info!(path = %path.display(), "Configuration file doesn't exist, creating with defaults");
             let mut config = Self::default();
             config.apply_env_overrides();
             config.validate()?;
             config.save(path)?;
+            tracing::info!(path = %path.display(), "Created configuration file");
             Ok(config)
         }
     }
@@ -89,8 +100,19 @@ impl NodeConfig {
     ///
     /// Returns an error if the file doesn't exist.
     pub fn load(path: &Path) -> Result<Self> {
-        let contents = std::fs::read_to_string(path)?;
-        let config: Self = toml::from_str(&contents)?;
+        tracing::debug!(path = %path.display(), "Loading configuration from file");
+
+        let contents = std::fs::read_to_string(path).map_err(|e| {
+            tracing::error!(path = %path.display(), error = %e, "Failed to read configuration file");
+            ConfigError::IoError(e)
+        })?;
+
+        let config: Self = toml::from_str(&contents).map_err(|e| {
+            tracing::error!(path = %path.display(), error = %e, "Failed to parse TOML configuration");
+            ConfigError::ParseError(e)
+        })?;
+
+        tracing::debug!(path = %path.display(), "Successfully loaded configuration from file");
         Ok(config)
     }
 
@@ -98,15 +120,27 @@ impl NodeConfig {
     ///
     /// Creates parent directories if they don't exist.
     pub fn save(&self, path: &Path) -> Result<()> {
+        tracing::debug!(path = %path.display(), "Saving configuration to file");
+
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
+            tracing::debug!(parent = %parent.display(), "Creating parent directories");
+            std::fs::create_dir_all(parent).map_err(|e| {
+                tracing::error!(parent = %parent.display(), error = %e, "Failed to create parent directories");
+                ConfigError::IoError(e)
+            })?;
         }
 
         let contents = toml::to_string_pretty(self).map_err(|e| {
+            tracing::error!(path = %path.display(), error = %e, "Failed to serialize configuration to TOML");
             ConfigError::ValidationError(format!("Failed to serialize config: {}", e))
         })?;
 
-        std::fs::write(path, contents)?;
+        std::fs::write(path, &contents).map_err(|e| {
+            tracing::error!(path = %path.display(), error = %e, "Failed to write configuration file");
+            ConfigError::IoError(e)
+        })?;
+
+        tracing::info!(path = %path.display(), "Successfully saved configuration");
         Ok(())
     }
 
@@ -115,9 +149,12 @@ impl NodeConfig {
     /// Checks:
     /// - API port is in valid range (1024-65535)
     /// - API bind address is a valid IP address
-    /// - Relay URL uses HTTPS
-    /// - Discovery topic matches RFC-002 format
+    /// - Relay URL is valid and uses HTTPS
+    /// - Registry URL is valid and uses HTTPS
+    /// - Discovery topic follows `/objects/{network}/{version}/discovery` format
     pub fn validate(&self) -> Result<()> {
+        tracing::debug!("Validating configuration");
+
         // Validate API port
         if self.node.api_port < 1024 {
             return Err(ConfigError::ValidationError(format!(
@@ -131,11 +168,58 @@ impl NodeConfig {
             ConfigError::ValidationError(format!("Invalid API bind address: {}", e))
         })?;
 
-        // Validate relay URL uses HTTPS
-        if !self.network.relay_url.starts_with("https://") {
-            return Err(ConfigError::ValidationError(
-                "Relay URL must use HTTPS".to_string(),
-            ));
+        // Validate relay URL
+        let relay_url = self.network.relay_url.parse::<Url>().map_err(|e| {
+            ConfigError::ValidationError(format!(
+                "Invalid relay URL '{}': {}",
+                self.network.relay_url, e
+            ))
+        })?;
+        if relay_url.scheme() != "https" {
+            return Err(ConfigError::ValidationError(format!(
+                "Relay URL must use HTTPS, got: {}",
+                self.network.relay_url
+            )));
+        }
+        // Validate relay URL has a valid, non-empty host
+        let host = relay_url.host_str().ok_or_else(|| {
+            ConfigError::ValidationError(format!(
+                "Relay URL missing host: {}",
+                self.network.relay_url
+            ))
+        })?;
+        if host.is_empty() || host == "." {
+            return Err(ConfigError::ValidationError(format!(
+                "Relay URL has invalid host: {}",
+                self.network.relay_url
+            )));
+        }
+
+        // Validate registry URL
+        let registry_url = self.identity.registry_url.parse::<Url>().map_err(|e| {
+            ConfigError::ValidationError(format!(
+                "Invalid registry URL '{}': {}",
+                self.identity.registry_url, e
+            ))
+        })?;
+        if registry_url.scheme() != "https" {
+            return Err(ConfigError::ValidationError(format!(
+                "Registry URL must use HTTPS, got: {}",
+                self.identity.registry_url
+            )));
+        }
+        // Validate registry URL has a valid, non-empty host
+        let host = registry_url.host_str().ok_or_else(|| {
+            ConfigError::ValidationError(format!(
+                "Registry URL missing host: {}",
+                self.identity.registry_url
+            ))
+        })?;
+        if host.is_empty() || host == "." {
+            return Err(ConfigError::ValidationError(format!(
+                "Registry URL has invalid host: {}",
+                self.identity.registry_url
+            )));
         }
 
         // Validate discovery topic format
@@ -148,32 +232,55 @@ impl NodeConfig {
             )));
         }
 
+        tracing::debug!("Configuration validation passed");
         Ok(())
     }
 
     /// Apply environment variable overrides to configuration.
     ///
     /// Supported environment variables:
-    /// - `OBJECTS_DATA_DIR`
-    /// - `OBJECTS_API_PORT`
-    /// - `OBJECTS_RELAY_URL`
-    /// - `OBJECTS_REGISTRY_URL`
+    /// - `OBJECTS_DATA_DIR` - Overrides node.data_dir
+    /// - `OBJECTS_API_PORT` - Overrides node.api_port (invalid values logged and ignored)
+    /// - `OBJECTS_RELAY_URL` - Overrides network.relay_url
+    /// - `OBJECTS_REGISTRY_URL` - Overrides identity.registry_url
+    ///
+    /// Invalid port values are logged as warnings and the default value is retained.
+    /// All overrides are logged at debug level. Validation occurs after overrides are applied.
     fn apply_env_overrides(&mut self) {
         if let Ok(data_dir) = std::env::var("OBJECTS_DATA_DIR") {
+            tracing::debug!(env_var = "OBJECTS_DATA_DIR", value = %data_dir, "Applying environment override");
             self.node.data_dir = data_dir;
         }
 
-        if let Ok(api_port) = std::env::var("OBJECTS_API_PORT")
-            && let Ok(port) = api_port.parse::<u16>()
-        {
-            self.node.api_port = port;
+        if let Ok(api_port_str) = std::env::var("OBJECTS_API_PORT") {
+            match api_port_str.parse::<u16>() {
+                Ok(port) => {
+                    tracing::debug!(
+                        env_var = "OBJECTS_API_PORT",
+                        value = port,
+                        "Applying environment override"
+                    );
+                    self.node.api_port = port;
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        env_var = "OBJECTS_API_PORT",
+                        value = %api_port_str,
+                        error = %e,
+                        default_port = self.node.api_port,
+                        "Invalid port number in environment variable, using default"
+                    );
+                }
+            }
         }
 
         if let Ok(relay_url) = std::env::var("OBJECTS_RELAY_URL") {
+            tracing::debug!(env_var = "OBJECTS_RELAY_URL", value = %relay_url, "Applying environment override");
             self.network.relay_url = relay_url;
         }
 
         if let Ok(registry_url) = std::env::var("OBJECTS_REGISTRY_URL") {
+            tracing::debug!(env_var = "OBJECTS_REGISTRY_URL", value = %registry_url, "Applying environment override");
             self.identity.registry_url = registry_url;
         }
     }
@@ -417,6 +524,77 @@ mod tests {
         let result = config.validate();
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("must use HTTPS"));
+    }
+
+    #[test]
+    fn test_validation_malformed_relay_url() {
+        let test_cases = vec![
+            ("https://", "empty host"),
+            ("https://.", "invalid host"),
+            ("not-a-url", "malformed URL"),
+            ("https:// spaces", "spaces in URL"),
+            ("", "empty string"),
+        ];
+
+        for (invalid_url, description) in test_cases {
+            let mut config = NodeConfig::default();
+            config.network.relay_url = invalid_url.to_string();
+
+            let result = config.validate();
+            assert!(
+                result.is_err(),
+                "Expected validation to fail for {}: {}",
+                description,
+                invalid_url
+            );
+            let error_msg = result.unwrap_err().to_string();
+            assert!(
+                error_msg.contains("relay URL") || error_msg.contains("Relay URL"),
+                "Expected error message about relay URL for {}, got: {}",
+                description,
+                error_msg
+            );
+        }
+    }
+
+    #[test]
+    fn test_validation_non_https_registry() {
+        let mut config = NodeConfig::default();
+        config.identity.registry_url = "http://insecure.registry.com".to_string();
+
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("must use HTTPS"));
+    }
+
+    #[test]
+    fn test_validation_malformed_registry_url() {
+        let test_cases = vec![
+            ("https://", "empty host"),
+            ("https://.", "invalid host"),
+            ("not-a-url", "malformed URL"),
+            ("", "empty string"),
+        ];
+
+        for (invalid_url, description) in test_cases {
+            let mut config = NodeConfig::default();
+            config.identity.registry_url = invalid_url.to_string();
+
+            let result = config.validate();
+            assert!(
+                result.is_err(),
+                "Expected validation to fail for {}: {}",
+                description,
+                invalid_url
+            );
+            let error_msg = result.unwrap_err().to_string();
+            assert!(
+                error_msg.contains("registry URL") || error_msg.contains("Registry URL"),
+                "Expected error message about registry URL for {}, got: {}",
+                description,
+                error_msg
+            );
+        }
     }
 
     #[test]
