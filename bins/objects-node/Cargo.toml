@@ -35,3 +35,5 @@ tracing-subscriber.workspace = true
 [dev-dependencies]
 tempfile.workspace = true
 temp-env = "0.3"
+rand.workspace = true
+objects-test-utils.workspace = true
