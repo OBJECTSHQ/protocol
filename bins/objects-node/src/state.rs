@@ -78,8 +78,8 @@ impl NodeState {
     ///
     /// # Security
     ///
-    /// The state file is created with 600 permissions (owner read/write only) to protect
-    /// the node's private key. Permissions are verified after being set.
+    /// The state file permissions are set to 600 (owner read/write only) after
+    /// creation on Unix systems to protect the node's private key.
     #[tracing::instrument(skip(path), fields(path = %path.display()))]
     pub fn load_or_create(path: &Path) -> Result<Self> {
         // Try to load first
@@ -95,7 +95,14 @@ impl NodeState {
             Err(StateError::IoError(e)) if e.kind() == std::io::ErrorKind::NotFound => {
                 tracing::info!("State file not found, generating new keypair");
             }
-            Err(e) => return Err(e),
+            Err(e) => {
+                tracing::error!(
+                    path = %path.display(),
+                    error = %e,
+                    "Failed to load existing state file"
+                );
+                return Err(e);
+            }
         }
 
         // Generate new state
@@ -113,11 +120,51 @@ impl NodeState {
             Ok(mut file) => {
                 use std::io::Write;
                 file.write_all(contents.as_bytes())
-                    .map_err(|e| StateError::IoError(e))?;
+                    .map_err(StateError::IoError)?;
             }
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
-                tracing::warn!("State file created by another process, loading it");
-                return Self::load(path);
+                tracing::warn!(
+                    path = %path.display(),
+                    "State file created by another process, loading and verifying it"
+                );
+
+                let loaded_state = Self::load(path)?;
+
+                // Verify permissions are secure (Unix only)
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    let metadata = std::fs::metadata(path).map_err(|e| {
+                        tracing::error!(
+                            path = %path.display(),
+                            error = %e,
+                            "Failed to read metadata for race verification"
+                        );
+                        StateError::IoError(e)
+                    })?;
+
+                    let mode = metadata.permissions().mode() & 0o777;
+                    if mode != 0o600 {
+                        tracing::error!(
+                            path = %path.display(),
+                            actual_perms = format!("0o{:o}", mode),
+                            "State file has insecure permissions"
+                        );
+                        return Err(StateError::PermissionError(format!(
+                            "State file '{}' exists with insecure permissions 0o{:o} (expected 0o600)",
+                            path.display(),
+                            mode
+                        )));
+                    }
+                }
+
+                tracing::info!(
+                    path = %path.display(),
+                    public_key = %loaded_state.node_key.public(),
+                    "Verified and loaded state from another process"
+                );
+
+                return Ok(loaded_state);
             }
             Err(e) => return Err(StateError::IoError(e)),
         }
@@ -143,7 +190,11 @@ impl NodeState {
         Ok(state)
     }
 
-    /// Save state to a file with secure permissions.
+    /// Save state to a file with secure permissions using atomic write pattern.
+    ///
+    /// Uses temp-file-then-rename pattern to ensure permissions are set atomically
+    /// during file creation. This prevents a window where the file exists with
+    /// default (potentially insecure) permissions.
     ///
     /// Creates parent directories if they don't exist. Sets file permissions to 600
     /// (owner read/write only) to protect the private key.
@@ -152,12 +203,78 @@ impl NodeState {
         ensure_permissions(path)?;
 
         let contents = serde_json::to_string_pretty(self)?;
-        std::fs::write(path, contents)?;
+        let temp_path = path.with_extension("tmp");
 
-        // Set and verify file permissions
+        #[cfg(unix)]
+        {
+            use std::io::Write;
+            use std::os::unix::fs::OpenOptionsExt;
+
+            // Create with secure permissions atomically
+            let mut file = std::fs::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .mode(0o600) // Set permissions on creation
+                .open(&temp_path)
+                .map_err(|e| {
+                    tracing::error!(
+                        temp_path = %temp_path.display(),
+                        error = %e,
+                        "Failed to create temporary state file"
+                    );
+                    StateError::IoError(e)
+                })?;
+
+            file.write_all(contents.as_bytes()).map_err(|e| {
+                tracing::error!(
+                    temp_path = %temp_path.display(),
+                    error = %e,
+                    "Failed to write temporary state file"
+                );
+                let _ = std::fs::remove_file(&temp_path);
+                StateError::IoError(e)
+            })?;
+
+            file.sync_all().map_err(|e| {
+                tracing::error!(
+                    temp_path = %temp_path.display(),
+                    error = %e,
+                    "Failed to sync temporary state file"
+                );
+                let _ = std::fs::remove_file(&temp_path);
+                StateError::IoError(e)
+            })?;
+        }
+
+        #[cfg(not(unix))]
+        {
+            std::fs::write(&temp_path, contents).map_err(|e| {
+                tracing::error!(
+                    temp_path = %temp_path.display(),
+                    error = %e,
+                    "Failed to write temporary state file (non-Unix)"
+                );
+                StateError::IoError(e)
+            })?;
+        }
+
+        // Atomic rename
+        std::fs::rename(&temp_path, path).map_err(|e| {
+            tracing::error!(
+                from = %temp_path.display(),
+                to = %path.display(),
+                error = %e,
+                "Failed to atomically rename state file"
+            );
+            let _ = std::fs::remove_file(&temp_path);
+            StateError::IoError(e)
+        })?;
+
+        // Verify final permissions
         set_secure_permissions(path)?;
 
-        tracing::info!("Saved state");
+        tracing::info!("Saved state atomically");
         Ok(())
     }
 
@@ -267,7 +384,7 @@ impl IdentityInfo {
     }
 }
 
-/// Ensure parent directory exists and has correct permissions.
+/// Ensure parent directory exists (creates if needed, does not set permissions).
 ///
 /// Creates parent directories if they don't exist.
 fn ensure_permissions(path: &Path) -> Result<()> {
@@ -304,21 +421,41 @@ fn set_secure_permissions(path: &Path) -> Result<()> {
         // Verify permissions were actually set
         let actual = std::fs::metadata(path)?.permissions().mode() & 0o777;
         if actual != 0o600 {
-            // Delete file to prevent key exposure
-            let _ = std::fs::remove_file(path);
+            // Attempt to delete file to prevent key exposure
+            std::fs::remove_file(path).map_err(|delete_err| {
+                tracing::error!(
+                    path = %path.display(),
+                    expected = "0o600",
+                    actual = format!("0o{:o}", actual),
+                    delete_error = %delete_err,
+                    "CRITICAL: Failed to secure permissions AND delete file. Manual cleanup required."
+                );
+                StateError::PermissionError(format!(
+                    "Cannot secure permissions on '{}' (got 0o{:o}, expected 0o600) and failed to delete file. Delete '{}' manually to prevent key exposure.",
+                    path.display(), actual, path.display()
+                ))
+            })?;
+
+            // After successful deletion
+            tracing::error!(
+                path = %path.display(),
+                expected = "0o600",
+                actual = format!("0o{:o}", actual),
+                "Failed to set secure permissions. File deleted for safety."
+            );
             return Err(StateError::PermissionError(format!(
-                "Failed to set secure permissions on '{}' (got 0o{:o}, expected 0o600)",
-                path.display(),
-                actual
+                "Failed to set secure permissions on '{}'. File deleted for safety.",
+                path.display()
             )));
         }
     }
 
     #[cfg(not(unix))]
     {
-        tracing::warn!(
+        tracing::error!(
             path = %path.display(),
-            "State file saved without secure permissions (not available on this platform)"
+            "SECURITY WARNING: Cannot set restrictive permissions on Windows. \
+             Private key may be exposed if multiple users access this system."
         );
     }
 
@@ -716,5 +853,66 @@ mod tests {
 
         let metadata = std::fs::metadata(&state_path).unwrap();
         assert_eq!(metadata.permissions().mode() & 0o777, 0o600);
+    }
+
+    #[test]
+    fn test_load_or_create_idempotent() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let state_path = temp_dir.path().join("state.json");
+
+        // First call creates
+        let state1 = NodeState::load_or_create(&state_path).unwrap();
+        let key1 = state1.node_key().public().to_string();
+
+        // Second call loads existing (should be same key)
+        let state2 = NodeState::load_or_create(&state_path).unwrap();
+        let key2 = state2.node_key().public().to_string();
+
+        assert_eq!(
+            key1, key2,
+            "load_or_create must not regenerate existing keys"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_permissions_on_create() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let state_path = temp_dir.path().join("state.json");
+
+        NodeState::load_or_create(&state_path).unwrap();
+
+        let metadata = std::fs::metadata(&state_path).unwrap();
+        let mode = metadata.permissions().mode() & 0o777;
+
+        assert_eq!(mode, 0o600, "State file must have 0o600 permissions");
+    }
+
+    #[test]
+    fn test_identity_persistence() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let state_path = temp_dir.path().join("state.json");
+
+        let mut state = NodeState::generate_new();
+
+        let identity_id = identity::test_identity_id();
+        let handle = Handle::parse("alice").unwrap();
+        let nonce = [1, 2, 3, 4, 5, 6, 7, 8];
+        let identity = IdentityInfo::new(
+            identity_id.clone(),
+            handle.clone(),
+            nonce,
+            SignerType::Wallet,
+        );
+
+        state.set_identity(identity);
+        state.save(&state_path).unwrap();
+
+        let loaded = NodeState::load(&state_path).unwrap();
+        assert!(loaded.identity().is_some());
+        assert_eq!(loaded.identity().unwrap().handle(), &handle);
+        assert_eq!(loaded.identity().unwrap().identity_id(), &identity_id);
     }
 }
