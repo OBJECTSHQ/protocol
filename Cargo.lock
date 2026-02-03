@@ -3979,6 +3979,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "futures",
+ "iroh-gossip",
  "objects-data",
  "objects-identity",
  "objects-sync",
