@@ -1,6 +1,7 @@
 //! CLI tool for OBJECTS Protocol.
 
 use clap::{Parser, Subcommand};
+use objects_cli::{client::NodeClient, commands, config::Config};
 
 #[derive(Parser)]
 #[command(name = "objects")]
@@ -92,19 +93,20 @@ async fn main() -> anyhow::Result<()> {
 
     match cli.command {
         Commands::Init => {
-            println!("Initializing node...");
-            // TODO: Initialize node
+            commands::init::run().await?;
         }
-        Commands::Identity { command } => match command {
-            IdentityCommands::Create { handle } => {
-                println!("Creating identity with handle: @{}", handle);
-                // TODO: Create identity
+        Commands::Identity { command } => {
+            let config = Config::load()?;
+            let client = NodeClient::new(config.api_url());
+            match command {
+                IdentityCommands::Create { handle } => {
+                    commands::identity::create(handle, &client).await?;
+                }
+                IdentityCommands::Show => {
+                    commands::identity::show(&client).await?;
+                }
             }
-            IdentityCommands::Show => {
-                println!("Showing current identity...");
-                // TODO: Show identity
-            }
-        },
+        }
         Commands::Project { command } => match command {
             ProjectCommands::Create { name } => {
                 println!("Creating project: {}", name);
