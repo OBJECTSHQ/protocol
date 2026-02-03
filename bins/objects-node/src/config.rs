@@ -204,12 +204,6 @@ impl NodeConfig {
                 self.identity.registry_url, e
             ))
         })?;
-        if registry_url.scheme() != "https" {
-            return Err(ConfigError::ValidationError(format!(
-                "Registry URL must use HTTPS, got: {}",
-                self.identity.registry_url
-            )));
-        }
         // Validate registry URL has a valid, non-empty host
         let host = registry_url.host_str().ok_or_else(|| {
             ConfigError::ValidationError(format!(
@@ -220,6 +214,20 @@ impl NodeConfig {
         if host.is_empty() || host == "." {
             return Err(ConfigError::ValidationError(format!(
                 "Registry URL has invalid host: {}",
+                self.identity.registry_url
+            )));
+        }
+        // Allow HTTP only for localhost/127.0.0.1 (local development)
+        let is_localhost = host == "localhost" || host == "127.0.0.1" || host == "::1";
+        if registry_url.scheme() == "http" && !is_localhost {
+            return Err(ConfigError::ValidationError(format!(
+                "Registry URL must use HTTPS for non-localhost hosts, got: {}",
+                self.identity.registry_url
+            )));
+        }
+        if registry_url.scheme() != "https" && registry_url.scheme() != "http" {
+            return Err(ConfigError::ValidationError(format!(
+                "Registry URL must use HTTP or HTTPS, got: {}",
                 self.identity.registry_url
             )));
         }
