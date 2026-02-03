@@ -179,6 +179,78 @@ cargo build --workspace && cargo test --workspace && cargo clippy --workspace
 - Make registry required for local asset verification
 - Use mainnet discovery topic (`/objects/mainnet/...`) - we're on devnet
 
+## API Design Patterns
+
+### Encoding Standards
+
+**Default encoding for wire formats (CLI ↔ Node ↔ Registry):**
+- **Base64** is the standard for binary data over JSON APIs
+  - Signatures, public keys, nonces, authenticator data, client data JSON
+  - Use `base64::engine::general_purpose::STANDARD` from workspace dependency
+- **Hex** is used for display/logging only
+  - Identity IDs, content hashes (for human readability)
+  - Never use hex in API request/response bodies
+
+**Example:**
+```rust
+// Wire format: base64
+let public_key_b64 = base64::Engine::encode(
+    &base64::engine::general_purpose::STANDARD,
+    &public_key_bytes
+);
+
+// Display format: hex
+let identity_id_hex = hex::encode(&identity_id_bytes);
+```
+
+### Accessor Methods for Enums
+
+**Always use accessor methods instead of pattern matching** to extract data from public enum types. This maintains encapsulation and provides a stable API.
+
+**Good:**
+```rust
+// objects-identity/src/signature.rs
+impl Signature {
+    pub fn signature_bytes(&self) -> &[u8] { ... }
+    pub fn public_key_bytes(&self) -> Option<&[u8]> { ... }
+    pub fn authenticator_data(&self) -> Option<&[u8]> { ... }
+    pub fn client_data_json(&self) -> Option<&[u8]> { ... }
+}
+
+// Usage in CLI
+let sig_b64 = base64::encode(signature.signature_bytes());
+let pk_b64 = signature.public_key_bytes()
+    .map(|pk| base64::encode(pk));
+```
+
+**Bad:**
+```rust
+// Exposing internal structure via pattern matching
+match signature {
+    Signature::Passkey { signature, public_key, .. } => { ... }
+}
+```
+
+### Type Consistency Across Layers
+
+**CLI, Node, and Registry must use identical types for API contracts.** When the registry defines a request/response type, the node and CLI must match exactly.
+
+**Example:** The `SignatureData` type must be identical in:
+- `bins/objects-cli/src/types.rs`
+- `bins/objects-node/src/api/client.rs`
+- `bins/objects-registry/src/api/rest/types.rs` (as `SignatureRequest`)
+
+This ensures:
+- Serialization compatibility
+- No translation errors at layer boundaries
+- Consistent field naming and encoding
+
+When updating signature formats or API contracts:
+1. Update registry types first (source of truth)
+2. Update node client types to match
+3. Update CLI types to match
+4. Rebuild all three layers together
+
 ## Test Utilities
 
 Use shared test utilities from `objects-test-utils` instead of duplicating helpers.
