@@ -1,6 +1,7 @@
 //! CLI tool for OBJECTS Protocol.
 
 use clap::{Parser, Subcommand};
+use objects_cli::commands;
 
 #[derive(Parser)]
 #[command(name = "objects")]
@@ -92,8 +93,7 @@ async fn main() -> anyhow::Result<()> {
 
     match cli.command {
         Commands::Init => {
-            println!("Initializing node...");
-            // TODO: Initialize node
+            commands::init::run().await?;
         }
         Commands::Identity { command } => match command {
             IdentityCommands::Create { handle } => {
