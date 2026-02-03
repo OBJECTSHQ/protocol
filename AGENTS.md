@@ -48,7 +48,19 @@ cargo upgrade                           # Update Cargo.toml versions (cargo-edit
 
 ## Version Control
 
-We use [Jujutsu](https://github.com/martinvonz/jj) (jj) for version control with Git colocated mode. For complete workflow documentation, command reference, and examples, see [.claude/skills/jujutsu/SKILL.md](.claude/skills/jujutsu/SKILL.md).
+We use [Jujutsu](https://github.com/martinvonz/jj) (jj) for version control with Git colocated mode.
+
+**Documentation:**
+- **Overview & Quick Start:** [.claude/skills/jujutsu/SKILL.md](.claude/skills/jujutsu/SKILL.md)
+- **Workflows & Patterns:** [.claude/skills/jujutsu/workflows.md](.claude/skills/jujutsu/workflows.md) - Complete workflows for commits, PRs, stacked PRs with jj-spr, rebasing, and conflict resolution
+- **Command Reference:** [.claude/skills/jujutsu/commands-reference.md](.claude/skills/jujutsu/commands-reference.md) - Detailed command documentation
+- **Revset Syntax:** [.claude/skills/jujutsu/revsets.md](.claude/skills/jujutsu/revsets.md) - Query language for selecting commits
+
+**Key workflows:**
+- Creating stacked PRs: See workflows.md § "Using jj-spr for Stacked PRs"
+- Handling review feedback: See workflows.md § "Handling Review Feedback"
+- Landing PRs in order: See workflows.md § "Landing PRs (In Order)"
+- Continuing work on unmerged stacks: Follow Meta/Google pattern in workflows.md
 
 ## Code Quality & Formatting
 
