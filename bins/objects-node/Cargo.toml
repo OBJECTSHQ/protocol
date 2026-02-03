@@ -16,6 +16,9 @@ objects-sync.workspace = true
 tokio.workspace = true
 futures.workspace = true
 
+# P2P
+iroh-gossip.workspace = true
+
 # Serialization
 serde.workspace = true
 serde_json.workspace = true
@@ -34,6 +37,9 @@ rand.workspace = true
 # Logging
 tracing.workspace = true
 tracing-subscriber.workspace = true
+
+# System utilities
+dirs = "5.0"
 
 [dev-dependencies]
 tempfile.workspace = true
