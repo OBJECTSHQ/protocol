@@ -38,6 +38,9 @@ rand.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 
+# System utilities
+dirs = "5.0"
+
 [dev-dependencies]
 tempfile.workspace = true
 temp-env = "0.3"
