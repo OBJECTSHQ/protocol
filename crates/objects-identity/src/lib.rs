@@ -7,6 +7,7 @@ pub mod id;
 pub mod message;
 pub mod signature;
 pub mod signer;
+pub mod signing;
 pub mod vault;
 
 mod error;
@@ -17,4 +18,5 @@ pub use handle::Handle;
 pub use id::{IdentityId, NONCE_SIZE, generate_nonce};
 pub use signature::Signature;
 pub use signer::{Signer, SignerType};
+pub use signing::{PasskeySigningKey, WalletSigningKey};
 pub use vault::VaultKeys;
