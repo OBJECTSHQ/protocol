@@ -1,5 +1,6 @@
 //! OBJECTS Protocol Node Library
 
+pub mod api;
 pub mod config;
 pub mod service;
 pub mod state;

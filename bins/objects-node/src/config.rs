@@ -204,12 +204,6 @@ impl NodeConfig {
                 self.identity.registry_url, e
             ))
         })?;
-        if registry_url.scheme() != "https" {
-            return Err(ConfigError::ValidationError(format!(
-                "Registry URL must use HTTPS, got: {}",
-                self.identity.registry_url
-            )));
-        }
         // Validate registry URL has a valid, non-empty host
         let host = registry_url.host_str().ok_or_else(|| {
             ConfigError::ValidationError(format!(
@@ -222,6 +216,30 @@ impl NodeConfig {
                 "Registry URL has invalid host: {}",
                 self.identity.registry_url
             )));
+        }
+        // Validate registry URL uses secure transport
+        // Allow HTTP only for loopback addresses (127.0.0.0/8, ::1, localhost)
+        let scheme = registry_url.scheme();
+        let is_loopback = host == "localhost"
+            || host == "::1"
+            || host == "[::1]" // IPv6 loopback with brackets
+            || host.starts_with("127.");
+
+        match scheme {
+            "https" => {}
+            "http" if is_loopback => {}
+            "http" => {
+                return Err(ConfigError::ValidationError(format!(
+                    "HTTP is only allowed for loopback addresses (localhost, 127.x.x.x, ::1), got: {}",
+                    self.identity.registry_url
+                )));
+            }
+            _ => {
+                return Err(ConfigError::ValidationError(format!(
+                    "Registry URL must use HTTP or HTTPS, got: {}",
+                    self.identity.registry_url
+                )));
+            }
         }
 
         // Validate discovery topic format
@@ -566,7 +584,7 @@ mod tests {
 
         let result = config.validate();
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("must use HTTPS"));
+        assert!(result.unwrap_err().to_string().contains("loopback"));
     }
 
     #[test]
@@ -618,5 +636,56 @@ mod tests {
     fn test_validation_valid_config() {
         let config = NodeConfig::default();
         assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validation_http_localhost_allowed() {
+        let test_cases = vec![
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+            "http://127.0.0.2:3000",
+            "http://127.1.2.3:3000",
+            "http://127.255.255.254:3000",
+            "http://[::1]:3000",
+        ];
+
+        for url in test_cases {
+            let mut config = NodeConfig::default();
+            config.identity.registry_url = url.to_string();
+
+            let result = config.validate();
+            assert!(
+                result.is_ok(),
+                "Expected HTTP to be allowed for loopback address: {}",
+                url
+            );
+        }
+    }
+
+    #[test]
+    fn test_validation_http_non_localhost_rejected() {
+        let test_cases = vec![
+            "http://example.com",
+            "http://192.168.1.1:3000",
+            "http://10.0.0.1:3000",
+            "http://128.0.0.1:3000", // Not in 127.0.0.0/8 range
+        ];
+
+        for url in test_cases {
+            let mut config = NodeConfig::default();
+            config.identity.registry_url = url.to_string();
+
+            let result = config.validate();
+            assert!(
+                result.is_err(),
+                "Expected HTTP to be rejected for non-loopback address: {}",
+                url
+            );
+            assert!(
+                result.unwrap_err().to_string().contains("loopback"),
+                "Expected error message to mention loopback for: {}",
+                url
+            );
+        }
     }
 }
