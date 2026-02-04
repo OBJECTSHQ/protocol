@@ -7,6 +7,7 @@ use objects_transport::discovery::{Discovery, DiscoveryConfig, GossipDiscovery};
 use objects_transport::{NetworkConfig, NodeAddr, NodeId, ObjectsEndpoint, RelayUrl};
 use std::str::FromStr;
 use std::sync::Arc;
+use tokio::sync::watch;
 use tracing::{debug, info};
 
 /// Node service orchestrating P2P networking components.
@@ -17,6 +18,8 @@ pub struct NodeService {
     state: NodeState,
     endpoint: Arc<ObjectsEndpoint>,
     discovery: GossipDiscovery,
+    shutdown_tx: watch::Sender<bool>,
+    shutdown_rx: watch::Receiver<bool>,
 }
 
 impl NodeService {
@@ -71,11 +74,16 @@ impl NodeService {
 
         info!("Joined discovery topic: {}", config.network.discovery_topic);
 
+        // Create shutdown channel
+        let (shutdown_tx, shutdown_rx) = watch::channel(false);
+
         Ok(Self {
             config,
             state,
             endpoint: endpoint_arc,
             discovery,
+            shutdown_tx,
+            shutdown_rx,
         })
     }
 
@@ -97,6 +105,7 @@ impl NodeService {
         info!("Node service running");
 
         let mut announcements = self.discovery.announcements();
+        let mut shutdown = self.shutdown_rx.clone();
 
         loop {
             tokio::select! {
@@ -107,6 +116,10 @@ impl NodeService {
                         announcement.relay_url
                     );
                     debug!("Peer age: {:?}", announcement.age());
+                }
+                _ = shutdown.changed() => {
+                    info!("Shutdown signal received");
+                    break;
                 }
                 else => {
                     debug!("Announcement stream ended");
@@ -139,6 +152,13 @@ impl NodeService {
     /// Get the current number of discovered peers.
     pub fn peer_count(&self) -> usize {
         self.discovery.peer_count()
+    }
+
+    /// Get a shutdown trigger that can be used to signal shutdown.
+    ///
+    /// This should be called before moving the service into a spawn.
+    pub fn shutdown_trigger(&self) -> watch::Sender<bool> {
+        self.shutdown_tx.clone()
     }
 
     /// Shutdown the node service gracefully.
@@ -265,6 +285,9 @@ mod tests {
 
         let service = NodeService::new(config, state).await.unwrap();
 
+        // Get shutdown trigger before moving service
+        let shutdown_trigger = service.shutdown_trigger();
+
         // Spawn service
         let handle = tokio::spawn(async move { service.run().await });
 
@@ -274,8 +297,15 @@ mod tests {
         // Service should still be running
         assert!(!handle.is_finished());
 
-        // Note: In real usage, shutdown() is called on the service
-        // Can't easily test signal handling in unit tests
-        handle.abort();
+        // Trigger graceful shutdown
+        shutdown_trigger.send(true).unwrap();
+
+        // Service should complete gracefully
+        let result = tokio::time::timeout(Duration::from_secs(2), handle)
+            .await
+            .expect("Shutdown should complete within timeout");
+
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_ok());
     }
 }
