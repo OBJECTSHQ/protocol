@@ -2,17 +2,21 @@
 
 use crate::{NodeConfig, NodeState};
 use anyhow::Result;
+use futures::StreamExt;
+use objects_transport::discovery::{Discovery, DiscoveryConfig, GossipDiscovery};
 use objects_transport::{NetworkConfig, NodeAddr, NodeId, ObjectsEndpoint, RelayUrl};
 use std::str::FromStr;
+use std::sync::Arc;
 use tracing::{debug, info};
 
 /// Node service orchestrating P2P networking components.
 pub struct NodeService {
-    #[allow(dead_code)] // Used in PR6 for discovery
+    #[allow(dead_code)] // Used for logging and future features
     config: NodeConfig,
     #[allow(dead_code)] // Used for identity management
     state: NodeState,
-    endpoint: ObjectsEndpoint,
+    endpoint: Arc<ObjectsEndpoint>,
+    discovery: GossipDiscovery,
 }
 
 impl NodeService {
@@ -49,21 +53,71 @@ impl NodeService {
         endpoint.inner().online().await;
         info!("Connected to relay: {}", config.network.relay_url);
 
+        // Set up peer discovery
+        info!("Setting up peer discovery");
+
+        // Create gossip instance for this endpoint
+        let gossip = iroh_gossip::net::Gossip::builder().spawn(endpoint.inner().clone());
+
+        // Create discovery with devnet config
+        let endpoint_arc = Arc::new(endpoint);
+        let discovery = GossipDiscovery::new(
+            gossip,
+            endpoint_arc.clone(),
+            vec![], // No bootstrap nodes for now
+            DiscoveryConfig::devnet(),
+        )
+        .await?;
+
+        info!("Joined discovery topic: {}", config.network.discovery_topic);
+
         Ok(Self {
             config,
             state,
-            endpoint,
+            endpoint: endpoint_arc,
+            discovery,
         })
     }
 
     /// Get the node's unique identifier.
     pub fn node_id(&self) -> NodeId {
-        self.endpoint.node_id()
+        self.endpoint.as_ref().node_id()
     }
 
     /// Get the node's network address.
     pub fn node_addr(&self) -> NodeAddr {
-        self.endpoint.node_addr()
+        self.endpoint.as_ref().node_addr()
+    }
+
+    /// Run the node service, listening for peer announcements.
+    pub async fn run(self) -> Result<()> {
+        info!("Node service running");
+
+        let mut announcements = self.discovery.announcements();
+
+        loop {
+            tokio::select! {
+                Some(announcement) = announcements.next() => {
+                    info!(
+                        "Discovered peer: {} (relay: {:?})",
+                        announcement.node_id,
+                        announcement.relay_url
+                    );
+                    debug!("Peer age: {:?}", announcement.age());
+                }
+                else => {
+                    debug!("Announcement stream ended");
+                    break;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Get the current number of discovered peers.
+    pub fn peer_count(&self) -> usize {
+        self.discovery.peer_count()
     }
 }
 
@@ -116,5 +170,44 @@ mod tests {
 
         // Node ID should match state's public key
         assert_eq!(service.node_id().to_string(), expected_node_id.to_string());
+    }
+
+    #[tokio::test]
+    async fn test_discovery_setup() {
+        tracing_subscriber::fmt::try_init().ok();
+
+        let (config, _temp) = create_test_config().await;
+        let state_path = Path::new(&config.node.data_dir).join("node.key");
+        let state = NodeState::load_or_create(&state_path).unwrap();
+
+        let service = NodeService::new(config, state).await.unwrap();
+
+        // Discovery should be initialized
+        assert_eq!(service.peer_count(), 0); // No peers discovered yet
+    }
+
+    #[tokio::test]
+    async fn test_service_run_loop() {
+        use std::time::Duration;
+
+        tracing_subscriber::fmt::try_init().ok();
+
+        let (config, _temp) = create_test_config().await;
+        let state_path = Path::new(&config.node.data_dir).join("node.key");
+        let state = NodeState::load_or_create(&state_path).unwrap();
+
+        let service = NodeService::new(config, state).await.unwrap();
+
+        // Spawn service in background
+        let handle = tokio::spawn(async move {
+            tokio::time::timeout(Duration::from_secs(2), service.run()).await
+        });
+
+        // Wait briefly for discovery to start
+        tokio::time::sleep(Duration::from_millis(500)).await;
+
+        // Service should be running (timeout will end it)
+        let result = handle.await.unwrap();
+        assert!(result.is_err()); // Expect timeout
     }
 }
