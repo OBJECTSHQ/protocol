@@ -62,6 +62,41 @@ We use [Jujutsu](https://github.com/martinvonz/jj) (jj) for version control with
 - Landing PRs in order: See workflows.md § "Landing PRs (In Order)"
 - Continuing work on unmerged stacks: Follow Meta/Google pattern in workflows.md
 
+**PR description format:**
+
+Use conventional commit style with dependency notes and structured body:
+
+```
+<type>: <description>
+
+Depends on: #<pr-number> | -
+
+## Summary of changes
+- <What was added/modified/removed>
+- <Component/feature implemented>
+- <Integration or pattern established>
+- <Files or modules created>
+- <Dependencies or tools added>
+
+## Testing
+- <Test scenario 1: expected behavior>
+- <Test scenario 2: error handling>
+- <Test scenario 3: edge cases>
+- <Integration test coverage>
+- <End-to-end verification>
+```
+
+**Commit types:** `feat`, `fix`, `refactor`, `test`, `docs`, `chore`, `perf`, `ci`
+
+**Stacked PRs:**
+- Add `stack` label to all PRs in a stack (for easy filtering)
+- Use `Depends on: #123` for dependent PRs, `Depends on: -` for first in stack
+- Labels and dependency notes enable tooling to understand relationships
+
+**Updating PR descriptions:**
+- Local: `jj describe -r <change-id> -m "description"`
+- Sync to GitHub: `jj spr diff -r <change-id> --update-message` (run outside sandbox)
+
 ## Code Quality & Formatting
 
 **Always format code before committing:**
