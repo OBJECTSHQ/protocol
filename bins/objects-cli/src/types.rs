@@ -33,7 +33,7 @@ pub struct CreateIdentityRequest {
     pub signer_type: String,
     pub signer_public_key: String,
     pub nonce: String,
-    pub timestamp: i64,
+    pub timestamp: u64,
     pub signature: SignatureData,
 }
 

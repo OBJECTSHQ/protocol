@@ -1,10 +1,16 @@
 use crate::client::NodeClient;
 use crate::error::CliError;
 use crate::types::{CreateIdentityRequest, SignatureData};
+use base64::Engine as _;
 use objects_identity::{
     IdentityId, PasskeySigningKey, generate_nonce, message::create_identity_message,
 };
 use std::time::{SystemTime, UNIX_EPOCH};
+
+/// Helper function to encode bytes as base64.
+fn to_base64(data: &[u8]) -> String {
+    base64::engine::general_purpose::STANDARD.encode(data)
+}
 
 pub async fn create(handle: String, client: &NodeClient) -> Result<(), CliError> {
     // Remove @ prefix if user provided it
@@ -46,19 +52,10 @@ pub async fn create(handle: String, client: &NodeClient) -> Result<(), CliError>
 
     // Extract all fields using accessor methods (consistent with Signature API)
     let signature_data = SignatureData {
-        signature: base64::Engine::encode(
-            &base64::engine::general_purpose::STANDARD,
-            signature.signature_bytes(),
-        ),
-        public_key: signature
-            .public_key_bytes()
-            .map(|pk| base64::Engine::encode(&base64::engine::general_purpose::STANDARD, pk)),
-        authenticator_data: signature
-            .authenticator_data()
-            .map(|ad| base64::Engine::encode(&base64::engine::general_purpose::STANDARD, ad)),
-        client_data_json: signature
-            .client_data_json()
-            .map(|cd| base64::Engine::encode(&base64::engine::general_purpose::STANDARD, cd)),
+        signature: to_base64(signature.signature_bytes()),
+        public_key: signature.public_key_bytes().map(to_base64),
+        authenticator_data: signature.authenticator_data().map(to_base64),
+        client_data_json: signature.client_data_json().map(to_base64),
         address: signature.address().map(|a| a.to_string()),
     };
 
@@ -66,12 +63,9 @@ pub async fn create(handle: String, client: &NodeClient) -> Result<(), CliError>
     let request = CreateIdentityRequest {
         handle: handle.to_string(),
         signer_type: "PASSKEY".to_string(),
-        signer_public_key: base64::Engine::encode(
-            &base64::engine::general_purpose::STANDARD,
-            &public_key,
-        ),
-        nonce: base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &nonce),
-        timestamp: timestamp as i64,
+        signer_public_key: to_base64(&public_key),
+        nonce: to_base64(&nonce),
+        timestamp,
         signature: signature_data,
     };
 

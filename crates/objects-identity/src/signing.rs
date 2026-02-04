@@ -154,21 +154,24 @@ impl WalletSigningKey {
     /// Sign a message using EIP-191 personal_sign format.
     ///
     /// Returns a `Signature::Wallet` with 65-byte signature (r || s || v) and address.
-    pub fn sign(&self, message: &[u8]) -> Signature {
+    pub fn sign(&self, message: &[u8]) -> Result<Signature, Error> {
         use alloy_signer::SignerSync;
         use alloy_signer_local::PrivateKeySigner;
 
         // Convert k256 key bytes to alloy-compatible format
         let secret_bytes = self.key.to_bytes();
         let alloy_signer = PrivateKeySigner::from_slice(secret_bytes.as_slice())
-            .expect("valid k256 key should convert to alloy signer");
+            .map_err(|e| Error::InvalidSignature(format!("Failed to convert key: {}", e)))?;
 
         // Sign with EIP-191 prefix
         let signature = alloy_signer
             .sign_message_sync(message)
-            .expect("signing should succeed");
+            .map_err(|e| Error::InvalidSignature(format!("Failed to sign message: {}", e)))?;
 
-        Signature::wallet(signature.as_bytes().to_vec(), self.address())
+        Ok(Signature::wallet(
+            signature.as_bytes().to_vec(),
+            self.address(),
+        ))
     }
 }
 
@@ -194,7 +197,7 @@ mod tests {
     fn test_wallet_generate_and_sign() {
         let key = WalletSigningKey::generate();
         let message = b"test message";
-        let signature = key.sign(message);
+        let signature = key.sign(message).expect("signing should succeed");
 
         assert_eq!(signature.signer_type(), SignerType::Wallet);
 
