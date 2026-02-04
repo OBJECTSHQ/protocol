@@ -108,16 +108,21 @@ async fn main() -> Result<()> {
     };
 
     // Run with graceful shutdown
+    // Get shutdown trigger before moving service
+    let shutdown_trigger = service.shutdown_trigger();
+
     // Spawn the service run task
     info!("Starting network layer...");
-    let run_handle = tokio::spawn(async move { service.run().await });
+    let mut run_handle = tokio::spawn(async move { service.run().await });
 
-    // Wait for either completion or shutdown signal
+    // Wait for shutdown signal while service runs
     tokio::select! {
-        result = run_handle => {
+        result = &mut run_handle => {
+            // Service completed on its own
             match result {
                 Ok(Ok(())) => {
-                    info!("Service completed normally");
+                    info!("Node stopped gracefully");
+                    return Ok(());
                 }
                 Ok(Err(e)) => {
                     error!("Service error: {}", e);
@@ -131,11 +136,32 @@ async fn main() -> Result<()> {
         }
         _ = shutdown_signal() => {
             info!("Initiating graceful shutdown...");
-            // Service will cleanup when dropped or on next loop iteration
-            // In a full implementation, we'd use a channel to signal shutdown
+
+            // Trigger shutdown
+            let _ = shutdown_trigger.send(true);
+
+            // Wait for service to finish cleanup
+            match tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                run_handle
+            ).await {
+                Ok(Ok(Ok(()))) => {
+                    info!("Node stopped gracefully");
+                    Ok(())
+                }
+                Ok(Ok(Err(e))) => {
+                    error!("Service error during shutdown: {}", e);
+                    Err(e)
+                }
+                Ok(Err(e)) => {
+                    error!("Service task panicked: {}", e);
+                    Err(e.into())
+                }
+                Err(_) => {
+                    error!("Shutdown timeout, forcing exit");
+                    Err(anyhow::anyhow!("Shutdown timeout"))
+                }
+            }
         }
     }
-
-    info!("Node stopped gracefully");
-    Ok(())
 }
