@@ -2,12 +2,12 @@
 
 Design engineering protocol for modern craftspeople.
 
-[![Docs](https://img.shields.io/badge/docs-read%20the%20docs-red?logo=bookstack)](https://docs.objects.foundation)
+[![Docs](https://img.shields.io/badge/read%20the%20docs-red?logo=bookstack&logoColor=white)](https://docs.objects.foundation)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE)
 [![Rust Version](https://img.shields.io/badge/rust-2024%20edition-orange?logo=rust)](https://www.rust-lang.org)
 [![CI](https://github.com/OBJECTSHQ/protocol/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/OBJECTSHQ/protocol/actions/workflows/ci.yml)
-[![Chat](https://img.shields.io/badge/convos-join%20the%20chat-lightgrey?logo=chatwoot)](https://popup.convos.org/v2?i=CoICCj8BvlZwfPJmGJ7SWjGWHg1-z2hw4SWQSoJUHu_vqdniVG9n-FkAULKGxMx7y_ptFfeo8uomGsZtVH-9FdwpTcsSIBdXr9yNAWiXrNMdpR9tCP-JAJWwEAJ7nl7K3spYJV0XGgp5SFJXb0poZWs4IgdPQkpFQ1RTKgAyhQFodHRwczovL2NvbnZvcy1hc3NldHMtY29udm9zLW90ci1wcm9kLTIwMjUwODI2MTY0MjA4NDA5ODAwMDAwMDE5LnMzLnVzLWVhc3QtMi5hbWF6b25hd3MuY29tL2Q3YTFm*YTE4LTM5MmEtNDMwYS1hNGEwLWY0ODUyNTA3ZGJmYy5qcGVnEkEuzQ9ibSJX53hppf9zPGU10FTNaWezxdt0UflTRgFDjiYZmXHFn9K8XqmR0nLn_I-C-aFtOCuDWkNNp15eQXVPAQ)
-[![Follow on Bluesky](https://img.shields.io/badge/Bluesky-@objects.app-blue?logo=bluesky)](https://bsky.app/profile/objects.app)
+[![Chat](https://img.shields.io/badge/convos-join%20the%20chat-lightgrey?logo=chatwoot&logoColor=white)](https://popup.convos.org/v2?i=CoICCj8BvlZwfPJmGJ7SWjGWHg1-z2hw4SWQSoJUHu_vqdniVG9n-FkAULKGxMx7y_ptFfeo8uomGsZtVH-9FdwpTcsSIBdXr9yNAWiXrNMdpR9tCP-JAJWwEAJ7nl7K3spYJV0XGgp5SFJXb0poZWs4IgdPQkpFQ1RTKgAyhQFodHRwczovL2NvbnZvcy1hc3NldHMtY29udm9zLW90ci1wcm9kLTIwMjUwODI2MTY0MjA4NDA5ODAwMDAwMDE5LnMzLnVzLWVhc3QtMi5hbWF6b25hd3MuY29tL2Q3YTFm*YTE4LTM5MmEtNDMwYS1hNGEwLWY0ODUyNTA3ZGJmYy5qcGVnEkEuzQ9ibSJX53hppf9zPGU10FTNaWezxdt0UflTRgFDjiYZmXHFn9K8XqmR0nLn_I-C-aFtOCuDWkNNp15eQXVPAQ)
+[![Follow on Bluesky](https://img.shields.io/badge/bluesky-@objects.app-blue?logo=bluesky)](https://bsky.app/profile/objects.app)
 [![Follow on X](https://img.shields.io/badge/@OBJECTS____-black?logo=x)](https://x.com/OBJECTS____)
 
 ## What is OBJECTS?
