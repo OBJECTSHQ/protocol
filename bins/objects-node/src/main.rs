@@ -128,8 +128,11 @@ async fn main() -> Result<()> {
         registry_client: RegistryClient::new(&config),
     };
 
-    // Create shutdown channel
+    // Create shutdown channel for coordinating tasks
     let (shutdown_tx, _shutdown_rx) = tokio::sync::broadcast::channel::<()>(1);
+
+    // Get shutdown trigger for network service before moving it
+    let network_shutdown = service.shutdown_trigger();
 
     // Spawn HTTP server
     let api_handle = {
@@ -157,37 +160,28 @@ async fn main() -> Result<()> {
         })
     };
 
-    // Spawn network service
-    let network_handle = {
-        let mut shutdown_rx = shutdown_tx.subscribe();
-        tokio::spawn(async move {
-            tokio::select! {
-                result = service.run_loop() => result,
-                _ = shutdown_rx.recv() => {
-                    info!("Network service shutting down");
-                    Ok(())
-                }
+    // Run network service concurrently with API and shutdown signal
+    tokio::select! {
+        result = service.run_loop() => {
+            if let Err(e) = result {
+                error!("Network service error: {}", e);
             }
-        })
-    };
+        }
+        _ = shutdown_signal() => {
+            info!("Received shutdown signal, stopping services...");
 
-    // Wait for shutdown signal
-    shutdown_signal().await;
-    info!("Received shutdown signal, stopping services...");
+            // Trigger network service shutdown via watch channel
+            let _ = network_shutdown.send(true);
 
-    // Broadcast shutdown
-    let _ = shutdown_tx.send(());
+            // Broadcast shutdown to API server
+            let _ = shutdown_tx.send(());
 
-    // Wait for tasks to complete
-    let (api_result, network_result) = tokio::join!(api_handle, network_handle);
-
-    if let Err(e) = api_result {
-        error!("API server task error: {}", e);
-    }
-    if let Err(e) = network_result {
-        error!("Network service task error: {}", e);
+            // Wait for API server to finish
+            if let Err(e) = api_handle.await {
+                error!("API server task error: {}", e);
+            }
+        }
     }
 
-    info!("Node stopped gracefully");
     Ok(())
 }
