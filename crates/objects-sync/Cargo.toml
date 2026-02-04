@@ -36,6 +36,9 @@ anyhow.workspace = true
 # Logging
 tracing.workspace = true
 
+# File system utilities
+walkdir = "2"
+
 [dev-dependencies]
 objects-test-utils.workspace = true
 tokio-test.workspace = true

@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::net::IpAddr;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use thiserror::Error;
 use url::Url;
 
@@ -204,12 +204,6 @@ impl NodeConfig {
                 self.identity.registry_url, e
             ))
         })?;
-        if registry_url.scheme() != "https" {
-            return Err(ConfigError::ValidationError(format!(
-                "Registry URL must use HTTPS, got: {}",
-                self.identity.registry_url
-            )));
-        }
         // Validate registry URL has a valid, non-empty host
         let host = registry_url.host_str().ok_or_else(|| {
             ConfigError::ValidationError(format!(
@@ -222,6 +216,30 @@ impl NodeConfig {
                 "Registry URL has invalid host: {}",
                 self.identity.registry_url
             )));
+        }
+        // Validate registry URL uses secure transport
+        // Allow HTTP only for loopback addresses (127.0.0.0/8, ::1, localhost)
+        let scheme = registry_url.scheme();
+        let is_loopback = host == "localhost"
+            || host == "::1"
+            || host == "[::1]" // IPv6 loopback with brackets
+            || host.starts_with("127.");
+
+        match scheme {
+            "https" => {}
+            "http" if is_loopback => {}
+            "http" => {
+                return Err(ConfigError::ValidationError(format!(
+                    "HTTP is only allowed for loopback addresses (localhost, 127.x.x.x, ::1), got: {}",
+                    self.identity.registry_url
+                )));
+            }
+            _ => {
+                return Err(ConfigError::ValidationError(format!(
+                    "Registry URL must use HTTP or HTTPS, got: {}",
+                    self.identity.registry_url
+                )));
+            }
         }
 
         // Validate discovery topic format
@@ -245,6 +263,7 @@ impl NodeConfig {
     /// - `OBJECTS_API_PORT` - Overrides node.api_port (invalid values logged and ignored)
     /// - `OBJECTS_RELAY_URL` - Overrides network.relay_url
     /// - `OBJECTS_REGISTRY_URL` - Overrides identity.registry_url
+    /// - `OBJECTS_STORAGE_PATH` - Overrides storage.base_path
     ///
     /// Invalid port values are logged as warnings and the default value is retained.
     /// All overrides are logged at debug level. Validation occurs after overrides are applied.
@@ -284,6 +303,11 @@ impl NodeConfig {
         if let Ok(registry_url) = std::env::var("OBJECTS_REGISTRY_URL") {
             tracing::debug!(env_var = "OBJECTS_REGISTRY_URL", value = %registry_url, "Applying environment override");
             self.identity.registry_url = registry_url;
+        }
+
+        if let Ok(storage_path) = std::env::var("OBJECTS_STORAGE_PATH") {
+            tracing::debug!(env_var = "OBJECTS_STORAGE_PATH", value = %storage_path, "Applying environment override");
+            self.storage.base_path = Some(PathBuf::from(storage_path));
         }
     }
 }
@@ -335,20 +359,72 @@ impl Default for NetworkSettings {
     }
 }
 
+/// Blob storage backend configuration.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "lowercase")]
+pub enum BlobStorageMode {
+    /// Local filesystem storage (current implementation).
+    #[default]
+    #[serde(rename = "local")]
+    Local,
+
+    /// Remote blob service (future: PR32+).
+    /// Example: { type: "remote", endpoint: "https://blobs.objects.foundation" }
+    #[serde(rename = "remote")]
+    Remote { endpoint: String },
+}
+
+/// Docs storage backend configuration.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "lowercase")]
+pub enum DocsStorageMode {
+    /// Local filesystem storage (current implementation).
+    #[default]
+    #[serde(rename = "local")]
+    Local,
+
+    /// Remote docs service (future: PR32+).
+    /// Example: { type: "remote", endpoint: "https://docs.objects.foundation" }
+    #[serde(rename = "remote")]
+    Remote { endpoint: String },
+
+    /// Database backend (future: PR36+).
+    /// Example: { type: "database", connection_string: "postgres://..." }
+    #[serde(rename = "database")]
+    Database { connection_string: String },
+}
+
 /// Storage configuration settings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StorageSettings {
+    /// Base storage directory. Default: {data_dir}/storage
+    pub base_path: Option<PathBuf>,
+
     /// Maximum size for a single blob in megabytes.
     pub max_blob_size_mb: u64,
+
     /// Maximum total storage size in gigabytes.
     pub max_total_size_gb: u64,
+
+    /// Blob storage backend mode.
+    /// Future: Support for remote blob services (S3, GCS).
+    #[serde(default)]
+    pub blob_storage_mode: BlobStorageMode,
+
+    /// Docs storage backend mode.
+    /// Future: Support for remote docs services or databases.
+    #[serde(default)]
+    pub docs_storage_mode: DocsStorageMode,
 }
 
 impl Default for StorageSettings {
     fn default() -> Self {
         Self {
+            base_path: None, // Will use {data_dir}/storage
             max_blob_size_mb: 100,
             max_total_size_gb: 10,
+            blob_storage_mode: BlobStorageMode::Local,
+            docs_storage_mode: DocsStorageMode::Local,
         }
     }
 }
@@ -566,7 +642,7 @@ mod tests {
 
         let result = config.validate();
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("must use HTTPS"));
+        assert!(result.unwrap_err().to_string().contains("loopback"));
     }
 
     #[test]
@@ -618,5 +694,56 @@ mod tests {
     fn test_validation_valid_config() {
         let config = NodeConfig::default();
         assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validation_http_localhost_allowed() {
+        let test_cases = vec![
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+            "http://127.0.0.2:3000",
+            "http://127.1.2.3:3000",
+            "http://127.255.255.254:3000",
+            "http://[::1]:3000",
+        ];
+
+        for url in test_cases {
+            let mut config = NodeConfig::default();
+            config.identity.registry_url = url.to_string();
+
+            let result = config.validate();
+            assert!(
+                result.is_ok(),
+                "Expected HTTP to be allowed for loopback address: {}",
+                url
+            );
+        }
+    }
+
+    #[test]
+    fn test_validation_http_non_localhost_rejected() {
+        let test_cases = vec![
+            "http://example.com",
+            "http://192.168.1.1:3000",
+            "http://10.0.0.1:3000",
+            "http://128.0.0.1:3000", // Not in 127.0.0.0/8 range
+        ];
+
+        for url in test_cases {
+            let mut config = NodeConfig::default();
+            config.identity.registry_url = url.to_string();
+
+            let result = config.validate();
+            assert!(
+                result.is_err(),
+                "Expected HTTP to be rejected for non-loopback address: {}",
+                url
+            );
+            assert!(
+                result.unwrap_err().to_string().contains("loopback"),
+                "Expected error message to mention loopback for: {}",
+                url
+            );
+        }
     }
 }
