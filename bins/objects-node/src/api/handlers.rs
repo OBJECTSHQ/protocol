@@ -7,7 +7,8 @@ use objects_identity::{Handle, IdentityId, SignerType};
 use objects_transport::discovery::{Discovery, GossipDiscovery};
 use objects_transport::{NodeAddr, NodeId};
 use std::path::Path;
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, RwLock};
+use tokio::sync::Mutex;
 use tracing::info;
 
 use super::client::{CreateIdentityRequest, RegistryClient};
@@ -66,7 +67,7 @@ pub async fn health_check() -> Json<HealthResponse> {
 /// - Identity information (if registered)
 /// - Relay URL
 pub async fn node_status(State(state): State<AppState>) -> Json<StatusResponse> {
-    let peer_count = state.discovery.lock().unwrap().peer_count();
+    let peer_count = state.discovery.lock().await.peer_count();
 
     let identity = state
         .node_state
