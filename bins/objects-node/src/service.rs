@@ -7,6 +7,7 @@ use objects_transport::discovery::{Discovery, DiscoveryConfig, GossipDiscovery};
 use objects_transport::{NetworkConfig, NodeAddr, NodeId, ObjectsEndpoint, RelayUrl};
 use std::str::FromStr;
 use std::sync::Arc;
+use tokio::sync::watch;
 use tracing::{debug, info};
 
 /// Node service orchestrating P2P networking components.
@@ -17,6 +18,8 @@ pub struct NodeService {
     state: NodeState,
     endpoint: Arc<ObjectsEndpoint>,
     discovery: GossipDiscovery,
+    shutdown_tx: watch::Sender<bool>,
+    shutdown_rx: watch::Receiver<bool>,
 }
 
 impl NodeService {
@@ -71,11 +74,16 @@ impl NodeService {
 
         info!("Joined discovery topic: {}", config.network.discovery_topic);
 
+        // Create shutdown channel
+        let (shutdown_tx, shutdown_rx) = watch::channel(false);
+
         Ok(Self {
             config,
             state,
             endpoint: endpoint_arc,
             discovery,
+            shutdown_tx,
+            shutdown_rx,
         })
     }
 
@@ -90,10 +98,14 @@ impl NodeService {
     }
 
     /// Run the node service, listening for peer announcements.
-    pub async fn run(self) -> Result<()> {
+    ///
+    /// This method consumes the service and runs until the announcement
+    /// stream ends or an error occurs.
+    pub async fn run(mut self) -> Result<()> {
         info!("Node service running");
 
         let mut announcements = self.discovery.announcements();
+        let mut shutdown = self.shutdown_rx.clone();
 
         loop {
             tokio::select! {
@@ -105,6 +117,10 @@ impl NodeService {
                     );
                     debug!("Peer age: {:?}", announcement.age());
                 }
+                _ = shutdown.changed() => {
+                    info!("Shutdown signal received");
+                    break;
+                }
                 else => {
                     debug!("Announcement stream ended");
                     break;
@@ -112,12 +128,44 @@ impl NodeService {
             }
         }
 
+        // Cleanup on exit
+        self.shutdown_inner().await?;
+        Ok(())
+    }
+
+    /// Internal shutdown logic shared by run() and shutdown().
+    async fn shutdown_inner(&mut self) -> Result<()> {
+        info!("Shutting down node service...");
+
+        // Shutdown discovery
+        if let Err(e) = self.discovery.shutdown().await {
+            tracing::error!("Error shutting down discovery: {}", e);
+        } else {
+            info!("Discovery closed");
+        }
+
+        info!("Endpoint will close when dropped");
+        info!("Node service shutdown complete");
         Ok(())
     }
 
     /// Get the current number of discovered peers.
     pub fn peer_count(&self) -> usize {
         self.discovery.peer_count()
+    }
+
+    /// Get a shutdown trigger that can be used to signal shutdown.
+    ///
+    /// This should be called before moving the service into a spawn.
+    pub fn shutdown_trigger(&self) -> watch::Sender<bool> {
+        self.shutdown_tx.clone()
+    }
+
+    /// Shutdown the node service gracefully.
+    ///
+    /// Closes discovery and endpoint in order.
+    pub async fn shutdown(mut self) -> Result<()> {
+        self.shutdown_inner().await
     }
 }
 
@@ -209,5 +257,55 @@ mod tests {
         // Service should be running (timeout will end it)
         let result = handle.await.unwrap();
         assert!(result.is_err()); // Expect timeout
+    }
+
+    #[tokio::test]
+    async fn test_graceful_shutdown() {
+        tracing_subscriber::fmt::try_init().ok();
+
+        let (config, _temp) = create_test_config().await;
+        let state_path = Path::new(&config.node.data_dir).join("node.key");
+        let state = NodeState::load_or_create(&state_path).unwrap();
+
+        let service = NodeService::new(config, state).await.unwrap();
+
+        // Shutdown should complete without errors
+        service.shutdown().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_run_and_shutdown() {
+        use std::time::Duration;
+
+        tracing_subscriber::fmt::try_init().ok();
+
+        let (config, _temp) = create_test_config().await;
+        let state_path = Path::new(&config.node.data_dir).join("node.key");
+        let state = NodeState::load_or_create(&state_path).unwrap();
+
+        let service = NodeService::new(config, state).await.unwrap();
+
+        // Get shutdown trigger before moving service
+        let shutdown_trigger = service.shutdown_trigger();
+
+        // Spawn service
+        let handle = tokio::spawn(async move { service.run().await });
+
+        // Let it run briefly
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        // Service should still be running
+        assert!(!handle.is_finished());
+
+        // Trigger graceful shutdown
+        shutdown_trigger.send(true).unwrap();
+
+        // Service should complete gracefully
+        let result = tokio::time::timeout(Duration::from_secs(2), handle)
+            .await
+            .expect("Shutdown should complete within timeout");
+
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_ok());
     }
 }
