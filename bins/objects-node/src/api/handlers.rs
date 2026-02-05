@@ -1,9 +1,14 @@
 //! HTTP request handlers for the node API.
 
 use crate::{NodeConfig, NodeState};
-use objects_transport::discovery::GossipDiscovery;
+use axum::{Json, extract::State};
+use base64::Engine;
+use objects_transport::discovery::{Discovery, GossipDiscovery};
 use objects_transport::{NodeAddr, NodeId};
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, RwLock};
+use tokio::sync::Mutex;
+
+use super::types::{HealthResponse, IdentityResponse, StatusResponse};
 
 /// Immutable node information.
 ///
@@ -35,6 +40,46 @@ pub struct AppState {
     pub node_state: Arc<RwLock<NodeState>>,
     /// Node configuration.
     pub config: NodeConfig,
+}
+
+/// Health check handler.
+///
+/// Returns a simple JSON response indicating the node is running.
+pub async fn health_check() -> Json<HealthResponse> {
+    Json(HealthResponse {
+        status: "ok".to_string(),
+    })
+}
+
+/// Node status handler.
+///
+/// Returns current node information including:
+/// - Node ID and address
+/// - Number of discovered peers
+/// - Identity information (if registered)
+/// - Relay URL
+pub async fn node_status(State(state): State<AppState>) -> Json<StatusResponse> {
+    let peer_count = state.discovery.lock().await.peer_count();
+
+    let identity = state
+        .node_state
+        .read()
+        .expect("node_state lock poisoned")
+        .identity()
+        .map(|info| IdentityResponse {
+            id: info.identity_id().to_string(),
+            handle: info.handle().to_string(),
+            nonce: base64::engine::general_purpose::STANDARD.encode(info.nonce()),
+            signer_type: format!("{:?}", info.signer_type()).to_lowercase(),
+        });
+
+    Json(StatusResponse {
+        node_id: state.node_info.node_id.to_string(),
+        node_addr: state.node_info.node_addr.clone(),
+        peer_count,
+        identity,
+        relay_url: state.config.network.relay_url.clone(),
+    })
 }
 
 #[cfg(test)]
@@ -89,5 +134,12 @@ mod tests {
             Arc::as_ptr(&state_clone),
             "Arc clones should point to same NodeState"
         );
+    }
+
+    #[test]
+    fn test_health_check_returns_ok() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let response = rt.block_on(health_check());
+        assert_eq!(response.0.status, "ok");
     }
 }

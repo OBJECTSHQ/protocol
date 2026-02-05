@@ -3999,8 +3999,12 @@ name = "objects-node"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "axum",
+ "base64",
  "dirs",
  "futures",
+ "hex",
+ "http-body-util",
  "iroh-gossip",
  "objects-data",
  "objects-identity",
@@ -4015,6 +4019,7 @@ dependencies = [
  "thiserror 2.0.17",
  "tokio",
  "toml",
+ "tower",
  "tracing",
  "tracing-subscriber",
  "url",
