@@ -1,9 +1,12 @@
 //! Node daemon for OBJECTS Protocol.
 
 use anyhow::Result;
+use objects_node::api::{AppState, NodeInfo, RegistryClient, create_router};
 use objects_node::service::NodeService;
 use objects_node::{NodeConfig, NodeState};
+use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, RwLock};
 use tracing::{error, info};
 
 /// Wait for shutdown signal (Ctrl+C or SIGTERM).
@@ -96,7 +99,7 @@ async fn main() -> Result<()> {
     }
 
     // Create service
-    let service = match NodeService::new(config, state).await {
+    let mut service = match NodeService::new(config.clone(), state.clone()).await {
         Ok(s) => {
             info!("Node service initialized successfully");
             s
@@ -107,61 +110,79 @@ async fn main() -> Result<()> {
         }
     };
 
-    // Run with graceful shutdown
-    // Get shutdown trigger before moving service
-    let shutdown_trigger = service.shutdown_trigger();
+    // Create shared state components for API
+    let node_info = Arc::new(NodeInfo {
+        node_id: service.node_id(),
+        node_addr: service.node_addr(),
+    });
 
-    // Spawn the service run task
-    info!("Starting network layer...");
-    let mut run_handle = tokio::spawn(async move { service.run().await });
+    let discovery = service.discovery.clone();
+    let node_state_arc = Arc::new(RwLock::new(state));
 
-    // Wait for shutdown signal while service runs
-    tokio::select! {
-        result = &mut run_handle => {
-            // Service completed on its own
-            match result {
-                Ok(Ok(())) => {
-                    info!("Node stopped gracefully");
-                    return Ok(());
-                }
-                Ok(Err(e)) => {
-                    error!("Service error: {}", e);
-                    return Err(e);
-                }
+    // Create AppState for HTTP handlers
+    let app_state = AppState {
+        node_info: node_info.clone(),
+        discovery: discovery.clone(),
+        node_state: node_state_arc.clone(),
+        config: config.clone(),
+        registry_client: RegistryClient::new(&config),
+        sync_engine: service.sync_engine().clone(),
+    };
+
+    // Create shutdown channel for coordinating tasks
+    let (shutdown_tx, _shutdown_rx) = tokio::sync::broadcast::channel::<()>(1);
+
+    // Get shutdown trigger for network service before moving it
+    let network_shutdown = service.shutdown_trigger();
+
+    // Spawn HTTP server
+    let api_handle = {
+        let mut shutdown_rx = shutdown_tx.subscribe();
+        let config_clone = config.clone();
+        tokio::spawn(async move {
+            let app = create_router(app_state);
+            let addr = SocketAddr::from(([127, 0, 0, 1], config_clone.node.api_port));
+            let listener = match tokio::net::TcpListener::bind(addr).await {
+                Ok(l) => l,
                 Err(e) => {
-                    error!("Service task panicked: {}", e);
-                    return Err(e.into());
+                    error!("Failed to bind API server: {}", e);
+                    return Err(anyhow::anyhow!("Failed to bind: {}", e));
                 }
+            };
+
+            info!("API server listening on {}", addr);
+
+            axum::serve(listener, app)
+                .with_graceful_shutdown(async move {
+                    let _ = shutdown_rx.recv().await;
+                })
+                .await
+                .map_err(|e| anyhow::anyhow!("API server error: {}", e))
+        })
+    };
+
+    // Run network service concurrently with API and shutdown signal
+    tokio::select! {
+        result = service.run_loop() => {
+            if let Err(e) = result {
+                error!("Network service error: {}", e);
             }
         }
         _ = shutdown_signal() => {
-            info!("Initiating graceful shutdown...");
+            info!("Received shutdown signal, stopping services...");
 
-            // Trigger shutdown
-            let _ = shutdown_trigger.send(true);
+            // Trigger network service shutdown via watch channel
+            let _ = network_shutdown.send(true);
 
-            // Wait for service to finish cleanup
-            match tokio::time::timeout(
-                std::time::Duration::from_secs(5),
-                run_handle
-            ).await {
-                Ok(Ok(Ok(()))) => {
-                    info!("Node stopped gracefully");
-                    Ok(())
-                }
-                Ok(Ok(Err(e))) => {
-                    error!("Service error during shutdown: {}", e);
-                    Err(e)
-                }
-                Ok(Err(e)) => {
-                    error!("Service task panicked: {}", e);
-                    Err(e.into())
-                }
-                Err(_) => {
-                    error!("Shutdown timeout, forcing exit");
-                    Err(anyhow::anyhow!("Shutdown timeout"))
-                }
+            // Broadcast shutdown to API server
+            let _ = shutdown_tx.send(());
+
+            // Wait for API server to finish
+            if let Err(e) = api_handle.await {
+                error!("API server task error: {}", e);
             }
         }
     }
+
+    Ok(())
 }
