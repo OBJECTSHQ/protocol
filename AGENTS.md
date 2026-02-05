@@ -69,8 +69,6 @@ Use conventional commit style with dependency notes and structured body:
 ```
 <type>: <description>
 
-Depends on: #<pr-number> | -
-
 ## Summary of changes
 - <What was added/modified/removed>
 - <Component/feature implemented>
@@ -84,6 +82,8 @@ Depends on: #<pr-number> | -
 - <Test scenario 3: edge cases>
 - <Integration test coverage>
 - <End-to-end verification>
+
+Depends on: #<pr-number> | -
 ```
 
 **Commit types:** `feat`, `fix`, `refactor`, `test`, `docs`, `chore`, `perf`, `ci`
