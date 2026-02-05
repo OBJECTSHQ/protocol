@@ -5,7 +5,8 @@ use axum::{Json, extract::State};
 use base64::Engine;
 use objects_transport::discovery::{Discovery, GossipDiscovery};
 use objects_transport::{NodeAddr, NodeId};
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, RwLock};
+use tokio::sync::Mutex;
 
 use super::types::{HealthResponse, IdentityResponse, StatusResponse};
 
@@ -58,12 +59,12 @@ pub async fn health_check() -> Json<HealthResponse> {
 /// - Identity information (if registered)
 /// - Relay URL
 pub async fn node_status(State(state): State<AppState>) -> Json<StatusResponse> {
-    let peer_count = state.discovery.lock().unwrap().peer_count();
+    let peer_count = state.discovery.lock().await.peer_count();
 
     let identity = state
         .node_state
         .read()
-        .unwrap()
+        .expect("node_state lock poisoned")
         .identity()
         .map(|info| IdentityResponse {
             id: info.identity_id().to_string(),
