@@ -44,6 +44,7 @@
 pub mod blobs;
 pub mod docs;
 pub mod helpers;
+pub mod storage;
 pub mod tickets;
 
 mod engine;
