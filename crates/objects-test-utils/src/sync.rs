@@ -23,6 +23,7 @@ use objects_sync::{ReplicaId, SyncEngine};
 ///     // Use engine for blob/doc operations
 /// }
 /// ```
+#[allow(deprecated)] // Test utilities intentionally use in-memory storage for speed and isolation
 pub async fn sync_engine() -> anyhow::Result<SyncEngine> {
     let endpoint = transport::endpoint().await;
     SyncEngine::new(endpoint)
