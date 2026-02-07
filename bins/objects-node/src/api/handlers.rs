@@ -1,13 +1,18 @@
 //! HTTP request handlers for the node API.
 
+use crate::state::IdentityInfo;
 use crate::{NodeConfig, NodeState};
-use axum::{Json, extract::State};
+use axum::{extract::State, http::StatusCode, Json};
 use base64::Engine;
+use objects_identity::{Handle, IdentityId, SignerType};
 use objects_transport::discovery::{Discovery, GossipDiscovery};
 use objects_transport::{NodeAddr, NodeId};
+use std::path::Path;
 use std::sync::{Arc, RwLock};
 use tokio::sync::Mutex;
+use tracing::info;
 
+use super::client::{CreateIdentityRequest, RegistryClient};
 use super::error::NodeError;
 use super::types::{HealthResponse, IdentityResponse, StatusResponse};
 
@@ -31,6 +36,7 @@ pub struct NodeInfo {
 /// - GossipDiscovery: Mutable, exclusive access (Mutex)
 /// - NodeState: Read-heavy, write-rare (RwLock)
 /// - NodeConfig: Immutable clone
+/// - RegistryClient: Stateless, clone-safe
 #[derive(Clone)]
 pub struct AppState {
     /// Immutable node information.
@@ -41,6 +47,8 @@ pub struct AppState {
     pub node_state: Arc<RwLock<NodeState>>,
     /// Node configuration.
     pub config: NodeConfig,
+    /// Registry HTTP client.
+    pub registry_client: RegistryClient,
 }
 
 /// Health check handler.
@@ -106,6 +114,84 @@ pub async fn get_identity(
         Some(response) => Ok(Json(response)),
         None => Err(NodeError::NotFound("No identity registered".to_string())),
     }
+}
+
+/// Create identity handler.
+///
+/// Registers a new identity with the registry and persists it locally:
+/// 1. Validates handle format
+/// 2. Calls registry to create identity
+/// 3. Updates NodeState with identity info
+/// 4. Persists state to disk
+///
+/// Returns 201 Created with identity info on success.
+pub async fn create_identity(
+    State(state): State<AppState>,
+    Json(req): Json<CreateIdentityRequest>,
+) -> Result<(StatusCode, Json<IdentityResponse>), NodeError> {
+    // 1. Validate request
+    Handle::parse(&req.handle).map_err(|e| NodeError::BadRequest(e.to_string()))?;
+
+    // 2. Call registry to create identity
+    let registry_response = state
+        .registry_client
+        .create_identity(req)
+        .await
+        .map_err(|e| NodeError::Registry(e.to_string()))?;
+
+    // 3. Update local node state
+    let signer_type = match registry_response.signer_type.to_lowercase().as_str() {
+        "passkey" => SignerType::Passkey,
+        "wallet" => SignerType::Wallet,
+        _ => {
+            return Err(NodeError::Internal(
+                "Unknown signer type from registry".to_string(),
+            ));
+        }
+    };
+
+    let nonce = hex::decode(&registry_response.nonce)
+        .map_err(|e| NodeError::Internal(format!("Invalid nonce from registry: {}", e)))?;
+
+    if nonce.len() != 8 {
+        return Err(NodeError::Internal(
+            "Nonce must be exactly 8 bytes".to_string(),
+        ));
+    }
+
+    let mut nonce_array = [0u8; 8];
+    nonce_array.copy_from_slice(&nonce);
+
+    let identity_info = IdentityInfo::new(
+        IdentityId::parse(&registry_response.id)
+            .map_err(|e| NodeError::Internal(format!("Invalid identity ID: {}", e)))?,
+        Handle::parse(&registry_response.handle)
+            .map_err(|e| NodeError::Internal(format!("Invalid handle: {}", e)))?,
+        nonce_array,
+        signer_type,
+    );
+
+    {
+        let mut node_state = state.node_state.write().unwrap();
+        node_state.set_identity(identity_info.clone());
+
+        // 4. Persist to disk
+        let state_path = Path::new(&state.config.node.data_dir).join("node.key");
+        node_state
+            .save(&state_path)
+            .map_err(|e| NodeError::Internal(format!("Failed to save state: {}", e)))?;
+    }
+
+    info!("Identity created: {}", identity_info.handle());
+
+    let response = IdentityResponse {
+        id: registry_response.id,
+        handle: registry_response.handle,
+        nonce: registry_response.nonce,
+        signer_type: registry_response.signer_type,
+    };
+
+    Ok((StatusCode::CREATED, Json(response)))
 }
 
 #[cfg(test)]

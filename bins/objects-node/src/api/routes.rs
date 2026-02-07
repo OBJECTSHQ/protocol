@@ -1,6 +1,6 @@
 //! API routes and router configuration.
 
-use super::handlers::{AppState, get_identity, health_check, node_status};
+use super::handlers::{AppState, create_identity, get_identity, health_check, node_status};
 use axum::{Router, routing::get};
 
 /// Create the API router with all routes.
@@ -10,11 +10,12 @@ use axum::{Router, routing::get};
 /// - `GET /health` - Health check endpoint
 /// - `GET /status` - Node status endpoint
 /// - `GET /identity` - Get registered identity
+/// - `POST /identity` - Create new identity
 pub fn create_router(state: AppState) -> Router {
     Router::new()
         .route("/health", get(health_check))
         .route("/status", get(node_status))
-        .route("/identity", get(get_identity))
+        .route("/identity", get(get_identity).post(create_identity))
         .with_state(state)
 }
 
@@ -33,6 +34,7 @@ mod tests {
     use tempfile::TempDir;
     use tower::ServiceExt;
 
+    use super::super::client::RegistryClient;
     use super::super::handlers::NodeInfo;
     use super::super::types::HealthResponse;
 
@@ -83,6 +85,7 @@ mod tests {
             discovery: Arc::new(Mutex::new(discovery)),
             node_state: Arc::new(RwLock::new(node_state)),
             config: config.clone(),
+            registry_client: RegistryClient::new(&config),
         };
 
         (app_state, temp)
