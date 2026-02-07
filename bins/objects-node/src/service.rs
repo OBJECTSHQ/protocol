@@ -7,7 +7,7 @@ use objects_transport::discovery::{Discovery, DiscoveryConfig, GossipDiscovery};
 use objects_transport::{NetworkConfig, NodeAddr, NodeId, ObjectsEndpoint, RelayUrl};
 use std::str::FromStr;
 use std::sync::Arc;
-use tokio::sync::watch;
+use tokio::sync::{Mutex, watch};
 use tracing::{debug, info};
 
 /// Node service orchestrating P2P networking components.
@@ -17,7 +17,8 @@ pub struct NodeService {
     #[allow(dead_code)] // Used for identity management
     state: NodeState,
     endpoint: Arc<ObjectsEndpoint>,
-    discovery: GossipDiscovery,
+    /// Gossip discovery instance (shared with API layer via Arc<Mutex>).
+    pub discovery: Arc<Mutex<GossipDiscovery>>,
     shutdown_tx: watch::Sender<bool>,
     shutdown_rx: watch::Receiver<bool>,
 }
@@ -81,7 +82,7 @@ impl NodeService {
             config,
             state,
             endpoint: endpoint_arc,
-            discovery,
+            discovery: Arc::new(Mutex::new(discovery)),
             shutdown_tx,
             shutdown_rx,
         })
@@ -104,7 +105,7 @@ impl NodeService {
     pub async fn run(mut self) -> Result<()> {
         info!("Node service running");
 
-        let mut announcements = self.discovery.announcements();
+        let mut announcements = self.discovery.lock().await.announcements();
         let mut shutdown = self.shutdown_rx.clone();
 
         loop {
@@ -133,12 +134,48 @@ impl NodeService {
         Ok(())
     }
 
+    /// Run the node service event loop without consuming self.
+    ///
+    /// This method is used when the service needs to run concurrently
+    /// with other tasks (e.g., HTTP server) that share access to the
+    /// discovery and state.
+    pub async fn run_loop(&mut self) -> Result<()> {
+        info!("Node service running");
+
+        let mut announcements = self.discovery.lock().await.announcements();
+        let mut shutdown = self.shutdown_rx.clone();
+
+        loop {
+            tokio::select! {
+                Some(announcement) = announcements.next() => {
+                    info!(
+                        "Discovered peer: {} (relay: {:?})",
+                        announcement.node_id,
+                        announcement.relay_url
+                    );
+                    debug!("Peer age: {:?}", announcement.age());
+                }
+                _ = shutdown.changed() => {
+                    info!("Shutdown signal received");
+                    break;
+                }
+                else => {
+                    debug!("Announcement stream ended");
+                    break;
+                }
+            }
+        }
+
+        self.shutdown_inner().await?;
+        Ok(())
+    }
+
     /// Internal shutdown logic shared by run() and shutdown().
     async fn shutdown_inner(&mut self) -> Result<()> {
         info!("Shutting down node service...");
 
         // Shutdown discovery
-        if let Err(e) = self.discovery.shutdown().await {
+        if let Err(e) = self.discovery.lock().await.shutdown().await {
             tracing::error!("Error shutting down discovery: {}", e);
         } else {
             info!("Discovery closed");
@@ -150,8 +187,8 @@ impl NodeService {
     }
 
     /// Get the current number of discovered peers.
-    pub fn peer_count(&self) -> usize {
-        self.discovery.peer_count()
+    pub async fn peer_count(&self) -> usize {
+        self.discovery.lock().await.peer_count()
     }
 
     /// Get a shutdown trigger that can be used to signal shutdown.
@@ -231,7 +268,7 @@ mod tests {
         let service = NodeService::new(config, state).await.unwrap();
 
         // Discovery should be initialized
-        assert_eq!(service.peer_count(), 0); // No peers discovered yet
+        assert_eq!(service.peer_count().await, 0); // No peers discovered yet
     }
 
     #[tokio::test]
