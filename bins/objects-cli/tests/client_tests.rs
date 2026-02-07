@@ -1,3 +1,4 @@
+use base64::Engine as _;
 use objects_cli::client::NodeClient;
 use objects_cli::error::CliError;
 use serde_json::json;
@@ -135,6 +136,22 @@ async fn test_create_identity_success() {
     let client = NodeClient::new(mock.uri());
     let request = objects_cli::types::CreateIdentityRequest {
         handle: "@alice".to_string(),
+        signer_type: "PASSKEY".to_string(),
+        signer_public_key: base64::engine::general_purpose::STANDARD
+            .encode(b"test_public_key_33_bytes_long_0123456"),
+        nonce: base64::engine::general_purpose::STANDARD.encode(b"testnonce"),
+        timestamp: 1234567890,
+        signature: objects_cli::types::SignatureData {
+            signature: base64::engine::general_purpose::STANDARD.encode(b"test_signature"),
+            public_key: Some(base64::engine::general_purpose::STANDARD.encode(b"test_pk")),
+            address: None,
+            authenticator_data: Some(
+                base64::engine::general_purpose::STANDARD.encode(b"test_auth"),
+            ),
+            client_data_json: Some(
+                base64::engine::general_purpose::STANDARD.encode(b"{\"type\":\"webauthn.get\"}"),
+            ),
+        },
     };
 
     let result = client.create_identity(request).await;
@@ -158,6 +175,22 @@ async fn test_create_identity_conflict() {
     let client = NodeClient::new(mock.uri());
     let request = objects_cli::types::CreateIdentityRequest {
         handle: "@alice".to_string(),
+        signer_type: "PASSKEY".to_string(),
+        signer_public_key: base64::engine::general_purpose::STANDARD
+            .encode(b"test_public_key_33_bytes_long_0123456"),
+        nonce: base64::engine::general_purpose::STANDARD.encode(b"testnonce"),
+        timestamp: 1234567890,
+        signature: objects_cli::types::SignatureData {
+            signature: base64::engine::general_purpose::STANDARD.encode(b"test_signature"),
+            public_key: Some(base64::engine::general_purpose::STANDARD.encode(b"test_pk")),
+            address: None,
+            authenticator_data: Some(
+                base64::engine::general_purpose::STANDARD.encode(b"test_auth"),
+            ),
+            client_data_json: Some(
+                base64::engine::general_purpose::STANDARD.encode(b"{\"type\":\"webauthn.get\"}"),
+            ),
+        },
     };
 
     let result = client.create_identity(request).await;

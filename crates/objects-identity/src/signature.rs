@@ -96,6 +96,26 @@ impl Signature {
         }
     }
 
+    /// Returns a reference to the authenticator data (passkey only).
+    pub fn authenticator_data(&self) -> Option<&[u8]> {
+        match self {
+            Self::Passkey {
+                authenticator_data, ..
+            } => Some(authenticator_data),
+            Self::Wallet { .. } => None,
+        }
+    }
+
+    /// Returns a reference to the client data JSON (passkey only).
+    pub fn client_data_json(&self) -> Option<&[u8]> {
+        match self {
+            Self::Passkey {
+                client_data_json, ..
+            } => Some(client_data_json),
+            Self::Wallet { .. } => None,
+        }
+    }
+
     /// Verifies the signature against a message using audited libraries.
     ///
     /// For passkey signatures: Uses p256 (RustCrypto, audited by zkSecurity 2025)
