@@ -8,6 +8,7 @@ use objects_transport::{NodeAddr, NodeId};
 use std::sync::{Arc, RwLock};
 use tokio::sync::Mutex;
 
+use super::error::NodeError;
 use super::types::{HealthResponse, IdentityResponse, StatusResponse};
 
 /// Immutable node information.
@@ -80,6 +81,31 @@ pub async fn node_status(State(state): State<AppState>) -> Json<StatusResponse> 
         identity,
         relay_url: state.config.network.relay_url.clone(),
     })
+}
+
+/// Get identity handler.
+///
+/// Returns the node's registered identity if it exists.
+/// Returns 404 if no identity has been registered.
+pub async fn get_identity(
+    State(state): State<AppState>,
+) -> Result<Json<IdentityResponse>, NodeError> {
+    let identity = state
+        .node_state
+        .read()
+        .unwrap()
+        .identity()
+        .map(|info| IdentityResponse {
+            id: info.identity_id().to_string(),
+            handle: info.handle().to_string(),
+            nonce: hex::encode(info.nonce()),
+            signer_type: format!("{:?}", info.signer_type()).to_lowercase(),
+        });
+
+    match identity {
+        Some(response) => Ok(Json(response)),
+        None => Err(NodeError::NotFound("No identity registered".to_string())),
+    }
 }
 
 #[cfg(test)]
