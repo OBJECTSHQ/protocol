@@ -1,5 +1,5 @@
 use objects_cli::commands;
-use objects_cli::config::CliConfig;
+use objects_cli::config::Config;
 use serial_test::serial;
 use temp_env::with_var;
 use tempfile::tempdir;
@@ -53,10 +53,10 @@ fn test_init_config_has_defaults() {
             commands::init::run().await.unwrap();
 
             let config_file = temp.path().join(".objects/config.toml");
-            let config = CliConfig::from_file(&config_file).unwrap();
+            let config = Config::from_file(&config_file).unwrap();
 
-            assert_eq!(config.api_url, "http://localhost:3420");
-            assert!(config.api_token.is_none());
+            assert_eq!(config.api_url(), "http://127.0.0.1:3420");
+            assert!(config.cli.api_token.is_none());
         });
     });
 }

@@ -6,26 +6,18 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 /// Unified configuration shared between CLI and Node.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Config {
+    #[serde(default)]
     pub node: NodeSettings,
+    #[serde(default)]
     pub network: NetworkSettings,
+    #[serde(default)]
     pub storage: StorageSettings,
+    #[serde(default)]
     pub identity: IdentitySettings,
     #[serde(default)]
     pub cli: CliSettings,
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            node: NodeSettings::default(),
-            network: NetworkSettings::default(),
-            storage: StorageSettings::default(),
-            identity: IdentitySettings::default(),
-            cli: CliSettings::default(),
-        }
-    }
 }
 
 impl Config {
@@ -92,10 +84,10 @@ impl Config {
         }
 
         // Or override individual components
-        if let Ok(port) = std::env::var("OBJECTS_API_PORT") {
-            if let Ok(port) = port.parse() {
-                self.node.api_port = port;
-            }
+        if let Ok(port) = std::env::var("OBJECTS_API_PORT")
+            && let Ok(port) = port.parse()
+        {
+            self.node.api_port = port;
         }
 
         if let Ok(token) = std::env::var("OBJECTS_API_TOKEN") {

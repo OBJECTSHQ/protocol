@@ -15,6 +15,8 @@ struct Cli {
 enum Commands {
     /// Initialize a new node
     Init,
+    /// Show node status
+    Status,
     /// Identity operations
     Identity {
         #[command(subcommand)]
@@ -44,7 +46,7 @@ enum IdentityCommands {
     /// Create a new identity
     Create {
         /// Handle for the identity
-        #[arg(short, long)]
+        #[arg(long)]
         handle: String,
     },
     /// Show current identity
@@ -94,6 +96,11 @@ async fn main() -> anyhow::Result<()> {
     match cli.command {
         Commands::Init => {
             commands::init::run().await?;
+        }
+        Commands::Status => {
+            let config = Config::load()?;
+            let client = NodeClient::new(config.api_url());
+            commands::status::run(&client).await?;
         }
         Commands::Identity { command } => {
             let config = Config::load()?;
