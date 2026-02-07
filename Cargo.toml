@@ -58,9 +58,10 @@ bytes = "1"
 
 # Web/API
 axum = "0.8"
+axum-extra = { version = "0.10", features = ["multipart"] }
 tonic = "0.14"
 tower = "0.5"
-reqwest = { version = "0.13", features = ["json"] }
+reqwest = { version = "0.13", features = ["json", "multipart"] }
 
 # Database
 sqlx = { version = "0.8", features = ["postgres", "runtime-tokio"] }

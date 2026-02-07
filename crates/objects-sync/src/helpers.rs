@@ -230,4 +230,45 @@ impl DocsClient {
 
         Ok(Some(project))
     }
+
+    /// Lists all assets in a project replica.
+    ///
+    /// Requires a BlobClient to read entry contents.
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// # use objects_sync::SyncEngine;
+    /// # use objects_transport::ObjectsEndpoint;
+    /// # use iroh_docs::NamespaceId;
+    /// # async fn example(replica_id: NamespaceId) -> anyhow::Result<()> {
+    /// # let endpoint = ObjectsEndpoint::builder().bind().await?;
+    /// # let sync = SyncEngine::new(endpoint).await?;
+    /// let assets = sync.docs().list_assets(sync.blobs(), replica_id).await?;
+    /// for asset in assets {
+    ///     println!("Found asset: {}", asset.name());
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn list_assets(
+        &self,
+        blobs: &BlobClient,
+        replica_id: NamespaceId,
+    ) -> Result<Vec<Asset>> {
+        use objects_data::storage::ASSETS_PREFIX;
+
+        let entries = self.query_prefix(replica_id, ASSETS_PREFIX).await?;
+
+        let mut assets = Vec::new();
+        for entry in entries {
+            let content_hash = self.entry_content_hash(&entry);
+            let bytes = blobs.read_to_bytes(content_hash).await?;
+            let asset =
+                serde_json::from_slice(&bytes).map_err(|e| Error::Iroh(anyhow::anyhow!(e)))?;
+            assets.push(asset);
+        }
+
+        Ok(assets)
+    }
 }
