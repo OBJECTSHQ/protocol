@@ -2,7 +2,8 @@
 
 use crate::state::IdentityInfo;
 use crate::{NodeConfig, NodeState};
-use axum::{Json, extract::State, http::StatusCode};
+use axum::{extract::State, http::StatusCode, Json};
+use base64::Engine;
 use objects_identity::{Handle, IdentityId, SignerType};
 use objects_transport::discovery::{Discovery, GossipDiscovery};
 use objects_transport::{NodeAddr, NodeId};
@@ -72,12 +73,12 @@ pub async fn node_status(State(state): State<AppState>) -> Json<StatusResponse> 
     let identity = state
         .node_state
         .read()
-        .unwrap()
+        .expect("node_state lock poisoned")
         .identity()
         .map(|info| IdentityResponse {
             id: info.identity_id().to_string(),
             handle: info.handle().to_string(),
-            nonce: hex::encode(info.nonce()),
+            nonce: base64::engine::general_purpose::STANDARD.encode(info.nonce()),
             signer_type: format!("{:?}", info.signer_type()).to_lowercase(),
         });
 

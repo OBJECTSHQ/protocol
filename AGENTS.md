@@ -69,8 +69,6 @@ Use conventional commit style with dependency notes and structured body:
 ```
 <type>: <description>
 
-Depends on: #<pr-number> | -
-
 ## Summary of changes
 - <What was added/modified/removed>
 - <Component/feature implemented>
@@ -84,7 +82,13 @@ Depends on: #<pr-number> | -
 - <Test scenario 3: edge cases>
 - <Integration test coverage>
 - <End-to-end verification>
+
+Depends on: #<pr-number> | -
+
+Pull Request: https://github.com/OBJECTSHQ/protocol/pull/<pr-number>
 ```
+
+**Note:** The `Pull Request:` line is used by jj-spr to track the associated GitHub PR. Do not remove or modify this line manually - jj-spr manages it automatically. When syncing an existing PR, ensure this line is present.
 
 **Commit types:** `feat`, `fix`, `refactor`, `test`, `docs`, `chore`, `perf`, `ci`
 
