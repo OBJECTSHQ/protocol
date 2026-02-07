@@ -33,7 +33,7 @@ pub struct IdentityResponse {
     pub id: String,
     /// Handle (e.g., "@alice").
     pub handle: String,
-    /// 8-byte nonce encoded as hex.
+    /// 8-byte nonce encoded as base64.
     pub nonce: String,
     /// Signer type ("passkey" or "wallet").
     pub signer_type: String,
@@ -204,7 +204,7 @@ mod tests {
         let response = IdentityResponse {
             id: "obj_2dMiYc8RhnYkorPc5pVh9".to_string(),
             handle: "@alice".to_string(),
-            nonce: "0102030405060708".to_string(),
+            nonce: "AQIDBAUGBwg=".to_string(), // base64 encoding of [1,2,3,4,5,6,7,8]
             signer_type: "passkey".to_string(),
         };
 
