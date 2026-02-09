@@ -2,7 +2,7 @@
 
 use crate::state::IdentityInfo;
 use crate::{NodeConfig, NodeState};
-use axum::{extract::State, http::StatusCode, Json};
+use axum::{Json, extract::State, http::StatusCode};
 use base64::Engine;
 use objects_identity::{Handle, IdentityId, SignerType};
 use objects_transport::discovery::{Discovery, GossipDiscovery};
