@@ -30,8 +30,8 @@ mod tests {
     use objects_transport::{NetworkConfig, ObjectsEndpoint, RelayUrl};
     use std::str::FromStr;
     use std::sync::{Arc, RwLock};
-    use tokio::sync::Mutex;
     use tempfile::TempDir;
+    use tokio::sync::Mutex;
     use tower::ServiceExt;
 
     use super::super::client::RegistryClient;
