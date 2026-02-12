@@ -1,4 +1,4 @@
 // Integration tests for CLI commands
 mod init_tests;
-// PR18: mod identity_tests;
-// PR19: mod status_tests;
+// TODO: mod identity_tests;
+// TODO: mod status_tests;
