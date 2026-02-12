@@ -103,17 +103,16 @@ Pull Request: https://github.com/OBJECTSHQ/protocol/pull/<pr-number>
 
 ## Code Quality & Formatting
 
-**Always format code before committing:**
+**Always format and verify before committing:**
 
 ```bash
-cargo fmt --all
-git add -u
-git commit -m "your message"
+cargo fmt --all                          # Fix formatting
+cargo fmt --all -- --check               # Verify (must pass clean, matches CI)
 ```
 
 **Recommended setup:**
 - Configure your editor to format on save
-- Optional: Set up a pre-commit git hook to enforce formatting
+- Use `rustup` (not Homebrew Rust) to ensure local rustfmt matches CI
 
 ## Architecture
 
