@@ -1,6 +1,8 @@
 //! API routes and router configuration.
 
-use super::handlers::{AppState, create_identity, get_identity, health_check, node_status};
+use super::handlers::{
+    AppState, create_identity, get_identity, health_check, list_peers, node_status,
+};
 use axum::{Router, routing::get};
 
 /// Create the API router with all routes.
@@ -11,11 +13,13 @@ use axum::{Router, routing::get};
 /// - `GET /status` - Node status endpoint
 /// - `GET /identity` - Get registered identity
 /// - `POST /identity` - Create new identity
+/// - `GET /peers` - List discovered peers
 pub fn create_router(state: AppState) -> Router {
     Router::new()
         .route("/health", get(health_check))
         .route("/status", get(node_status))
         .route("/identity", get(get_identity).post(create_identity))
+        .route("/peers", get(list_peers))
         .with_state(state)
 }
 
@@ -30,8 +34,8 @@ mod tests {
     use objects_transport::{NetworkConfig, ObjectsEndpoint, RelayUrl};
     use std::str::FromStr;
     use std::sync::{Arc, RwLock};
-    use tokio::sync::Mutex;
     use tempfile::TempDir;
+    use tokio::sync::Mutex;
     use tower::ServiceExt;
 
     use super::super::client::RegistryClient;
@@ -128,6 +132,24 @@ mod tests {
         assert_eq!(status["peer_count"], 0);
         assert!(status["identity"].is_null());
         assert!(status["relay_url"].is_string());
+    }
+
+    #[tokio::test]
+    async fn test_peers_endpoint_returns_empty_list() {
+        let (state, _temp) = create_test_app_state().await;
+        let router = create_router(state);
+
+        let response = router
+            .oneshot(Request::get("/peers").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let peers: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(peers["peers"].is_array());
+        assert_eq!(peers["peers"].as_array().unwrap().len(), 0);
     }
 
     #[tokio::test]
