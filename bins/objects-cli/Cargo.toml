@@ -6,6 +6,14 @@ license.workspace = true
 repository.workspace = true
 description = "CLI tool for OBJECTS Protocol"
 
+[[bin]]
+name = "objects"
+path = "src/main.rs"
+
+[lib]
+name = "objects_cli"
+path = "src/lib.rs"
+
 [dependencies]
 objects-identity.workspace = true
 objects-data.workspace = true
@@ -14,6 +22,14 @@ objects-sync.workspace = true
 
 # CLI
 clap.workspace = true
+
+# HTTP
+reqwest.workspace = true
+
+# Config
+toml.workspace = true
+url.workspace = true
+dirs = "6"
 
 # Async
 tokio.workspace = true
@@ -24,7 +40,12 @@ serde_json.workspace = true
 
 # Error handling
 anyhow.workspace = true
+thiserror.workspace = true
 
 # Logging
 tracing.workspace = true
 tracing-subscriber.workspace = true
+
+[dev-dependencies]
+wiremock.workspace = true
+tempfile.workspace = true
