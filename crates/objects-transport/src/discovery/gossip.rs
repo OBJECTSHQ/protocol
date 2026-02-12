@@ -192,6 +192,23 @@ impl GossipDiscovery {
         self.announce().await
     }
 
+    /// Get detailed peer information including last-seen durations.
+    ///
+    /// Returns each peer's address and the elapsed time since last seen.
+    /// Uses `try_read` to avoid blocking; returns empty on contention.
+    pub fn peer_details(&self) -> Vec<(NodeAddr, std::time::Duration)> {
+        match self.peer_table.try_read() {
+            Ok(table) => table
+                .iter()
+                .map(|(_, info)| (info.addr.clone(), info.last_seen.elapsed()))
+                .collect(),
+            Err(_) => {
+                warn!("Failed to acquire peer table lock for read, returning empty peer list");
+                Vec::new()
+            }
+        }
+    }
+
     /// Get the current relay URL from the endpoint.
     fn get_relay_url(endpoint: &ObjectsEndpoint) -> Option<crate::RelayUrl> {
         endpoint.node_addr().relay_urls().next().cloned()

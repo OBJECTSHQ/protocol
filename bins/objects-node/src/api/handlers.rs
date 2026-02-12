@@ -2,7 +2,7 @@
 
 use crate::state::IdentityInfo;
 use crate::{NodeConfig, NodeState};
-use axum::{extract::Path as AxumPath, extract::State, http::StatusCode, Json};
+use axum::{Json, extract::Path as AxumPath, extract::State, http::StatusCode};
 use base64::Engine;
 use objects_data::Project;
 use objects_identity::{Handle, IdentityId, SignerType};
@@ -19,7 +19,7 @@ use super::client::{CreateIdentityRequest, RegistryClient};
 use super::error::NodeError;
 use super::types::{
     AssetListResponse, AssetResponse, CreateProjectRequest, HealthResponse, IdentityResponse,
-    ProjectListResponse, ProjectResponse, StatusResponse,
+    PeerInfo, ProjectListResponse, ProjectResponse, StatusResponse,
 };
 
 /// Immutable node information.
@@ -122,6 +122,36 @@ pub async fn get_identity(
     match identity {
         Some(response) => Ok(Json(response)),
         None => Err(NodeError::NotFound("No identity registered".to_string())),
+    }
+}
+
+/// List peers handler.
+///
+/// Returns all discovered peers with their node IDs, relay URLs,
+/// and time since last seen.
+pub async fn list_peers(State(state): State<AppState>) -> Json<serde_json::Value> {
+    let peer_details = state.discovery.lock().await.peer_details();
+    let peers: Vec<PeerInfo> = peer_details
+        .into_iter()
+        .map(|(addr, elapsed)| PeerInfo {
+            node_id: addr.id.to_string(),
+            relay_url: addr.relay_urls().next().map(|u| u.to_string()),
+            last_seen_ago: format_elapsed(elapsed),
+        })
+        .collect();
+    Json(serde_json::json!({ "peers": peers }))
+}
+
+fn format_elapsed(elapsed: std::time::Duration) -> String {
+    let secs = elapsed.as_secs();
+    if secs < 60 {
+        format!("{}s ago", secs)
+    } else if secs < 3600 {
+        format!("{}m ago", secs / 60)
+    } else if secs < 86400 {
+        format!("{}h ago", secs / 3600)
+    } else {
+        format!("{}d ago", secs / 86400)
     }
 }
 

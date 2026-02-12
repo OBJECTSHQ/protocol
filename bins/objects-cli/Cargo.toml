@@ -6,6 +6,10 @@ license.workspace = true
 repository.workspace = true
 description = "CLI tool for OBJECTS Protocol"
 
+[[bin]]
+name = "objects"
+path = "src/main.rs"
+
 [lib]
 name = "objects_cli"
 path = "src/lib.rs"
