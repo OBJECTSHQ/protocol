@@ -2,13 +2,13 @@
 //!
 //! The [`SyncEngine`] is the main entry point for all sync operations in the OBJECTS Protocol.
 
-use iroh_blobs::store::fs::FsStore;
+use iroh::protocol::Router;
+use iroh_blobs::BlobsProtocol;
 use iroh_blobs::store::mem::MemStore;
 use iroh_docs::protocol::Docs;
 use iroh_gossip::net::Gossip;
-use objects_transport::ObjectsEndpoint;
+use objects_transport::{NodeAddr, ObjectsEndpoint};
 use std::ops::Deref;
-use std::sync::Arc;
 
 use crate::storage::{StorageConfig, blobs, docs};
 use crate::{BlobClient, DocsClient, Result};
@@ -16,19 +16,22 @@ use crate::{BlobClient, DocsClient, Result};
 /// Unified sync engine for OBJECTS Protocol.
 ///
 /// Coordinates blob sync (iroh-blobs) and metadata sync (iroh-docs).
+/// Uses iroh's Router to handle incoming connections for blob and doc protocols.
 #[derive(Clone)]
 pub struct SyncEngine {
     blobs: BlobClient,
     docs: DocsClient,
-    /// Optional persistent blob store (kept alive for shutdown)
-    blob_store: Option<Arc<FsStore>>,
+    node_addr: NodeAddr,
+    /// Router keeps protocol handlers alive for incoming connections.
+    _router: Router,
 }
 
 impl SyncEngine {
     /// Creates a new sync engine with persistent storage.
     ///
     /// Uses FsStore for content-addressed blob storage and persistent Docs
-    /// backend for metadata synchronization.
+    /// backend for metadata synchronization. Registers protocols on an iroh
+    /// Router so this node can serve blob and doc requests from peers.
     ///
     /// # Errors
     ///
@@ -43,8 +46,15 @@ impl SyncEngine {
         // Create persistent blob store
         let store = blobs::create_blob_store(storage_config.blobs_path()).await?;
 
-        // Create Iroh blobs client from store
+        // Capture node address before Router consumes the endpoint
+        let node_addr = iroh_endpoint.addr();
+
+        // Create blobs protocol handler for incoming connections
+        let blobs_protocol = BlobsProtocol::new(&store, None);
+
+        // Get blob API handles
         let blobs_client = store.blobs().clone();
+        let store_api: iroh_blobs::api::Store = store.deref().clone();
 
         // Create gossip for docs protocol
         let gossip = Gossip::builder().spawn(iroh_endpoint.clone());
@@ -58,22 +68,28 @@ impl SyncEngine {
         )
         .await?;
 
+        // Register protocols on router for incoming connections
+        let router = Router::builder(iroh_endpoint.clone())
+            .accept(iroh_blobs::ALPN, blobs_protocol)
+            .accept(iroh_docs::ALPN, docs_protocol.clone())
+            .spawn();
+
         Ok(Self {
-            blobs: BlobClient::new(blobs_client),
+            blobs: BlobClient::new(blobs_client, store_api, router.endpoint().clone()),
             docs: DocsClient::new(docs_protocol),
-            blob_store: Some(Arc::new(store)),
+            node_addr,
+            _router: router,
         })
     }
 
     /// Creates a new sync engine with in-memory storage.
     ///
-    /// **Deprecated:** Use `with_storage()` for production.
-    /// Kept for backward compatibility in tests only.
+    /// Registers protocols on an iroh Router so this node can serve
+    /// blob and doc requests from peers.
     ///
     /// # Errors
     ///
     /// Returns error if initialization fails.
-    #[deprecated(note = "Use with_storage() for production")]
     pub async fn new(endpoint: ObjectsEndpoint) -> Result<Self> {
         // Create in-memory blob store for v0.1
         let store = MemStore::new();
@@ -81,23 +97,49 @@ impl SyncEngine {
         // Get underlying Iroh endpoint
         let iroh_endpoint = endpoint.inner().clone();
 
-        // Create Iroh blobs client from store
+        // Capture node address before Router consumes the endpoint
+        let node_addr = endpoint.node_addr();
+
+        // Create blobs protocol handler for incoming connections
+        let blobs_protocol = BlobsProtocol::new(store.deref(), None);
+
+        // Get blob API handles
         let blobs_client = store.blobs().clone();
+        let store_api: iroh_blobs::api::Store = store.deref().clone();
 
         // Create gossip for docs protocol
         let gossip = Gossip::builder().spawn(iroh_endpoint.clone());
 
         // Spawn docs protocol with endpoint, blobs store, and gossip
         let docs_protocol = Docs::memory()
-            .spawn(iroh_endpoint, store.deref().clone(), gossip)
+            .spawn(iroh_endpoint.clone(), store.deref().clone(), gossip)
             .await
             .map_err(crate::Error::Iroh)?;
 
+        // Register protocols on router for incoming connections
+        let router = Router::builder(iroh_endpoint)
+            .accept(iroh_blobs::ALPN, blobs_protocol)
+            .accept(iroh_docs::ALPN, docs_protocol.clone())
+            .spawn();
+
         Ok(Self {
-            blobs: BlobClient::new(blobs_client),
+            blobs: BlobClient::new(blobs_client, store_api, router.endpoint().clone()),
             docs: DocsClient::new(docs_protocol),
-            blob_store: None,
+            node_addr,
+            _router: router,
         })
+    }
+
+    /// Returns this node's address for creating tickets.
+    pub fn node_addr(&self) -> &NodeAddr {
+        &self.node_addr
+    }
+
+    /// Returns the underlying iroh endpoint (via the Router).
+    ///
+    /// Useful for registering peer addresses for discovery.
+    pub fn endpoint(&self) -> &iroh::Endpoint {
+        self._router.endpoint()
     }
 
     /// Returns a reference to the blob client.
@@ -112,16 +154,14 @@ impl SyncEngine {
 
     /// Gracefully shutdown the sync engine.
     pub async fn shutdown(self) -> Result<()> {
-        // Shutdown persistent blob store if present
-        if let Some(store) = self.blob_store {
-            // Try to get exclusive ownership
-            if let Ok(store) = Arc::try_unwrap(store) {
-                store.shutdown().await.map_err(|e| {
-                    crate::Error::Storage(format!("Failed to shutdown blob store: {}", e))
-                })?;
-            }
-            // If Arc has other references, just drop our reference
-        }
+        // Shutdown the router. This calls ProtocolHandler::shutdown() on all
+        // registered protocols (including BlobsProtocol, which shuts down the
+        // store) and closes the endpoint.
+        self._router
+            .shutdown()
+            .await
+            .map_err(|e| crate::Error::SyncFailed(format!("Router shutdown failed: {}", e)))?;
+
         Ok(())
     }
 }

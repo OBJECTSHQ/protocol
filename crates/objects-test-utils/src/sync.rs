@@ -159,6 +159,62 @@ impl TwoNodeTestHarness {
     }
 }
 
+/// Creates two sync engines that can communicate with each other.
+///
+/// Each engine has its own `StaticProvider` for discovery. After both
+/// engines (and their iroh Routers) are created, the endpoints cross-register
+/// each other's addresses. This follows the iroh canonical test pattern.
+///
+/// # Examples
+///
+/// ```rust
+/// use objects_test_utils::sync;
+///
+/// #[tokio::test]
+/// async fn test_two_node_sync() {
+///     let (sync_a, sync_b) = sync::sync_engine_pair().await.unwrap();
+///     // sync_a and sync_b can transfer blobs and sync docs
+/// }
+/// ```
+pub async fn sync_engine_pair() -> anyhow::Result<(SyncEngine, SyncEngine)> {
+    use objects_transport::StaticProvider;
+
+    // Each node gets its own StaticProvider (matches iroh's test pattern)
+    let sp1 = StaticProvider::new();
+    let sp2 = StaticProvider::new();
+
+    // Use Default relay mode (iroh canonical test pattern uses RelayMode::Default
+    // which enables the N0 relay as fallback for QUIC connections).
+    let ep1 = objects_transport::ObjectsEndpoint::builder()
+        .config(transport::network_config())
+        .static_discovery(sp1.clone())
+        .bind()
+        .await
+        .expect("failed to create endpoint 1");
+
+    let ep2 = objects_transport::ObjectsEndpoint::builder()
+        .config(transport::network_config())
+        .static_discovery(sp2.clone())
+        .bind()
+        .await
+        .expect("failed to create endpoint 2");
+
+    // Create sync engines (which spawn Routers that take over the endpoints)
+    let sync1 = SyncEngine::new(ep1)
+        .await
+        .map_err(|e| anyhow::anyhow!("sync engine 1: {}", e))?;
+    let sync2 = SyncEngine::new(ep2)
+        .await
+        .map_err(|e| anyhow::anyhow!("sync engine 2: {}", e))?;
+
+    // Cross-register addresses AFTER Routers are spawned (iroh canonical pattern).
+    // This ensures the addresses reflect the post-Router endpoint state.
+    sp1.add_endpoint_info(sync2.endpoint().addr());
+    sp2.add_endpoint_info(sync1.endpoint().addr());
+
+    Ok((sync1, sync2))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
