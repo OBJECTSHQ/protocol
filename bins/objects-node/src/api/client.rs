@@ -18,16 +18,28 @@ pub struct CreateIdentityRequest {
     pub signer_type: String,
     pub signer_public_key: String,
     pub nonce: String,
-    pub timestamp: i64,
+    pub timestamp: u64,
     pub signature: SignatureData,
 }
 
 /// Signature data for identity creation.
+/// Matches the registry's SignatureRequest format.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SignatureData {
-    pub r: String,
-    pub s: String,
-    pub v: Option<u8>,
+    /// Base64-encoded signature bytes
+    pub signature: String,
+    /// Base64-encoded public key (required for passkey)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub public_key: Option<String>,
+    /// Wallet address (required for wallet signatures)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub address: Option<String>,
+    /// Base64-encoded authenticator data (required for passkey)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub authenticator_data: Option<String>,
+    /// Base64-encoded client data JSON (required for passkey)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_data_json: Option<String>,
 }
 
 /// Identity response from registry.
@@ -105,6 +117,7 @@ impl RegistryClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use base64::Engine as _;
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -136,9 +149,21 @@ mod tests {
             nonce: "0102030405060708".to_string(),
             timestamp: 1234567890,
             signature: SignatureData {
-                r: "r_value".to_string(),
-                s: "s_value".to_string(),
-                v: None,
+                signature: base64::engine::general_purpose::STANDARD
+                    .encode(b"test_signature_bytes"),
+                public_key: Some(
+                    base64::engine::general_purpose::STANDARD
+                        .encode(b"test_public_key_33_bytes_long_0123456"),
+                ),
+                address: None,
+                authenticator_data: Some(
+                    base64::engine::general_purpose::STANDARD
+                        .encode(b"test_authenticator_data_37_bytes"),
+                ),
+                client_data_json: Some(
+                    base64::engine::general_purpose::STANDARD
+                        .encode(b"{\"type\":\"webauthn.get\",\"challenge\":\"test\"}"),
+                ),
             },
         };
 
@@ -177,9 +202,21 @@ mod tests {
             nonce: "0102030405060708".to_string(),
             timestamp: 1234567890,
             signature: SignatureData {
-                r: "r_value".to_string(),
-                s: "s_value".to_string(),
-                v: None,
+                signature: base64::engine::general_purpose::STANDARD
+                    .encode(b"test_signature_bytes"),
+                public_key: Some(
+                    base64::engine::general_purpose::STANDARD
+                        .encode(b"test_public_key_33_bytes_long_0123456"),
+                ),
+                address: None,
+                authenticator_data: Some(
+                    base64::engine::general_purpose::STANDARD
+                        .encode(b"test_authenticator_data_37_bytes"),
+                ),
+                client_data_json: Some(
+                    base64::engine::general_purpose::STANDARD
+                        .encode(b"{\"type\":\"webauthn.get\",\"challenge\":\"test\"}"),
+                ),
             },
         };
 

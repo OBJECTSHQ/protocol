@@ -126,6 +126,7 @@ async fn main() -> Result<()> {
         node_state: node_state_arc.clone(),
         config: config.clone(),
         registry_client: RegistryClient::new(&config),
+        sync_engine: service.sync_engine().clone(),
     };
 
     // Create shutdown channel for coordinating tasks
