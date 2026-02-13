@@ -6,7 +6,7 @@ use axum::{Json, extract::Path as AxumPath, extract::State, http::StatusCode};
 use base64::Engine;
 use objects_data::Project;
 use objects_identity::{Handle, IdentityId, SignerType};
-use objects_sync::{PROJECT_KEY, SyncEngine};
+use objects_sync::{PROJECT_KEY, ReplicaId, SyncEngine};
 use objects_transport::discovery::{Discovery, GossipDiscovery};
 use objects_transport::{NodeAddr, NodeId};
 use std::path::Path;
@@ -18,8 +18,8 @@ use tracing::info;
 use super::client::{CreateIdentityRequest, RegistryClient};
 use super::error::NodeError;
 use super::types::{
-    CreateProjectRequest, HealthResponse, IdentityResponse, PeerInfo, ProjectListResponse,
-    ProjectResponse, StatusResponse,
+    AssetListResponse, AssetResponse, CreateProjectRequest, HealthResponse, IdentityResponse,
+    PeerInfo, ProjectListResponse, ProjectResponse, StatusResponse,
 };
 
 /// Immutable node information.
@@ -405,6 +405,230 @@ pub async fn get_project(
     }
 
     Err(NodeError::NotFound(format!("Project not found: {}", id)))
+}
+
+// =============================================================================
+// Asset Handlers
+// =============================================================================
+
+/// Helper to find replica ID for a project.
+async fn find_replica_for_project(
+    sync_engine: &SyncEngine,
+    project_id: &str,
+) -> Result<ReplicaId, NodeError> {
+    // Validate project ID format (32 hex chars)
+    if project_id.len() != 32 || !project_id.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err(NodeError::BadRequest(
+            "Invalid project ID format".to_string(),
+        ));
+    }
+
+    let replica_ids = sync_engine
+        .docs()
+        .list_replicas()
+        .await
+        .map_err(|e| NodeError::Internal(format!("Failed to list replicas: {}", e)))?;
+
+    for replica_id in replica_ids {
+        let replica_bytes: [u8; 32] = replica_id.as_bytes().to_owned();
+        let derived_id = Project::project_id_from_replica(&replica_bytes);
+        if derived_id == project_id {
+            return Ok(replica_id);
+        }
+    }
+
+    Err(NodeError::NotFound(format!(
+        "Project not found: {}",
+        project_id
+    )))
+}
+
+/// Add asset handler - POST /projects/:id/assets
+///
+/// Uploads a file as an asset to a project via multipart form data.
+pub async fn add_asset(
+    State(state): State<AppState>,
+    AxumPath(project_id): AxumPath<String>,
+    mut multipart: axum_extra::extract::Multipart,
+) -> Result<(StatusCode, Json<AssetResponse>), NodeError> {
+    // 1. Find replica for project
+    let replica_id = find_replica_for_project(&state.sync_engine, &project_id).await?;
+
+    // 2. Get owner identity (required for author_id)
+    let author_identity_id = state
+        .node_state
+        .read()
+        .unwrap()
+        .identity()
+        .map(|info| info.identity_id().clone())
+        .ok_or_else(|| NodeError::BadRequest("Identity required to add asset".to_string()))?;
+
+    // 3. Extract file from multipart
+    let mut filename: Option<String> = None;
+    let mut content_type: Option<String> = None;
+    let mut file_data: Option<Vec<u8>> = None;
+
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| NodeError::BadRequest(format!("Failed to read multipart field: {}", e)))?
+    {
+        let field_name = field.name().unwrap_or("").to_string();
+        if field_name == "file" {
+            filename = field.file_name().map(String::from);
+            content_type = field.content_type().map(String::from);
+            file_data = Some(
+                field
+                    .bytes()
+                    .await
+                    .map_err(|e| NodeError::BadRequest(format!("Failed to read file data: {}", e)))?
+                    .to_vec(),
+            );
+        }
+    }
+
+    let filename =
+        filename.ok_or_else(|| NodeError::BadRequest("Missing file field".to_string()))?;
+    let content_type = content_type.unwrap_or_else(|| "application/octet-stream".to_string());
+    let file_data = file_data.ok_or_else(|| NodeError::BadRequest("Empty file".to_string()))?;
+
+    // 4. Add blob via blobs().add_bytes()
+    let content_size = file_data.len() as u64;
+    let blob_hash = state
+        .sync_engine
+        .blobs()
+        .add_bytes(bytes::Bytes::from(file_data))
+        .await
+        .map_err(|e| NodeError::Internal(format!("Failed to store blob: {}", e)))?;
+
+    // 5. Create author for signing entries
+    let author = state
+        .sync_engine
+        .docs()
+        .create_author()
+        .await
+        .map_err(|e| NodeError::Internal(format!("Failed to create author: {}", e)))?;
+
+    // 6. Create Asset with content_hash from blob
+    let content_hash = objects_sync::hash_to_content_hash(blob_hash);
+
+    // Generate asset ID from filename (sanitize for RFC-004 compliance)
+    let asset_id: String = filename
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '-')
+        .take(64)
+        .collect();
+    let asset_id = if asset_id.is_empty() {
+        format!("asset-{}", hex::encode(&blob_hash.as_bytes()[..8]))
+    } else {
+        asset_id
+    };
+
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| NodeError::Internal(format!("System time error: {}", e)))?
+        .as_secs();
+
+    let asset = objects_data::Asset::new(
+        asset_id.clone(),
+        filename,
+        author_identity_id,
+        content_hash,
+        content_size,
+        Some(content_type),
+        now,
+        now,
+    )
+    .map_err(|e| NodeError::Internal(format!("Failed to create asset: {}", e)))?;
+
+    // 7. Store via store_asset helper
+    state
+        .sync_engine
+        .docs()
+        .store_asset(replica_id, author, &asset)
+        .await
+        .map_err(|e| NodeError::Internal(format!("Failed to store asset metadata: {}", e)))?;
+
+    info!("Asset added: {} to project {}", asset_id, project_id);
+
+    Ok((StatusCode::CREATED, Json(AssetResponse::from(asset))))
+}
+
+/// List assets handler - GET /projects/:id/assets
+///
+/// Returns all assets in a project.
+pub async fn list_assets(
+    State(state): State<AppState>,
+    AxumPath(project_id): AxumPath<String>,
+) -> Result<Json<AssetListResponse>, NodeError> {
+    // 1. Find replica for project
+    let replica_id = find_replica_for_project(&state.sync_engine, &project_id).await?;
+
+    // 2. List all entries with /assets/ prefix
+    let entries = state
+        .sync_engine
+        .docs()
+        .query_prefix(replica_id, objects_sync::ASSETS_PREFIX)
+        .await
+        .map_err(|e| NodeError::Internal(format!("Failed to query assets: {}", e)))?;
+
+    // 3. Parse each as Asset
+    let mut assets = Vec::new();
+    for entry in entries {
+        let content_hash = state.sync_engine.docs().entry_content_hash(&entry);
+        if let Ok(bytes) = state.sync_engine.blobs().read_to_bytes(content_hash).await
+            && let Ok(asset) = serde_json::from_slice::<objects_data::Asset>(&bytes)
+        {
+            assets.push(AssetResponse::from(asset));
+        }
+    }
+
+    Ok(Json(AssetListResponse { assets }))
+}
+
+/// Get asset content handler - GET /projects/:id/assets/:asset_id/content
+///
+/// Returns the raw content of an asset with appropriate Content-Type header.
+pub async fn get_asset_content(
+    State(state): State<AppState>,
+    AxumPath((project_id, asset_id)): AxumPath<(String, String)>,
+) -> Result<impl axum::response::IntoResponse, NodeError> {
+    use axum::http::header;
+    use axum::response::Response;
+
+    // 1. Find replica for project
+    let replica_id = find_replica_for_project(&state.sync_engine, &project_id).await?;
+
+    // 2. Get asset metadata via get_asset helper
+    let asset = state
+        .sync_engine
+        .docs()
+        .get_asset(state.sync_engine.blobs(), replica_id, &asset_id)
+        .await
+        .map_err(|e| NodeError::Internal(format!("Failed to get asset: {}", e)))?
+        .ok_or_else(|| NodeError::NotFound(format!("Asset not found: {}", asset_id)))?;
+
+    // 3. Read blob content via content_hash
+    let blob_hash = objects_sync::content_hash_to_hash(asset.content_hash());
+    let content = state
+        .sync_engine
+        .blobs()
+        .read_to_bytes(blob_hash)
+        .await
+        .map_err(|e| NodeError::Internal(format!("Failed to read asset content: {}", e)))?;
+
+    // 4. Return with Content-Type header
+    let content_type = asset.format().unwrap_or("application/octet-stream");
+
+    Ok(Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, content_type)
+        .header(
+            header::CONTENT_DISPOSITION,
+            format!("attachment; filename=\"{}\"", asset.name()),
+        )
+        .body(axum::body::Body::from(content.to_vec()))
+        .unwrap())
 }
 
 #[cfg(test)]
