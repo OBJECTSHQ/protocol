@@ -1,6 +1,7 @@
 use crate::error::CliError;
 use crate::types::*;
-use reqwest::{Client, StatusCode};
+use reqwest::{Client, StatusCode, multipart};
+use std::path::Path;
 
 /// HTTP client for node API.
 #[derive(Clone, Debug)]
@@ -55,6 +56,131 @@ impl NodeClient {
         req: CreateIdentityRequest,
     ) -> Result<IdentityResponse, CliError> {
         let url = format!("{}/identity", self.base_url);
+        let response = self.client.post(&url).json(&req).send().await?;
+
+        if response.status() == StatusCode::CREATED {
+            Ok(response.json().await?)
+        } else {
+            Err(self.error_from_response(response).await)
+        }
+    }
+
+    // =========================================================================
+    // Project Operations
+    // =========================================================================
+
+    pub async fn create_project(
+        &self,
+        req: CreateProjectRequest,
+    ) -> Result<ProjectResponse, CliError> {
+        let url = format!("{}/projects", self.base_url);
+        let response = self.client.post(&url).json(&req).send().await?;
+
+        if response.status() == StatusCode::CREATED {
+            Ok(response.json().await?)
+        } else {
+            Err(self.error_from_response(response).await)
+        }
+    }
+
+    pub async fn list_projects(&self) -> Result<ProjectListResponse, CliError> {
+        let url = format!("{}/projects", self.base_url);
+        let response = self.client.get(&url).send().await?;
+
+        if response.status() == StatusCode::OK {
+            Ok(response.json().await?)
+        } else {
+            Err(self.error_from_response(response).await)
+        }
+    }
+
+    pub async fn get_project(&self, id: &str) -> Result<ProjectResponse, CliError> {
+        let url = format!("{}/projects/{}", self.base_url, id);
+        let response = self.client.get(&url).send().await?;
+
+        match response.status() {
+            StatusCode::OK => Ok(response.json().await?),
+            StatusCode::NOT_FOUND => Err(CliError::NotFound(format!("Project not found: {}", id))),
+            _ => Err(self.error_from_response(response).await),
+        }
+    }
+
+    // =========================================================================
+    // Asset Operations
+    // =========================================================================
+
+    /// Add an asset to a project (multipart upload).
+    pub async fn add_asset(
+        &self,
+        project_id: &str,
+        file_path: &Path,
+    ) -> Result<AssetResponse, CliError> {
+        let file_name = file_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("file")
+            .to_string();
+
+        let content_type = mime_guess::from_path(file_path)
+            .first_or_octet_stream()
+            .to_string();
+
+        let data = tokio::fs::read(file_path).await?;
+
+        let part = multipart::Part::bytes(data)
+            .file_name(file_name)
+            .mime_str(&content_type)
+            .map_err(|e| CliError::Config(format!("Invalid MIME type: {}", e)))?;
+
+        let form = multipart::Form::new().part("file", part);
+
+        let url = format!("{}/projects/{}/assets", self.base_url, project_id);
+        let response = self.client.post(&url).multipart(form).send().await?;
+
+        if response.status() == StatusCode::CREATED {
+            Ok(response.json().await?)
+        } else {
+            Err(self.error_from_response(response).await)
+        }
+    }
+
+    /// List assets in a project.
+    pub async fn list_assets(&self, project_id: &str) -> Result<AssetListResponse, CliError> {
+        let url = format!("{}/projects/{}/assets", self.base_url, project_id);
+        let response = self.client.get(&url).send().await?;
+
+        if response.status() == StatusCode::OK {
+            Ok(response.json().await?)
+        } else {
+            Err(self.error_from_response(response).await)
+        }
+    }
+
+    // =========================================================================
+    // Ticket Operations
+    // =========================================================================
+
+    /// Create a share ticket for a project.
+    pub async fn create_ticket(&self, project_id: &str) -> Result<TicketResponse, CliError> {
+        let url = format!("{}/tickets", self.base_url);
+        let req = CreateTicketRequest {
+            project_id: project_id.to_string(),
+        };
+        let response = self.client.post(&url).json(&req).send().await?;
+
+        if response.status() == StatusCode::CREATED {
+            Ok(response.json().await?)
+        } else {
+            Err(self.error_from_response(response).await)
+        }
+    }
+
+    /// Redeem a share ticket.
+    pub async fn redeem_ticket(&self, ticket: &str) -> Result<ProjectResponse, CliError> {
+        let url = format!("{}/tickets/redeem", self.base_url);
+        let req = RedeemTicketRequest {
+            ticket: ticket.to_string(),
+        };
         let response = self.client.post(&url).json(&req).send().await?;
 
         if response.status() == StatusCode::CREATED {
