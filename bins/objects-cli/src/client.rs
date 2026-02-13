@@ -1,6 +1,7 @@
 use crate::error::CliError;
 use crate::types::*;
-use reqwest::{Client, StatusCode};
+use reqwest::{Client, StatusCode, multipart};
+use std::path::Path;
 
 /// HTTP client for node API.
 #[derive(Clone, Debug)]
@@ -101,6 +102,57 @@ impl NodeClient {
             StatusCode::OK => Ok(response.json().await?),
             StatusCode::NOT_FOUND => Err(CliError::NotFound(format!("Project not found: {}", id))),
             _ => Err(self.error_from_response(response).await),
+        }
+    }
+
+    // =========================================================================
+    // Asset Operations
+    // =========================================================================
+
+    /// Add an asset to a project (multipart upload).
+    pub async fn add_asset(
+        &self,
+        project_id: &str,
+        file_path: &Path,
+    ) -> Result<AssetResponse, CliError> {
+        let file_name = file_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("file")
+            .to_string();
+
+        let content_type = mime_guess::from_path(file_path)
+            .first_or_octet_stream()
+            .to_string();
+
+        let data = tokio::fs::read(file_path).await?;
+
+        let part = multipart::Part::bytes(data)
+            .file_name(file_name)
+            .mime_str(&content_type)
+            .map_err(|e| CliError::Config(format!("Invalid MIME type: {}", e)))?;
+
+        let form = multipart::Form::new().part("file", part);
+
+        let url = format!("{}/projects/{}/assets", self.base_url, project_id);
+        let response = self.client.post(&url).multipart(form).send().await?;
+
+        if response.status() == StatusCode::CREATED {
+            Ok(response.json().await?)
+        } else {
+            Err(self.error_from_response(response).await)
+        }
+    }
+
+    /// List assets in a project.
+    pub async fn list_assets(&self, project_id: &str) -> Result<AssetListResponse, CliError> {
+        let url = format!("{}/projects/{}/assets", self.base_url, project_id);
+        let response = self.client.get(&url).send().await?;
+
+        if response.status() == StatusCode::OK {
+            Ok(response.json().await?)
+        } else {
+            Err(self.error_from_response(response).await)
         }
     }
 
