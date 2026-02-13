@@ -22,6 +22,13 @@ cargo test --workspace
 cargo test -p objects-identity          # Single crate
 cargo test identity_derivation          # Single test
 
+# Database (required for objects-node e2e and objects-registry tests)
+docker compose -f docker/compose.yml up -d   # Start Postgres
+source .env                                    # Load DATABASE_URL
+cargo test --workspace                         # Now includes e2e tests
+# Without DATABASE_URL, objects-node e2e and objects-registry tests will fail.
+# All other crates test fine without it.
+
 # Lint
 cargo clippy --workspace -- -D warnings
 cargo fmt --all -- --check              # Check formatting
@@ -35,15 +42,15 @@ cargo run -p objects-cli -- identity create
 cargo run -p objects-node
 cargo run -p objects-registry
 
-# Dev tools (install with: cargo install <tool>)
+# Dev tools
 cargo nextest run                       # Fast parallel test runner
-cargo watch -x check -x test            # Auto-rebuild on changes
+bacon                                   # Auto-rebuild on changes
 cargo machete                           # Find unused dependencies
 cargo audit                             # Security vulnerability scan
 cargo expand                            # Debug macro expansions
 cargo deny check                        # License/dependency policy
-cargo tarpaulin                         # Code coverage
 cargo upgrade                           # Update Cargo.toml versions (cargo-edit)
+cargo install-update -a                 # Update all cargo-installed tools
 ```
 
 ## Version Control

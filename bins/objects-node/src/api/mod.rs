@@ -8,6 +8,12 @@ pub mod types;
 
 pub use client::RegistryClient;
 pub use error::NodeError;
-pub use handlers::{AppState, NodeInfo, create_identity, get_identity, health_check, node_status};
+pub use handlers::{
+    AppState, NodeInfo, create_identity, create_project, get_identity, get_project, health_check,
+    list_projects, node_status,
+};
 pub use routes::create_router;
-pub use types::{HealthResponse, IdentityResponse, PeerInfo, StatusResponse};
+pub use types::{
+    CreateProjectRequest, HealthResponse, IdentityResponse, PeerInfo, ProjectListResponse,
+    ProjectResponse, StatusResponse,
+};
