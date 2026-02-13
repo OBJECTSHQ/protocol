@@ -156,6 +156,40 @@ impl NodeClient {
         }
     }
 
+    // =========================================================================
+    // Ticket Operations
+    // =========================================================================
+
+    /// Create a share ticket for a project.
+    pub async fn create_ticket(&self, project_id: &str) -> Result<TicketResponse, CliError> {
+        let url = format!("{}/tickets", self.base_url);
+        let req = CreateTicketRequest {
+            project_id: project_id.to_string(),
+        };
+        let response = self.client.post(&url).json(&req).send().await?;
+
+        if response.status() == StatusCode::CREATED {
+            Ok(response.json().await?)
+        } else {
+            Err(self.error_from_response(response).await)
+        }
+    }
+
+    /// Redeem a share ticket.
+    pub async fn redeem_ticket(&self, ticket: &str) -> Result<ProjectResponse, CliError> {
+        let url = format!("{}/tickets/redeem", self.base_url);
+        let req = RedeemTicketRequest {
+            ticket: ticket.to_string(),
+        };
+        let response = self.client.post(&url).json(&req).send().await?;
+
+        if response.status() == StatusCode::CREATED {
+            Ok(response.json().await?)
+        } else {
+            Err(self.error_from_response(response).await)
+        }
+    }
+
     async fn error_from_response(&self, response: reqwest::Response) -> CliError {
         let status = response.status().as_u16();
         let message = response

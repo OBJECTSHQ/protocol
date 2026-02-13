@@ -93,8 +93,12 @@ enum AssetCommands {
 
 #[derive(Subcommand)]
 enum TicketCommands {
-    /// Create a share ticket
-    Create,
+    /// Create a share ticket for a project
+    Create {
+        /// Project ID (32 hex characters)
+        #[arg(short, long)]
+        project: String,
+    },
     /// Redeem a share ticket
     Redeem {
         /// The ticket string
@@ -160,16 +164,18 @@ async fn main() -> anyhow::Result<()> {
             println!("Syncing with peers...");
             // TODO: Sync
         }
-        Commands::Ticket { command } => match command {
-            TicketCommands::Create => {
-                println!("Creating ticket...");
-                // TODO: Create ticket
+        Commands::Ticket { command } => {
+            let config = Config::load()?;
+            let client = NodeClient::new(config.api_url());
+            match command {
+                TicketCommands::Create { project } => {
+                    commands::ticket::create(project, &client).await?;
+                }
+                TicketCommands::Redeem { ticket } => {
+                    commands::ticket::redeem(ticket, &client).await?;
+                }
             }
-            TicketCommands::Redeem { ticket } => {
-                println!("Redeeming ticket: {}", ticket);
-                // TODO: Redeem ticket
-            }
-        },
+        }
     }
 
     Ok(())
