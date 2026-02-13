@@ -29,7 +29,11 @@
 
 use bytes::Bytes;
 use futures::StreamExt;
-use iroh_docs::{AuthorId, Capability, DocTicket, Entry, NamespaceId, protocol::Docs};
+use iroh_docs::{
+    AuthorId, DocTicket, Entry, NamespaceId,
+    api::protocol::{AddrInfoOptions, ShareMode},
+    protocol::Docs,
+};
 
 use crate::{Error, Result};
 
@@ -333,11 +337,40 @@ impl DocsClient {
     /// # }
     /// ```
     pub async fn download_from_ticket(&self, ticket: DocTicket) -> Result<NamespaceId> {
-        let doc = self
+        let (doc, mut events) = self
             .inner
-            .import(ticket)
+            .import_and_subscribe(ticket)
             .await
             .map_err(|e| Error::SyncFailed(e.to_string()))?;
+
+        // Wait for the initial sync to complete (iroh canonical pattern).
+        // `import_and_subscribe` subscribes before starting sync, so we
+        // are guaranteed not to miss the SyncFinished event.
+        // After SyncFinished, wait for PendingContentReady to ensure all
+        // content blobs have been downloaded.
+        let timeout = std::time::Duration::from_secs(30);
+        let deadline = tokio::time::Instant::now() + timeout;
+        let mut sync_finished = false;
+        loop {
+            match tokio::time::timeout_at(deadline, events.next()).await {
+                Ok(Some(Ok(iroh_docs::engine::LiveEvent::SyncFinished(_)))) => {
+                    sync_finished = true;
+                }
+                Ok(Some(Ok(iroh_docs::engine::LiveEvent::PendingContentReady))) => {
+                    if sync_finished {
+                        break;
+                    }
+                }
+                Ok(Some(Ok(_))) => continue,
+                Ok(Some(Err(e))) => return Err(Error::SyncFailed(e.to_string())),
+                Ok(None) => {
+                    return Err(Error::SyncFailed(
+                        "event stream ended before sync finished".into(),
+                    ));
+                }
+                Err(_) => return Err(Error::SyncFailed("sync timed out".into())),
+            }
+        }
 
         Ok(doc.id())
     }
@@ -364,14 +397,52 @@ impl DocsClient {
     pub async fn create_ticket(
         &self,
         replica_id: NamespaceId,
-        node_addr: objects_transport::NodeAddr,
+        _node_addr: objects_transport::NodeAddr,
     ) -> Result<DocTicket> {
-        let ticket = DocTicket {
-            capability: Capability::Read(replica_id),
-            nodes: vec![node_addr],
-        };
+        let doc = self
+            .inner
+            .open(replica_id)
+            .await
+            .map_err(Error::Iroh)?
+            .ok_or_else(|| Error::ReplicaNotFound(replica_id.to_string()))?;
+
+        let ticket = doc
+            .share(ShareMode::Read, AddrInfoOptions::RelayAndAddresses)
+            .await
+            .map_err(|e| Error::SyncFailed(e.to_string()))?;
 
         Ok(ticket)
+    }
+
+    /// Lists all replicas managed by this client.
+    ///
+    /// Returns a list of namespace IDs for all replicas.
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// # use objects_sync::SyncEngine;
+    /// # use objects_transport::ObjectsEndpoint;
+    /// # async fn example() -> anyhow::Result<()> {
+    /// # let endpoint = ObjectsEndpoint::builder().bind().await?;
+    /// # let sync = SyncEngine::new(endpoint).await?;
+    /// let replicas = sync.docs().list_replicas().await?;
+    /// println!("Found {} replicas", replicas.len());
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn list_replicas(&self) -> Result<Vec<NamespaceId>> {
+        let stream = self.inner.list().await.map_err(Error::Iroh)?;
+
+        futures::pin_mut!(stream);
+
+        let mut replicas = Vec::new();
+        while let Some(result) = stream.next().await {
+            let (namespace_id, _capability) = result.map_err(Error::Iroh)?;
+            replicas.push(namespace_id);
+        }
+
+        Ok(replicas)
     }
 
     /// Deletes a replica and all its entries.
