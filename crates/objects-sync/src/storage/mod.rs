@@ -4,6 +4,7 @@
 //! for the OBJECTS Protocol sync layer.
 
 pub mod blobs;
+pub mod docs;
 
 use std::fs;
 use std::path::{Path, PathBuf};

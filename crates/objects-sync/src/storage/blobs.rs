@@ -12,10 +12,8 @@ use crate::Result;
 
 /// Initialize persistent blob store at the given path.
 ///
-/// # RFC-003 Compliance
-/// - Content-addressed via BLAKE3 (FsStore handles this)
-/// - Deduplication automatic (same hash = same file)
-/// - Supports verified streaming (BAO)
+/// Uses content-addressed storage via BLAKE3 with automatic deduplication.
+/// FsStore provides verified streaming support through BLAKE3 Verified Streaming (BAO).
 ///
 /// # Errors
 ///
