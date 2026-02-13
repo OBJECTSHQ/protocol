@@ -16,6 +16,7 @@ use crate::{BlobClient, DocsClient, Result};
 /// Unified sync engine for OBJECTS Protocol.
 ///
 /// Coordinates blob sync (iroh-blobs) and metadata sync (iroh-docs).
+#[derive(Clone)]
 pub struct SyncEngine {
     blobs: BlobClient,
     docs: DocsClient,

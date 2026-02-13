@@ -79,10 +79,10 @@ impl CreateProjectRequest {
         if self.name.len() > 256 {
             return Err("Name must be at most 256 characters".to_string());
         }
-        if let Some(ref desc) = self.description {
-            if desc.len() > 4096 {
-                return Err("Description must be at most 4096 characters".to_string());
-            }
+        if let Some(ref desc) = self.description
+            && desc.len() > 4096
+        {
+            return Err("Description must be at most 4096 characters".to_string());
         }
         Ok(())
     }
