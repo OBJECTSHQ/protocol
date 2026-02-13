@@ -60,9 +60,17 @@ enum ProjectCommands {
         /// Name of the project
         #[arg(short, long)]
         name: String,
+        /// Optional description
+        #[arg(short, long)]
+        description: Option<String>,
     },
     /// List all projects
     List,
+    /// Get a project by ID
+    Get {
+        /// Project ID (32 hex characters)
+        id: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -114,16 +122,21 @@ async fn main() -> anyhow::Result<()> {
                 }
             }
         }
-        Commands::Project { command } => match command {
-            ProjectCommands::Create { name } => {
-                println!("Creating project: {}", name);
-                // TODO: Create project
+        Commands::Project { command } => {
+            let config = Config::load()?;
+            let client = NodeClient::new(config.api_url());
+            match command {
+                ProjectCommands::Create { name, description } => {
+                    commands::project::create(name, description, &client).await?;
+                }
+                ProjectCommands::List => {
+                    commands::project::list(&client).await?;
+                }
+                ProjectCommands::Get { id } => {
+                    commands::project::get(id, &client).await?;
+                }
             }
-            ProjectCommands::List => {
-                println!("Listing projects...");
-                // TODO: List projects
-            }
-        },
+        }
         Commands::Asset { command } => match command {
             AssetCommands::Add { file } => {
                 println!("Adding asset: {}", file);

@@ -56,3 +56,32 @@ pub struct SignatureData {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub client_data_json: Option<String>,
 }
+
+// =============================================================================
+// Project Types
+// =============================================================================
+
+/// Create project request.
+#[derive(Debug, Clone, Serialize)]
+pub struct CreateProjectRequest {
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+/// Project response.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ProjectResponse {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub owner_id: String,
+    pub created_at: u64,
+    pub updated_at: u64,
+}
+
+/// Project list response.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ProjectListResponse {
+    pub projects: Vec<ProjectResponse>,
+}

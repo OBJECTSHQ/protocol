@@ -64,6 +64,46 @@ impl NodeClient {
         }
     }
 
+    // =========================================================================
+    // Project Operations
+    // =========================================================================
+
+    pub async fn create_project(
+        &self,
+        req: CreateProjectRequest,
+    ) -> Result<ProjectResponse, CliError> {
+        let url = format!("{}/projects", self.base_url);
+        let response = self.client.post(&url).json(&req).send().await?;
+
+        if response.status() == StatusCode::CREATED {
+            Ok(response.json().await?)
+        } else {
+            Err(self.error_from_response(response).await)
+        }
+    }
+
+    pub async fn list_projects(&self) -> Result<ProjectListResponse, CliError> {
+        let url = format!("{}/projects", self.base_url);
+        let response = self.client.get(&url).send().await?;
+
+        if response.status() == StatusCode::OK {
+            Ok(response.json().await?)
+        } else {
+            Err(self.error_from_response(response).await)
+        }
+    }
+
+    pub async fn get_project(&self, id: &str) -> Result<ProjectResponse, CliError> {
+        let url = format!("{}/projects/{}", self.base_url, id);
+        let response = self.client.get(&url).send().await?;
+
+        match response.status() {
+            StatusCode::OK => Ok(response.json().await?),
+            StatusCode::NOT_FOUND => Err(CliError::NotFound(format!("Project not found: {}", id))),
+            _ => Err(self.error_from_response(response).await),
+        }
+    }
+
     async fn error_from_response(&self, response: reqwest::Response) -> CliError {
         let status = response.status().as_u16();
         let message = response
