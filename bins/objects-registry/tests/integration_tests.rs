@@ -19,7 +19,6 @@ use objects_registry::api::rest::types::*;
 use objects_registry::config::Config;
 use objects_test_utils::{crypto, time};
 use p256::ecdsa::SigningKey as P256SigningKey;
-use p256::ecdsa::signature::Signer as _;
 use sha2::{Digest, Sha256};
 use sqlx::{ConnectOptions, PgPool};
 use tower::ServiceExt;
