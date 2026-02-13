@@ -27,20 +27,29 @@ Before creating an issue, please search existing issues to avoid duplicates. Whe
 1. **Prerequisites**
    - Rust (latest stable) - install via [rustup](https://rustup.rs/)
    - Protocol Buffers compiler (`protoc`)
+   - Docker - install via [Docker Desktop](https://www.docker.com/products/docker-desktop/) or your package manager
 
 2. **Clone and build**
    ```bash
    git clone https://github.com/OBJECTSHQ/protocol.git
    cd protocol
+   cp .env.example .env
    cargo build --workspace
    ```
 
-3. **Run tests**
+3. **Start database** (needed for e2e tests and registry)
    ```bash
+   docker compose -f docker/compose.yml up -d
+   ```
+
+4. **Run tests**
+   ```bash
+   source .env
    cargo test --workspace
    ```
 
-See the [README](README.md) for additional setup details.
+   > **Note:** Most crates (`objects-identity`, `objects-transport`, `objects-sync`, etc.)
+   > don't need the database. Only `objects-node` e2e tests and `objects-registry` tests require it.
 
 ## Making Changes
 
