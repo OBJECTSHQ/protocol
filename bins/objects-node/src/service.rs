@@ -3,6 +3,8 @@
 use crate::{NodeConfig, NodeState};
 use anyhow::Result;
 use futures::StreamExt;
+use objects_sync::SyncEngine;
+use objects_sync::storage::StorageConfig;
 use objects_transport::discovery::{Discovery, DiscoveryConfig, GossipDiscovery};
 use objects_transport::{NetworkConfig, NodeAddr, NodeId, ObjectsEndpoint, RelayUrl};
 use std::str::FromStr;
@@ -19,6 +21,7 @@ pub struct NodeService {
     endpoint: Arc<ObjectsEndpoint>,
     /// Gossip discovery instance (shared with API layer via Arc<Mutex>).
     pub discovery: Arc<Mutex<GossipDiscovery>>,
+    sync_engine: SyncEngine,
     shutdown_tx: watch::Sender<bool>,
     shutdown_rx: watch::Receiver<bool>,
 }
@@ -75,6 +78,19 @@ impl NodeService {
 
         info!("Joined discovery topic: {}", config.network.discovery_topic);
 
+        // Create storage config
+        let storage_base = config
+            .storage
+            .base_path
+            .clone()
+            .unwrap_or_else(|| std::path::PathBuf::from(&config.node.data_dir).join("storage"));
+        let storage_config = StorageConfig::from_base_dir(&storage_base);
+
+        // Create sync engine with persistent storage
+        let sync_engine = SyncEngine::with_storage(endpoint_arc.inner(), &storage_config).await?;
+
+        info!("Sync engine initialized with persistent storage");
+
         // Create shutdown channel
         let (shutdown_tx, shutdown_rx) = watch::channel(false);
 
@@ -83,6 +99,7 @@ impl NodeService {
             state,
             endpoint: endpoint_arc,
             discovery: Arc::new(Mutex::new(discovery)),
+            sync_engine,
             shutdown_tx,
             shutdown_rx,
         })
@@ -96,6 +113,11 @@ impl NodeService {
     /// Get the node's network address.
     pub fn node_addr(&self) -> NodeAddr {
         self.endpoint.as_ref().node_addr()
+    }
+
+    /// Get a reference to the sync engine.
+    pub fn sync_engine(&self) -> &SyncEngine {
+        &self.sync_engine
     }
 
     /// Run the node service, listening for peer announcements.
