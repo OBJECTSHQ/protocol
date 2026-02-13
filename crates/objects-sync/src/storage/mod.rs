@@ -3,6 +3,8 @@
 //! This module provides storage configuration types and directory management
 //! for the OBJECTS Protocol sync layer.
 
+pub mod blobs;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 
