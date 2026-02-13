@@ -54,5 +54,9 @@ dirs = "5.0"
 tempfile.workspace = true
 temp-env = "0.3"
 objects-test-utils.workspace = true
+objects-registry = { path = "../objects-registry" }
+objects-cli = { path = "../objects-cli" }
 http-body-util = "0.1"
 wiremock.workspace = true
+sqlx.workspace = true
+log = "0.4"

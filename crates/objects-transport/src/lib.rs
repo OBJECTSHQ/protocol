@@ -38,6 +38,12 @@ pub use connection::Connection;
 pub use endpoint::ObjectsEndpoint;
 pub use error::{Error, Result};
 
+/// Re-export Iroh's static discovery provider for test use.
+pub use iroh::discovery::static_provider::StaticProvider;
+
+/// Re-export Iroh's relay mode for endpoint configuration.
+pub use iroh::endpoint::RelayMode;
+
 // Re-export Iroh types with RFC-002 terminology.
 // This provides protocol independence - if we switch from Iroh,
 // we only change these re-exports.
