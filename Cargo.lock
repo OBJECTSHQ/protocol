@@ -4033,8 +4033,10 @@ name = "objects-cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "base64",
  "clap",
  "dirs 6.0.0",
+ "hex",
  "objects-common",
  "objects-data",
  "objects-identity",

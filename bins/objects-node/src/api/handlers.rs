@@ -106,7 +106,7 @@ pub async fn get_identity(
         .map(|info| IdentityResponse {
             id: info.identity_id().to_string(),
             handle: info.handle().to_string(),
-            nonce: hex::encode(info.nonce()),
+            nonce: base64::engine::general_purpose::STANDARD.encode(info.nonce()),
             signer_type: format!("{:?}", info.signer_type()).to_lowercase(),
         });
 
@@ -180,8 +180,11 @@ pub async fn create_identity(
         }
     };
 
-    let nonce = hex::decode(&registry_response.nonce)
-        .map_err(|e| NodeError::Internal(format!("Invalid nonce from registry: {}", e)))?;
+    let nonce = base64::Engine::decode(
+        &base64::engine::general_purpose::STANDARD,
+        &registry_response.nonce,
+    )
+    .map_err(|e| NodeError::Internal(format!("Invalid nonce from registry: {}", e)))?;
 
     if nonce.len() != 8 {
         return Err(NodeError::Internal(
