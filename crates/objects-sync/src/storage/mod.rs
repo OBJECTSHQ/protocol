@@ -59,12 +59,15 @@ impl StorageConfig {
         self.ensure_permissions()?;
 
         // Create/verify version marker
-        let version_file = self.blobs_path.parent().unwrap().join(".storage-version");
+        let storage_root = self.blobs_path.parent().ok_or_else(|| {
+            crate::Error::Storage("blobs_path has no parent directory".to_string())
+        })?;
+        let version_file = storage_root.join(".storage-version");
 
         if !version_file.exists() {
             fs::write(&version_file, STORAGE_VERSION)?;
         } else {
-            let existing = fs::read_to_string(&version_file)?;
+            let existing = fs::read_to_string(&version_file)?.trim().to_string();
             if existing != STORAGE_VERSION {
                 return Err(crate::Error::StorageVersionMismatch {
                     expected: STORAGE_VERSION.to_string(),
@@ -97,9 +100,11 @@ impl StorageConfig {
         }
 
         // Verify writable by attempting to create a temp file
-        let test_file = self.blobs_path.join(".write-test");
-        fs::write(&test_file, b"test")?;
-        fs::remove_file(&test_file)?;
+        for dir in [&self.blobs_path, &self.docs_path] {
+            let test_file = dir.join(".write-test");
+            fs::write(&test_file, b"test")?;
+            fs::remove_file(&test_file)?;
+        }
 
         Ok(())
     }
