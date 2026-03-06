@@ -222,7 +222,7 @@ impl NodeConfig {
         let scheme = registry_url.scheme();
         let is_loopback = host == "localhost"
             || host == "::1"
-            || host == "[::1]" // IPv6 loopback with brackets
+            || host == "[::1]"
             || host.starts_with("127.");
 
         match scheme {
