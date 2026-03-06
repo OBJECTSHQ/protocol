@@ -1,10 +1,11 @@
 //! API routes and router configuration.
 
 use super::handlers::{
-    AppState, add_asset, create_identity, create_project, get_asset_content, get_identity,
-    get_project, health_check, list_assets, list_peers, list_projects, node_status,
+    AppState, add_asset, create_identity, create_project, create_ticket, get_asset_content,
+    get_identity, get_project, health_check, list_assets, list_peers, list_projects, node_status,
+    redeem_ticket,
 };
-use axum::{Router, routing::get};
+use axum::{Router, routing::get, routing::post};
 
 /// Create the API router with all routes.
 ///
@@ -21,6 +22,8 @@ use axum::{Router, routing::get};
 /// - `GET /projects/:id/assets` - List project assets
 /// - `POST /projects/:id/assets` - Add asset to project
 /// - `GET /projects/:id/assets/:asset_id/content` - Get asset content
+/// - `POST /tickets` - Create share ticket
+/// - `POST /tickets/redeem` - Redeem share ticket
 pub fn create_router(state: AppState) -> Router {
     Router::new()
         .route("/health", get(health_check))
@@ -34,6 +37,8 @@ pub fn create_router(state: AppState) -> Router {
             "/projects/{id}/assets/{asset_id}/content",
             get(get_asset_content),
         )
+        .route("/tickets", post(create_ticket))
+        .route("/tickets/redeem", post(redeem_ticket))
         .with_state(state)
 }
 

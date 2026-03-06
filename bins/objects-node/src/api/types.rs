@@ -182,6 +182,31 @@ pub struct AssetListResponse {
     pub assets: Vec<AssetResponse>,
 }
 
+// =============================================================================
+// Ticket Types
+// =============================================================================
+
+/// Request to create a project share ticket.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateTicketRequest {
+    /// Project ID to create ticket for.
+    pub project_id: String,
+}
+
+/// Response containing the ticket string.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TicketResponse {
+    /// Serialized ticket string for sharing.
+    pub ticket: String,
+}
+
+/// Request to redeem a ticket.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RedeemTicketRequest {
+    /// Ticket string to redeem.
+    pub ticket: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

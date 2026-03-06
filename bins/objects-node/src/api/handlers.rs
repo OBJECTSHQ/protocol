@@ -18,8 +18,9 @@ use tracing::info;
 use super::client::{CreateIdentityRequest, RegistryClient};
 use super::error::NodeError;
 use super::types::{
-    AssetListResponse, AssetResponse, CreateProjectRequest, HealthResponse, IdentityResponse,
-    PeerInfo, ProjectListResponse, ProjectResponse, StatusResponse,
+    AssetListResponse, AssetResponse, CreateProjectRequest, CreateTicketRequest, HealthResponse,
+    IdentityResponse, PeerInfo, ProjectListResponse, ProjectResponse, RedeemTicketRequest,
+    StatusResponse, TicketResponse,
 };
 
 /// Immutable node information.
@@ -629,6 +630,79 @@ pub async fn get_asset_content(
         )
         .body(axum::body::Body::from(content.to_vec()))
         .unwrap())
+}
+
+// =============================================================================
+// Ticket Handlers
+// =============================================================================
+
+/// Create ticket handler - POST /tickets
+///
+/// Creates a share ticket for a project.
+pub async fn create_ticket(
+    State(state): State<AppState>,
+    Json(req): Json<CreateTicketRequest>,
+) -> Result<(StatusCode, Json<TicketResponse>), NodeError> {
+    // 1. Find replica for project
+    let replica_id = find_replica_for_project(&state.sync_engine, &req.project_id).await?;
+
+    // 2. Get node address for ticket
+    let node_addr = state.node_info.node_addr.clone();
+
+    // 3. Create DocTicket
+    let ticket = state
+        .sync_engine
+        .docs()
+        .create_ticket(replica_id, node_addr)
+        .await
+        .map_err(|e| NodeError::Internal(format!("Failed to create ticket: {}", e)))?;
+
+    // 4. Serialize to string
+    let ticket_str = ticket.to_string();
+
+    info!("Ticket created for project {}", req.project_id);
+
+    Ok((
+        StatusCode::CREATED,
+        Json(TicketResponse { ticket: ticket_str }),
+    ))
+}
+
+/// Redeem ticket handler - POST /tickets/redeem
+///
+/// Imports a project from a share ticket.
+pub async fn redeem_ticket(
+    State(state): State<AppState>,
+    Json(req): Json<RedeemTicketRequest>,
+) -> Result<(StatusCode, Json<ProjectResponse>), NodeError> {
+    use objects_sync::DocTicket;
+
+    // 1. Parse DocTicket from string
+    let ticket: DocTicket = req
+        .ticket
+        .parse()
+        .map_err(|e| NodeError::BadRequest(format!("Invalid ticket: {}", e)))?;
+
+    // 2. Import/sync replica via SyncEngine
+    let replica_id = state
+        .sync_engine
+        .docs()
+        .download_from_ticket(ticket)
+        .await
+        .map_err(|e| NodeError::Internal(format!("Failed to import ticket: {}", e)))?;
+
+    // 3. Read project metadata
+    let project = state
+        .sync_engine
+        .docs()
+        .get_project(state.sync_engine.blobs(), replica_id)
+        .await
+        .map_err(|e| NodeError::Internal(format!("Failed to read project: {}", e)))?
+        .ok_or_else(|| NodeError::Internal("Project metadata not found in ticket".to_string()))?;
+
+    info!("Ticket redeemed: project {}", project.name());
+
+    Ok((StatusCode::CREATED, Json(ProjectResponse::from(project))))
 }
 
 #[cfg(test)]
