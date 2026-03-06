@@ -6,7 +6,6 @@ use objects_identity::IdentityId;
 use objects_registry::db::{IdentityRow, insert_identity, signer_type_to_i16};
 use objects_registry::error::RegistryError;
 use objects_test_utils::crypto;
-use p256::ecdsa::SigningKey as P256SigningKey;
 use sqlx::PgPool;
 use tokio::task::JoinSet;
 
