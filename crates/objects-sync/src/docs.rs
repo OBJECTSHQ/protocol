@@ -374,6 +374,37 @@ impl DocsClient {
         Ok(ticket)
     }
 
+    /// Lists all replicas managed by this client.
+    ///
+    /// Returns a list of namespace IDs for all replicas.
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// # use objects_sync::SyncEngine;
+    /// # use objects_transport::ObjectsEndpoint;
+    /// # async fn example() -> anyhow::Result<()> {
+    /// # let endpoint = ObjectsEndpoint::builder().bind().await?;
+    /// # let sync = SyncEngine::new(endpoint).await?;
+    /// let replicas = sync.docs().list_replicas().await?;
+    /// println!("Found {} replicas", replicas.len());
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn list_replicas(&self) -> Result<Vec<NamespaceId>> {
+        let stream = self.inner.list().await.map_err(Error::Iroh)?;
+
+        futures::pin_mut!(stream);
+
+        let mut replicas = Vec::new();
+        while let Some(result) = stream.next().await {
+            let (namespace_id, _capability) = result.map_err(Error::Iroh)?;
+            replicas.push(namespace_id);
+        }
+
+        Ok(replicas)
+    }
+
     /// Deletes a replica and all its entries.
     ///
     /// # Warning

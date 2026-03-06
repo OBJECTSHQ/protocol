@@ -2,19 +2,25 @@
 
 use crate::state::IdentityInfo;
 use crate::{NodeConfig, NodeState};
-use axum::{Json, extract::State, http::StatusCode};
+use axum::{Json, extract::Path as AxumPath, extract::State, http::StatusCode};
 use base64::Engine;
+use objects_data::Project;
 use objects_identity::{Handle, IdentityId, SignerType};
+use objects_sync::{PROJECT_KEY, SyncEngine};
 use objects_transport::discovery::{Discovery, GossipDiscovery};
 use objects_transport::{NodeAddr, NodeId};
 use std::path::Path;
 use std::sync::{Arc, RwLock};
+use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::Mutex;
 use tracing::info;
 
 use super::client::{CreateIdentityRequest, RegistryClient};
 use super::error::NodeError;
-use super::types::{HealthResponse, IdentityResponse, PeerInfo, StatusResponse};
+use super::types::{
+    CreateProjectRequest, HealthResponse, IdentityResponse, PeerInfo, ProjectListResponse,
+    ProjectResponse, StatusResponse,
+};
 
 /// Immutable node information.
 ///
@@ -37,6 +43,7 @@ pub struct NodeInfo {
 /// - NodeState: Read-heavy, write-rare (RwLock)
 /// - NodeConfig: Immutable clone
 /// - RegistryClient: Stateless, clone-safe
+/// - SyncEngine: Clone-safe wrapper over iroh components
 #[derive(Clone)]
 pub struct AppState {
     /// Immutable node information.
@@ -49,6 +56,8 @@ pub struct AppState {
     pub config: NodeConfig,
     /// Registry HTTP client.
     pub registry_client: RegistryClient,
+    /// Sync engine for blob and metadata sync.
+    pub sync_engine: SyncEngine,
 }
 
 /// Health check handler.
@@ -225,6 +234,177 @@ pub async fn create_identity(
     };
 
     Ok((StatusCode::CREATED, Json(response)))
+}
+
+// =============================================================================
+// Project Handlers
+// =============================================================================
+
+/// Create project handler.
+///
+/// Creates a new project with a dedicated replica for metadata storage:
+/// 1. Validates request fields
+/// 2. Requires identity to be registered (for owner_id)
+/// 3. Creates a new replica via SyncEngine
+/// 4. Stores project metadata at /project key
+///
+/// Returns 201 Created with project info on success.
+pub async fn create_project(
+    State(state): State<AppState>,
+    Json(req): Json<CreateProjectRequest>,
+) -> Result<(StatusCode, Json<ProjectResponse>), NodeError> {
+    // 1. Validate request
+    req.validate()
+        .map_err(|e| NodeError::BadRequest(e.to_string()))?;
+
+    // 2. Get owner identity (required)
+    let owner_id = state
+        .node_state
+        .read()
+        .unwrap()
+        .identity()
+        .map(|info| info.identity_id().clone())
+        .ok_or_else(|| NodeError::BadRequest("Identity required to create project".to_string()))?;
+
+    // 3. Create replica
+    let replica_id = state
+        .sync_engine
+        .docs()
+        .create_replica()
+        .await
+        .map_err(|e| NodeError::Internal(format!("Failed to create replica: {}", e)))?;
+
+    // 4. Create author for signing entries
+    let author = state
+        .sync_engine
+        .docs()
+        .create_author()
+        .await
+        .map_err(|e| NodeError::Internal(format!("Failed to create author: {}", e)))?;
+
+    // 5. Derive project ID from replica ID
+    let replica_bytes: [u8; 32] = replica_id.as_bytes().to_owned();
+    let project_id = Project::project_id_from_replica(&replica_bytes);
+
+    // 6. Get timestamp
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| NodeError::Internal(format!("System time error: {}", e)))?
+        .as_secs();
+
+    // 7. Create project and store metadata
+    let project = Project::new(
+        project_id.clone(),
+        req.name.clone(),
+        req.description.clone(),
+        owner_id,
+        now,
+        now,
+    )
+    .map_err(|e| NodeError::Internal(format!("Failed to create project: {}", e)))?;
+
+    let project_json = serde_json::to_vec(&project)
+        .map_err(|e| NodeError::Internal(format!("Failed to serialize project: {}", e)))?;
+
+    state
+        .sync_engine
+        .docs()
+        .set_bytes(replica_id, author, PROJECT_KEY, project_json)
+        .await
+        .map_err(|e| NodeError::Internal(format!("Failed to store project metadata: {}", e)))?;
+
+    info!("Project created: {} ({})", req.name, project_id);
+
+    Ok((StatusCode::CREATED, Json(ProjectResponse::from(project))))
+}
+
+/// List projects handler.
+///
+/// Returns all projects owned by this node.
+pub async fn list_projects(
+    State(state): State<AppState>,
+) -> Result<Json<ProjectListResponse>, NodeError> {
+    let replica_ids = state
+        .sync_engine
+        .docs()
+        .list_replicas()
+        .await
+        .map_err(|e| NodeError::Internal(format!("Failed to list replicas: {}", e)))?;
+
+    let mut projects = Vec::new();
+
+    for replica_id in replica_ids {
+        // Try to read project metadata from each replica
+        if let Ok(Some(entry)) = state
+            .sync_engine
+            .docs()
+            .get_latest(replica_id, PROJECT_KEY)
+            .await
+        {
+            let content_hash = state.sync_engine.docs().entry_content_hash(&entry);
+            if let Ok(bytes) = state.sync_engine.blobs().read_to_bytes(content_hash).await
+                && let Ok(project) = serde_json::from_slice::<Project>(&bytes)
+            {
+                projects.push(ProjectResponse::from(project));
+            }
+        }
+    }
+
+    Ok(Json(ProjectListResponse { projects }))
+}
+
+/// Get project handler.
+///
+/// Returns a specific project by ID.
+pub async fn get_project(
+    State(state): State<AppState>,
+    AxumPath(id): AxumPath<String>,
+) -> Result<Json<ProjectResponse>, NodeError> {
+    // Validate project ID format (32 hex chars)
+    if id.len() != 32 || !id.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err(NodeError::BadRequest(
+            "Invalid project ID format".to_string(),
+        ));
+    }
+
+    let replica_ids = state
+        .sync_engine
+        .docs()
+        .list_replicas()
+        .await
+        .map_err(|e| NodeError::Internal(format!("Failed to list replicas: {}", e)))?;
+
+    for replica_id in replica_ids {
+        // Check if this replica's project ID matches
+        let replica_bytes: [u8; 32] = replica_id.as_bytes().to_owned();
+        let project_id = Project::project_id_from_replica(&replica_bytes);
+
+        if project_id == id {
+            // Found the replica, read project metadata
+            let entry = state
+                .sync_engine
+                .docs()
+                .get_latest(replica_id, PROJECT_KEY)
+                .await
+                .map_err(|e| NodeError::Internal(format!("Failed to read project: {}", e)))?
+                .ok_or_else(|| NodeError::NotFound("Project metadata not found".to_string()))?;
+
+            let content_hash = state.sync_engine.docs().entry_content_hash(&entry);
+            let bytes = state
+                .sync_engine
+                .blobs()
+                .read_to_bytes(content_hash)
+                .await
+                .map_err(|e| NodeError::Internal(format!("Failed to read content: {}", e)))?;
+
+            let project: Project = serde_json::from_slice(&bytes)
+                .map_err(|e| NodeError::Internal(format!("Failed to parse project: {}", e)))?;
+
+            return Ok(Json(ProjectResponse::from(project)));
+        }
+    }
+
+    Err(NodeError::NotFound(format!("Project not found: {}", id)))
 }
 
 #[cfg(test)]

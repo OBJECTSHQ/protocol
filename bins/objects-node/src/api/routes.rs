@@ -1,7 +1,8 @@
 //! API routes and router configuration.
 
 use super::handlers::{
-    AppState, create_identity, get_identity, health_check, list_peers, node_status,
+    AppState, create_identity, create_project, get_identity, get_project, health_check, list_peers,
+    list_projects, node_status,
 };
 use axum::{Router, routing::get};
 
@@ -14,12 +15,17 @@ use axum::{Router, routing::get};
 /// - `GET /identity` - Get registered identity
 /// - `POST /identity` - Create new identity
 /// - `GET /peers` - List discovered peers
+/// - `GET /projects` - List all projects
+/// - `POST /projects` - Create new project
+/// - `GET /projects/:id` - Get project by ID
 pub fn create_router(state: AppState) -> Router {
     Router::new()
         .route("/health", get(health_check))
         .route("/status", get(node_status))
         .route("/identity", get(get_identity).post(create_identity))
         .route("/peers", get(list_peers))
+        .route("/projects", get(list_projects).post(create_project))
+        .route("/projects/{id}", get(get_project))
         .with_state(state)
 }
 
@@ -30,6 +36,8 @@ mod tests {
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
     use http_body_util::BodyExt;
+    use objects_sync::SyncEngine;
+    use objects_sync::storage::StorageConfig;
     use objects_transport::discovery::{DiscoveryConfig, GossipDiscovery};
     use objects_transport::{NetworkConfig, ObjectsEndpoint, RelayUrl};
     use std::str::FromStr;
@@ -79,6 +87,11 @@ mod tests {
         .await
         .unwrap();
 
+        let storage_config = StorageConfig::from_base_dir(temp.path());
+        let sync_engine = SyncEngine::with_storage(endpoint_arc.inner(), &storage_config)
+            .await
+            .unwrap();
+
         let node_info = Arc::new(NodeInfo {
             node_id: endpoint_arc.node_id(),
             node_addr: endpoint_arc.node_addr(),
@@ -90,6 +103,7 @@ mod tests {
             node_state: Arc::new(RwLock::new(node_state)),
             config: config.clone(),
             registry_client: RegistryClient::new(&config),
+            sync_engine,
         };
 
         (app_state, temp)
