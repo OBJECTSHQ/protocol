@@ -20,18 +20,6 @@ pub struct Config {
     pub cli: CliSettings,
 }
 
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            node: NodeSettings::default(),
-            network: NetworkSettings::default(),
-            storage: StorageSettings::default(),
-            identity: IdentitySettings::default(),
-            cli: CliSettings::default(),
-        }
-    }
-}
-
 impl Config {
     /// Load config: env var → file → default
     pub fn load() -> Result<Self, CliError> {
@@ -96,10 +84,10 @@ impl Config {
         }
 
         // Or override individual components
-        if let Ok(port) = std::env::var("OBJECTS_API_PORT") {
-            if let Ok(port) = port.parse() {
-                self.node.api_port = port;
-            }
+        if let Ok(port) = std::env::var("OBJECTS_API_PORT")
+            && let Ok(port) = port.parse()
+        {
+            self.node.api_port = port;
         }
 
         if let Ok(token) = std::env::var("OBJECTS_API_TOKEN") {
