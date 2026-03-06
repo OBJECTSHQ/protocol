@@ -75,13 +75,20 @@ enum ProjectCommands {
 
 #[derive(Subcommand)]
 enum AssetCommands {
-    /// Add an asset to the current project
+    /// Add an asset to a project
     Add {
+        /// Project ID (32 hex characters)
+        #[arg(short, long)]
+        project: String,
         /// Path to the file
         file: String,
     },
-    /// List assets in the current project
-    List,
+    /// List assets in a project
+    List {
+        /// Project ID (32 hex characters)
+        #[arg(short, long)]
+        project: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -137,16 +144,18 @@ async fn main() -> anyhow::Result<()> {
                 }
             }
         }
-        Commands::Asset { command } => match command {
-            AssetCommands::Add { file } => {
-                println!("Adding asset: {}", file);
-                // TODO: Add asset
+        Commands::Asset { command } => {
+            let config = Config::load()?;
+            let client = NodeClient::new(config.api_url());
+            match command {
+                AssetCommands::Add { project, file } => {
+                    commands::asset::add(project, file, &client).await?;
+                }
+                AssetCommands::List { project } => {
+                    commands::asset::list(project, &client).await?;
+                }
             }
-            AssetCommands::List => {
-                println!("Listing assets...");
-                // TODO: List assets
-            }
-        },
+        }
         Commands::Sync => {
             println!("Syncing with peers...");
             // TODO: Sync
