@@ -20,7 +20,9 @@
 //! }
 //! ```
 
-use objects_transport::{NetworkConfig, NodeAddr, ObjectsEndpoint, SecretKey};
+use objects_transport::{
+    NetworkConfig, NodeAddr, ObjectsEndpoint, RelayMode, SecretKey, StaticProvider,
+};
 use std::time::Duration;
 
 // ============================================================================
@@ -157,6 +159,63 @@ pub async fn endpoint_with_config(config: NetworkConfig) -> ObjectsEndpoint {
         .bind()
         .await
         .expect("failed to create test endpoint with config")
+}
+
+/// Create a single test endpoint with static discovery.
+///
+/// Returns the endpoint and its [`StaticProvider`] so callers can
+/// register additional endpoints for mutual discovery.
+///
+/// Uses `RelayMode::Disabled` + `StaticProvider` for fast, deterministic
+/// localhost connections. This is iroh's canonical test pattern.
+///
+/// # Panics
+/// Panics if endpoint creation fails.
+pub async fn endpoint_with_discovery() -> (ObjectsEndpoint, StaticProvider) {
+    let discovery = StaticProvider::new();
+    let ep = ObjectsEndpoint::builder()
+        .config(network_config())
+        .relay_mode(RelayMode::Disabled)
+        .static_discovery(discovery.clone())
+        .bind()
+        .await
+        .expect("failed to create test endpoint");
+
+    discovery.add_endpoint_info(ep.node_addr());
+    (ep, discovery)
+}
+
+/// Create a pair of test endpoints that can connect to each other.
+///
+/// Uses `RelayMode::Disabled` + `StaticProvider` for fast, deterministic
+/// localhost connections. This is iroh's canonical test pattern.
+///
+/// # Panics
+/// Panics if endpoint creation fails.
+pub async fn endpoint_pair() -> (ObjectsEndpoint, ObjectsEndpoint) {
+    let discovery = StaticProvider::new();
+
+    let ep1 = ObjectsEndpoint::builder()
+        .config(network_config())
+        .relay_mode(RelayMode::Disabled)
+        .static_discovery(discovery.clone())
+        .bind()
+        .await
+        .expect("failed to create test endpoint 1");
+
+    let ep2 = ObjectsEndpoint::builder()
+        .config(network_config())
+        .relay_mode(RelayMode::Disabled)
+        .static_discovery(discovery.clone())
+        .bind()
+        .await
+        .expect("failed to create test endpoint 2");
+
+    // Register each endpoint's direct address with shared discovery
+    discovery.add_endpoint_info(ep1.node_addr());
+    discovery.add_endpoint_info(ep2.node_addr());
+
+    (ep1, ep2)
 }
 
 // ============================================================================
