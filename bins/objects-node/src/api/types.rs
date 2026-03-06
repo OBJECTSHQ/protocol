@@ -1,6 +1,6 @@
 //! API request and response types.
 
-use objects_data::Project;
+use objects_data::{Asset, Project};
 use objects_transport::NodeAddr;
 use serde::{Deserialize, Serialize};
 
@@ -130,6 +130,56 @@ impl From<Project> for ProjectResponse {
 pub struct ProjectListResponse {
     /// List of projects.
     pub projects: Vec<ProjectResponse>,
+}
+
+// =============================================================================
+// Asset Types
+// =============================================================================
+
+/// Response containing asset information.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct AssetResponse {
+    /// Asset ID (alphanumeric + hyphens, 1-64 characters).
+    pub id: String,
+    /// Human-readable filename.
+    pub filename: String,
+    /// MIME type (e.g., "image/png", "model/step").
+    pub content_type: String,
+    /// Size of the content in bytes.
+    pub size: u64,
+    /// BLAKE3 hash of the content (hex-encoded).
+    pub content_hash: String,
+    /// Unix timestamp when asset was created.
+    pub created_at: u64,
+}
+
+impl From<&Asset> for AssetResponse {
+    fn from(asset: &Asset) -> Self {
+        Self {
+            id: asset.id().to_string(),
+            filename: asset.name().to_string(),
+            content_type: asset
+                .format()
+                .unwrap_or("application/octet-stream")
+                .to_string(),
+            size: asset.content_size(),
+            content_hash: asset.content_hash().to_hex(),
+            created_at: asset.created_at(),
+        }
+    }
+}
+
+impl From<Asset> for AssetResponse {
+    fn from(asset: Asset) -> Self {
+        Self::from(&asset)
+    }
+}
+
+/// Response containing a list of assets.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AssetListResponse {
+    /// List of assets.
+    pub assets: Vec<AssetResponse>,
 }
 
 #[cfg(test)]
@@ -276,5 +326,95 @@ mod tests {
         assert!(json.contains("Test Project"));
         let deserialized: ProjectListResponse = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.projects.len(), 1);
+    }
+
+    // =========================================================================
+    // Asset Type Tests
+    // =========================================================================
+
+    #[test]
+    fn test_asset_response_serialization() {
+        let response = AssetResponse {
+            id: "motor-mount-v1".to_string(),
+            filename: "motor_mount.step".to_string(),
+            content_type: "model/step".to_string(),
+            size: 1024,
+            content_hash: "ab".repeat(32),
+            created_at: 1704542400,
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+        let deserialized: AssetResponse = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, response);
+    }
+
+    #[test]
+    fn test_asset_response_from_asset() {
+        use objects_data::ContentHash;
+        use objects_identity::IdentityId;
+
+        let author_id = IdentityId::parse("obj_2dMiYc8RhnYkorPc5pVh9").unwrap();
+        let content_hash = ContentHash::new([0xab; 32]);
+        let asset = Asset::new(
+            "motor-mount-v1".to_string(),
+            "motor_mount.step".to_string(),
+            author_id,
+            content_hash,
+            1024,
+            Some("model/step".to_string()),
+            1704542400,
+            1704542500,
+        )
+        .unwrap();
+
+        let response = AssetResponse::from(&asset);
+        assert_eq!(response.id, "motor-mount-v1");
+        assert_eq!(response.filename, "motor_mount.step");
+        assert_eq!(response.content_type, "model/step");
+        assert_eq!(response.size, 1024);
+        assert_eq!(response.content_hash, "ab".repeat(32));
+        assert_eq!(response.created_at, 1704542400);
+    }
+
+    #[test]
+    fn test_asset_response_default_content_type() {
+        use objects_data::ContentHash;
+        use objects_identity::IdentityId;
+
+        let author_id = IdentityId::parse("obj_2dMiYc8RhnYkorPc5pVh9").unwrap();
+        let content_hash = ContentHash::new([0xab; 32]);
+        let asset = Asset::new(
+            "data-file".to_string(),
+            "data.bin".to_string(),
+            author_id,
+            content_hash,
+            512,
+            None, // No format specified
+            1704542400,
+            1704542400,
+        )
+        .unwrap();
+
+        let response = AssetResponse::from(&asset);
+        assert_eq!(response.content_type, "application/octet-stream");
+    }
+
+    #[test]
+    fn test_asset_list_response_serialization() {
+        let response = AssetListResponse {
+            assets: vec![AssetResponse {
+                id: "motor-mount-v1".to_string(),
+                filename: "motor_mount.step".to_string(),
+                content_type: "model/step".to_string(),
+                size: 1024,
+                content_hash: "ab".repeat(32),
+                created_at: 1704542400,
+            }],
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("motor-mount-v1"));
+        let deserialized: AssetListResponse = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.assets.len(), 1);
     }
 }
