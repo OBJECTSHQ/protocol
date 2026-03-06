@@ -106,7 +106,7 @@ pub async fn get_identity(
         .map(|info| IdentityResponse {
             id: info.identity_id().to_string(),
             handle: info.handle().to_string(),
-            nonce: hex::encode(info.nonce()),
+            nonce: base64::engine::general_purpose::STANDARD.encode(info.nonce()),
             signer_type: format!("{:?}", info.signer_type()).to_lowercase(),
         });
 
