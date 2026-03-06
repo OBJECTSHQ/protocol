@@ -28,6 +28,12 @@ pub enum Error {
     #[error("storage version mismatch: expected {expected}, found {found}")]
     StorageVersionMismatch { expected: String, found: String },
 
+    #[error("blob too large: {size} bytes (max: {max} bytes)")]
+    BlobTooLarge { size: u64, max: u64 },
+
+    #[error("storage limit exceeded: {current} / {limit} bytes")]
+    StorageLimitExceeded { current: u64, limit: u64 },
+
     #[error("transport error: {0}")]
     Transport(#[from] objects_transport::Error),
 
