@@ -3,7 +3,6 @@
 //! These tests verify sync operations between multiple nodes,
 //! including blob sync, metadata sync, and ticket-based sharing.
 
-use objects_data::{Asset, ContentHash};
 use objects_sync::SyncEngine;
 use objects_sync::tickets::parse_ticket;
 use objects_test_utils::{identity, sync, transport};

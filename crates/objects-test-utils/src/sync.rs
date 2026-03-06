@@ -92,6 +92,73 @@ pub fn asset(id: impl Into<String>, content_hash: ContentHash) -> anyhow::Result
     .map_err(|e| anyhow::anyhow!("Failed to create test asset: {}", e))
 }
 
+/// Test harness for two-node sync scenarios.
+///
+/// Creates two isolated sync engines for testing sync operations
+/// between nodes, such as ticket-based project sharing.
+pub struct TwoNodeTestHarness {
+    /// First sync engine (typically the "source" node).
+    pub node_a: SyncEngine,
+    /// First node address (for creating tickets).
+    pub node_a_addr: objects_transport::NodeAddr,
+    /// Second sync engine (typically the "destination" node).
+    pub node_b: SyncEngine,
+    /// Second node address (for creating tickets).
+    pub node_b_addr: objects_transport::NodeAddr,
+}
+
+impl TwoNodeTestHarness {
+    /// Create two isolated sync engines for testing.
+    ///
+    /// Each engine has its own endpoint and storage, suitable for
+    /// testing sync operations between nodes.
+    #[allow(deprecated)] // Test utilities intentionally use in-memory storage
+    pub async fn new() -> anyhow::Result<Self> {
+        let endpoint_a = transport::endpoint().await;
+        let node_a_addr = endpoint_a.node_addr();
+        let node_a = SyncEngine::new(endpoint_a)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to create sync engine A: {}", e))?;
+
+        let endpoint_b = transport::endpoint().await;
+        let node_b_addr = endpoint_b.node_addr();
+        let node_b = SyncEngine::new(endpoint_b)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to create sync engine B: {}", e))?;
+
+        Ok(Self {
+            node_a,
+            node_a_addr,
+            node_b,
+            node_b_addr,
+        })
+    }
+
+    /// Share project from node_a to node_b via ticket.
+    ///
+    /// Creates a ticket on node_a and redeems it on node_b.
+    /// Returns the replica ID on node_b.
+    pub async fn share_project(&self, replica_id: ReplicaId) -> anyhow::Result<ReplicaId> {
+        // Create ticket on node_a
+        let ticket = self
+            .node_a
+            .docs()
+            .create_ticket(replica_id, self.node_a_addr.clone())
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to create ticket: {}", e))?;
+
+        // Redeem ticket on node_b
+        let synced_replica = self
+            .node_b
+            .docs()
+            .download_from_ticket(ticket)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to redeem ticket: {}", e))?;
+
+        Ok(synced_replica)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -117,5 +184,11 @@ mod tests {
         // Verify docs interface is accessible
         let replica_id = engine.docs().create_replica().await;
         assert!(replica_id.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_two_node_harness_creation() {
+        let harness = TwoNodeTestHarness::new().await;
+        assert!(harness.is_ok());
     }
 }
