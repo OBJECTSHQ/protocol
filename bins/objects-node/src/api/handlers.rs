@@ -116,7 +116,7 @@ pub async fn get_identity(
         .map(|info| IdentityResponse {
             id: info.identity_id().to_string(),
             handle: info.handle().to_string(),
-            nonce: hex::encode(info.nonce()),
+            nonce: base64::engine::general_purpose::STANDARD.encode(info.nonce()),
             signer_type: format!("{:?}", info.signer_type()).to_lowercase(),
         });
 
@@ -275,48 +275,54 @@ pub async fn create_project(
         .await
         .map_err(|e| NodeError::Internal(format!("Failed to create replica: {}", e)))?;
 
-    // 4. Create author for signing entries
-    let author = state
-        .sync_engine
-        .docs()
-        .create_author()
-        .await
-        .map_err(|e| NodeError::Internal(format!("Failed to create author: {}", e)))?;
+    // 4. Build and store project metadata; clean up replica on failure
+    let result: Result<_, NodeError> = async {
+        let author = state.sync_engine.default_author();
 
-    // 5. Derive project ID from replica ID
-    let replica_bytes: [u8; 32] = replica_id.as_bytes().to_owned();
-    let project_id = Project::project_id_from_replica(&replica_bytes);
+        let replica_bytes: [u8; 32] = replica_id.as_bytes().to_owned();
+        let project_id = Project::project_id_from_replica(&replica_bytes);
 
-    // 6. Get timestamp
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|e| NodeError::Internal(format!("System time error: {}", e)))?
-        .as_secs();
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|e| NodeError::Internal(format!("System time error: {}", e)))?
+            .as_secs();
 
-    // 7. Create project and store metadata
-    let project = Project::new(
-        project_id.clone(),
-        req.name.clone(),
-        req.description.clone(),
-        owner_id,
-        now,
-        now,
-    )
-    .map_err(|e| NodeError::Internal(format!("Failed to create project: {}", e)))?;
+        let project = Project::new(
+            project_id,
+            req.name.clone(),
+            req.description.clone(),
+            owner_id,
+            now,
+            now,
+        )
+        .map_err(|e| NodeError::Internal(format!("Failed to create project: {}", e)))?;
 
-    let project_json = serde_json::to_vec(&project)
-        .map_err(|e| NodeError::Internal(format!("Failed to serialize project: {}", e)))?;
+        let project_json = serde_json::to_vec(&project)
+            .map_err(|e| NodeError::Internal(format!("Failed to serialize project: {}", e)))?;
 
-    state
-        .sync_engine
-        .docs()
-        .set_bytes(replica_id, author, PROJECT_KEY, project_json)
-        .await
-        .map_err(|e| NodeError::Internal(format!("Failed to store project metadata: {}", e)))?;
+        state
+            .sync_engine
+            .docs()
+            .set_bytes(replica_id, author, PROJECT_KEY, project_json)
+            .await
+            .map_err(|e| NodeError::Internal(format!("Failed to store project metadata: {}", e)))?;
 
-    info!("Project created: {} ({})", req.name, project_id);
+        Ok(project)
+    }
+    .await;
 
-    Ok((StatusCode::CREATED, Json(ProjectResponse::from(project))))
+    match result {
+        Ok(project) => {
+            info!("Project created: {} ({})", req.name, project.id());
+            Ok((StatusCode::CREATED, Json(ProjectResponse::from(project))))
+        }
+        Err(e) => {
+            if let Err(cleanup_err) = state.sync_engine.docs().delete_replica(replica_id).await {
+                tracing::warn!("Failed to cleanup replica after error: {cleanup_err}");
+            }
+            Err(e)
+        }
+    }
 }
 
 /// List projects handler.

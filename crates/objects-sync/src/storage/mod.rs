@@ -9,7 +9,32 @@ pub mod docs;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use walkdir::WalkDir;
+
 use crate::Result;
+
+/// Calculate total size of all files in a directory tree.
+///
+/// Synchronous function — callers in async context should wrap with `spawn_blocking`.
+/// Propagates errors from directory traversal and metadata reads instead of silently
+/// skipping unreadable entries.
+pub(crate) fn dir_size(path: &Path) -> Result<u64> {
+    if !path.exists() {
+        return Ok(0);
+    }
+    let mut total_size = 0u64;
+    for entry in WalkDir::new(path) {
+        let entry =
+            entry.map_err(|e| crate::Error::Storage(format!("Failed to read directory: {e}")))?;
+        if entry.file_type().is_file() {
+            total_size += entry
+                .metadata()
+                .map_err(|e| crate::Error::Storage(format!("Failed to read metadata: {e}")))?
+                .len();
+        }
+    }
+    Ok(total_size)
+}
 
 /// Storage format version for migration detection.
 pub const STORAGE_VERSION: &str = "v1";
@@ -60,12 +85,15 @@ impl StorageConfig {
         self.ensure_permissions()?;
 
         // Create/verify version marker
-        let version_file = self.blobs_path.parent().unwrap().join(".storage-version");
+        let storage_root = self.blobs_path.parent().ok_or_else(|| {
+            crate::Error::Storage("blobs_path has no parent directory".to_string())
+        })?;
+        let version_file = storage_root.join(".storage-version");
 
         if !version_file.exists() {
             fs::write(&version_file, STORAGE_VERSION)?;
         } else {
-            let existing = fs::read_to_string(&version_file)?;
+            let existing = fs::read_to_string(&version_file)?.trim().to_string();
             if existing != STORAGE_VERSION {
                 return Err(crate::Error::StorageVersionMismatch {
                     expected: STORAGE_VERSION.to_string(),
@@ -98,9 +126,11 @@ impl StorageConfig {
         }
 
         // Verify writable by attempting to create a temp file
-        let test_file = self.blobs_path.join(".write-test");
-        fs::write(&test_file, b"test")?;
-        fs::remove_file(&test_file)?;
+        for dir in [&self.blobs_path, &self.docs_path] {
+            let test_file = dir.join(".write-test");
+            fs::write(&test_file, b"test")?;
+            fs::remove_file(&test_file)?;
+        }
 
         Ok(())
     }
