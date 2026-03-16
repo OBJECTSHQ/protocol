@@ -2,11 +2,9 @@
 //!
 //! This module provides utilities for managing persistent blob storage using Iroh's FsStore.
 
-use blake3;
 use iroh_blobs::Hash;
 use iroh_blobs::store::fs::FsStore;
 use std::path::Path;
-use walkdir::WalkDir;
 
 use crate::Result;
 
@@ -33,23 +31,10 @@ pub async fn create_blob_store(path: &Path) -> Result<FsStore> {
 ///
 /// Returns error if directory cannot be read.
 pub async fn blob_store_size(path: &Path) -> Result<u64> {
-    if !path.exists() {
-        return Ok(0);
-    }
-
-    let mut total_size = 0u64;
-
-    // Walk directory recursively
-    for entry in WalkDir::new(path).into_iter().filter_map(|e| e.ok()) {
-        if entry.file_type().is_file() {
-            total_size += entry
-                .metadata()
-                .map_err(|e| crate::Error::Storage(format!("Failed to read metadata: {}", e)))?
-                .len();
-        }
-    }
-
-    Ok(total_size)
+    let path = path.to_path_buf();
+    tokio::task::spawn_blocking(move || super::dir_size(&path))
+        .await
+        .map_err(|e| crate::Error::Storage(format!("Failed to compute blob store size: {e}")))?
 }
 
 /// Check if blob store can accommodate new blob.
@@ -57,6 +42,10 @@ pub async fn blob_store_size(path: &Path) -> Result<u64> {
 /// Validates:
 /// 1. Single blob size against max_blob_size limit
 /// 2. Total storage size against max_total_size limit
+///
+/// Note: there is an inherent TOCTOU race between checking storage size and
+/// writing the blob. This is acceptable for v0.1 — concurrent writes may
+/// briefly exceed the limit, but the check prevents sustained overuse.
 ///
 /// # Errors
 ///
@@ -91,26 +80,25 @@ pub async fn check_storage_limits(
     Ok(())
 }
 
-/// Verify blob integrity by re-computing hash.
+/// Verify that a blob exists and is retrievable from the store.
 ///
-/// Detects corruption by comparing stored content hash to expected hash.
+/// Iroh's FsStore uses BLAKE3 Authenticated Output (BAO) for verified streaming,
+/// so `get_bytes(hash)` already validates content integrity against the hash during
+/// retrieval. A separate re-hash would always match for any successfully retrieved blob.
 ///
-/// # Errors
-///
-/// Returns error if the blob cannot be read.
-pub async fn verify_blob_integrity(store: &FsStore, hash: Hash) -> Result<bool> {
-    // Read blob content
-    let content = store
-        .blobs()
-        .get_bytes(hash)
-        .await
-        .map_err(|e| crate::Error::Storage(format!("Failed to read blob: {}", e)))?;
-
-    // Re-compute hash
-    let computed_hash = blake3::hash(&content);
-
-    // Compare hashes
-    Ok(computed_hash.as_bytes() == hash.as_bytes())
+/// Returns `Ok(true)` if the blob exists, `Ok(false)` if not found.
+pub async fn verify_blob_exists(store: &FsStore, hash: Hash) -> Result<bool> {
+    match store.blobs().get_bytes(hash).await {
+        Ok(_) => Ok(true),
+        Err(e) => {
+            let msg = e.to_string();
+            if msg.contains("not found") || msg.contains("NotFound") {
+                Ok(false)
+            } else {
+                Err(crate::Error::Storage(format!("Failed to read blob: {e}")))
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -247,37 +235,51 @@ mod tests {
         assert_eq!(size, 0);
     }
 
-    // ===== Group 4: Integrity Verification =====
+    // ===== Group 4: Blob Existence Verification =====
 
     #[tokio::test]
-    async fn test_verify_blob_integrity_valid() {
+    async fn test_verify_blob_exists_present() {
         let tmp = TempDir::new().unwrap();
         let store_path = tmp.path().join("blobs");
         let store = create_blob_store(&store_path).await.unwrap();
-
         let content = b"valid content";
+        let _tag = store.add_bytes(&content[..]).await.unwrap();
         let hash = blake3::hash(content);
         let iroh_hash = Hash::from(hash);
-
-        // Add blob with known hash
-        let _tag = store.add_bytes(&content[..]).await.unwrap();
-
-        // Verify integrity with correct hash
-        let is_valid = verify_blob_integrity(&store, iroh_hash).await.unwrap();
-        assert!(is_valid);
+        assert!(verify_blob_exists(&store, iroh_hash).await.unwrap());
     }
 
     #[tokio::test]
-    async fn test_verify_blob_integrity_nonexistent_blob() {
+    async fn test_verify_blob_exists_missing() {
         let tmp = TempDir::new().unwrap();
         let store_path = tmp.path().join("blobs");
         let store = create_blob_store(&store_path).await.unwrap();
-
-        // Try to verify blob that doesn't exist
         let fake_hash = blake3::hash(b"nonexistent");
         let iroh_hash = Hash::from(fake_hash);
+        assert!(!verify_blob_exists(&store, iroh_hash).await.unwrap());
+    }
 
-        let result = verify_blob_integrity(&store, iroh_hash).await;
-        assert!(result.is_err()); // Should fail to read
+    // ===== Group 5: Storage Limit Exceeded =====
+
+    #[tokio::test]
+    async fn test_check_storage_limits_total_exceeded() {
+        let tmp = TempDir::new().unwrap();
+        let store_dir = tmp.path().join("blobs");
+        fs::create_dir_all(&store_dir).unwrap();
+        // Pre-fill with ~1 MB of existing data
+        fs::write(store_dir.join("existing.dat"), vec![0u8; 1024 * 1024]).unwrap();
+        // 1 GB new blob + 1 MB existing > 1 GB total limit
+        let result = check_storage_limits(
+            &store_dir,
+            1024 * 1024 * 1024, // 1 GB new blob
+            2048,               // 2 TB max per blob (won't trigger)
+            1,                  // 1 GB total limit
+        )
+        .await;
+        assert!(matches!(
+            result,
+            Err(crate::Error::StorageLimitExceeded { current, limit })
+                if current > 0 && limit == 1024 * 1024 * 1024
+        ));
     }
 }
