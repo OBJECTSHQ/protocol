@@ -16,9 +16,11 @@ use crate::{BlobClient, DocsClient, Result};
 /// Unified sync engine for OBJECTS Protocol.
 ///
 /// Coordinates blob sync (iroh-blobs) and metadata sync (iroh-docs).
+#[derive(Clone)]
 pub struct SyncEngine {
     blobs: BlobClient,
     docs: DocsClient,
+    default_author: iroh_docs::AuthorId,
     /// Optional persistent blob store (kept alive for shutdown)
     blob_store: Option<Arc<FsStore>>,
 }
@@ -57,9 +59,13 @@ impl SyncEngine {
         )
         .await?;
 
+        let docs = DocsClient::new(docs_protocol);
+        let default_author = docs.create_author().await?;
+
         Ok(Self {
             blobs: BlobClient::new(blobs_client),
-            docs: DocsClient::new(docs_protocol),
+            docs,
+            default_author,
             blob_store: Some(Arc::new(store)),
         })
     }
@@ -92,9 +98,13 @@ impl SyncEngine {
             .await
             .map_err(crate::Error::Iroh)?;
 
+        let docs = DocsClient::new(docs_protocol);
+        let default_author = docs.create_author().await?;
+
         Ok(Self {
             blobs: BlobClient::new(blobs_client),
-            docs: DocsClient::new(docs_protocol),
+            docs,
+            default_author,
             blob_store: None,
         })
     }
@@ -107,6 +117,13 @@ impl SyncEngine {
     /// Returns a reference to the docs client.
     pub fn docs(&self) -> &DocsClient {
         &self.docs
+    }
+
+    /// Returns the default author for this node.
+    ///
+    /// One `AuthorId` per node — created at startup and reused for all write operations.
+    pub fn default_author(&self) -> iroh_docs::AuthorId {
+        self.default_author
     }
 
     /// Gracefully shutdown the sync engine.
