@@ -2,15 +2,13 @@
 //!
 //! This module provides utilities for managing persistent docs storage using Iroh's Docs protocol.
 
+use crate::Result;
 use iroh::Endpoint;
 use iroh_blobs::store::fs::FsStore;
 use iroh_docs::protocol::Docs;
 use iroh_gossip::net::Gossip;
 use std::ops::Deref;
 use std::path::Path;
-use walkdir::WalkDir;
-
-use crate::Result;
 
 /// Initialize persistent docs protocol at the given path.
 ///
@@ -45,23 +43,10 @@ pub async fn create_docs_store(
 ///
 /// Returns error if directory cannot be read.
 pub async fn docs_store_size(path: &Path) -> Result<u64> {
-    if !path.exists() {
-        return Ok(0);
-    }
-
-    let mut total_size = 0u64;
-
-    // Walk directory recursively
-    for entry in WalkDir::new(path).into_iter().filter_map(|e| e.ok()) {
-        if entry.file_type().is_file() {
-            total_size += entry
-                .metadata()
-                .map_err(|e| crate::Error::Storage(format!("Failed to read metadata: {}", e)))?
-                .len();
-        }
-    }
-
-    Ok(total_size)
+    let path = path.to_path_buf();
+    tokio::task::spawn_blocking(move || super::dir_size(&path))
+        .await
+        .map_err(|e| crate::Error::Storage(format!("Failed to compute docs store size: {e}")))?
 }
 
 #[cfg(test)]
