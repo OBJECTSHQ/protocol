@@ -3,10 +3,37 @@
 //! This module provides storage configuration types and directory management
 //! for the OBJECTS Protocol sync layer.
 
+pub mod blobs;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use walkdir::WalkDir;
+
 use crate::Result;
+
+/// Calculate total size of all files in a directory tree.
+///
+/// Synchronous function — callers in async context should wrap with `spawn_blocking`.
+/// Propagates errors from directory traversal and metadata reads instead of silently
+/// skipping unreadable entries.
+pub(crate) fn dir_size(path: &Path) -> Result<u64> {
+    if !path.exists() {
+        return Ok(0);
+    }
+    let mut total_size = 0u64;
+    for entry in WalkDir::new(path) {
+        let entry =
+            entry.map_err(|e| crate::Error::Storage(format!("Failed to read directory: {e}")))?;
+        if entry.file_type().is_file() {
+            total_size += entry
+                .metadata()
+                .map_err(|e| crate::Error::Storage(format!("Failed to read metadata: {e}")))?
+                .len();
+        }
+    }
+    Ok(total_size)
+}
 
 /// Storage format version for migration detection.
 pub const STORAGE_VERSION: &str = "v1";
