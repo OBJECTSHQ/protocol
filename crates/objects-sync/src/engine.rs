@@ -21,6 +21,7 @@ use crate::{BlobClient, DocsClient, Result};
 pub struct SyncEngine {
     blobs: BlobClient,
     docs: DocsClient,
+    default_author: iroh_docs::AuthorId,
     node_addr: NodeAddr,
     /// Router keeps protocol handlers alive for incoming connections.
     _router: Router,
@@ -74,9 +75,13 @@ impl SyncEngine {
             .accept(iroh_docs::ALPN, docs_protocol.clone())
             .spawn();
 
+        let docs = DocsClient::new(docs_protocol);
+        let default_author = docs.create_author().await?;
+
         Ok(Self {
             blobs: BlobClient::new(blobs_client, store_api, router.endpoint().clone()),
-            docs: DocsClient::new(docs_protocol),
+            docs,
+            default_author,
             node_addr,
             _router: router,
         })
@@ -122,9 +127,13 @@ impl SyncEngine {
             .accept(iroh_docs::ALPN, docs_protocol.clone())
             .spawn();
 
+        let docs = DocsClient::new(docs_protocol);
+        let default_author = docs.create_author().await?;
+
         Ok(Self {
             blobs: BlobClient::new(blobs_client, store_api, router.endpoint().clone()),
-            docs: DocsClient::new(docs_protocol),
+            docs,
+            default_author,
             node_addr,
             _router: router,
         })
@@ -150,6 +159,13 @@ impl SyncEngine {
     /// Returns a reference to the docs client.
     pub fn docs(&self) -> &DocsClient {
         &self.docs
+    }
+
+    /// Returns the default author for this node.
+    ///
+    /// One `AuthorId` per node — created at startup and reused for all write operations.
+    pub fn default_author(&self) -> iroh_docs::AuthorId {
+        self.default_author
     }
 
     /// Gracefully shutdown the sync engine.
