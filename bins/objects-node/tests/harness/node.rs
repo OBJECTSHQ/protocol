@@ -7,8 +7,8 @@ use objects_node::api::routes::create_router;
 use objects_node::{NodeConfig, NodeState};
 use objects_sync::SyncEngine;
 use objects_sync::storage::StorageConfig;
-use objects_transport::discovery::{DiscoveryConfig, GossipDiscovery};
 use objects_transport::NodeAddr;
+use objects_transport::discovery::{DiscoveryConfig, GossipDiscovery};
 use std::net::SocketAddr;
 use std::sync::{Arc, RwLock};
 use tempfile::TempDir;
@@ -81,8 +81,7 @@ impl TestNode {
         // Use default relay mode — iroh's N0 preset provides relay servers
         // automatically via Endpoint::builder(). No need to parse a custom
         // relay URL; the config.network.relay_url is for display/status only.
-        let network_config = objects_transport::NetworkConfig::devnet()
-            .with_max_connections(50);
+        let network_config = objects_transport::NetworkConfig::devnet().with_max_connections(50);
 
         let endpoint = objects_transport::ObjectsEndpoint::builder()
             .config(network_config)
