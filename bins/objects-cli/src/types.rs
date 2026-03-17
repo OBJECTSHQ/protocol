@@ -85,3 +85,24 @@ pub struct ProjectResponse {
 pub struct ProjectListResponse {
     pub projects: Vec<ProjectResponse>,
 }
+
+// =============================================================================
+// Asset Types
+// =============================================================================
+
+/// Asset response.
+#[derive(Debug, Clone, Deserialize)]
+pub struct AssetResponse {
+    pub id: String,
+    pub filename: String,
+    pub content_type: String,
+    pub size: u64,
+    pub content_hash: String,
+    pub created_at: u64,
+}
+
+/// Asset list response.
+#[derive(Debug, Clone, Deserialize)]
+pub struct AssetListResponse {
+    pub assets: Vec<AssetResponse>,
+}
