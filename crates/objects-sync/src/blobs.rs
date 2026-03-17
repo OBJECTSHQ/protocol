@@ -29,7 +29,9 @@
 //! ```
 
 use bytes::Bytes;
-use iroh_blobs::{BlobFormat, Hash, api::blobs::Blobs, ticket::BlobTicket};
+use iroh_blobs::{
+    BlobFormat, Hash, HashAndFormat, api::Store, api::blobs::Blobs, ticket::BlobTicket,
+};
 use std::path::Path;
 use tokio::io::AsyncReadExt;
 
@@ -42,14 +44,20 @@ use crate::{Error, Result};
 #[derive(Clone)]
 pub struct BlobClient {
     inner: Blobs,
+    store: Store,
+    endpoint: iroh::Endpoint,
 }
 
 impl BlobClient {
     /// Creates a new blob client.
     ///
     /// This is typically called by [`SyncEngine`](crate::SyncEngine), not directly.
-    pub(crate) fn new(inner: Blobs) -> Self {
-        Self { inner }
+    pub(crate) fn new(inner: Blobs, store: Store, endpoint: iroh::Endpoint) -> Self {
+        Self {
+            inner,
+            store,
+            endpoint,
+        }
     }
 
     /// Adds a blob from bytes and returns its hash.
@@ -161,13 +169,25 @@ impl BlobClient {
     /// # }
     /// ```
     pub async fn download_from_ticket(&self, ticket: BlobTicket) -> Result<Hash> {
-        let _hash = ticket.hash();
+        let hash = ticket.hash();
+        let addr = ticket.addr().clone();
+        let hash_and_format = HashAndFormat::new(hash, ticket.format());
 
-        // For now, return an error indicating this needs implementation
-        // TODO: Implement blob download via iroh-blobs remote API
-        Err(Error::SyncFailed(
-            "download_from_ticket not yet implemented".to_string(),
-        ))
+        // Connect directly to the peer and fetch the blob.
+        // This follows iroh's canonical pattern: connect → remote().fetch().
+        let conn = self
+            .endpoint
+            .connect(addr, iroh_blobs::ALPN)
+            .await
+            .map_err(|e| Error::SyncFailed(format!("connect to peer: {}", e)))?;
+
+        self.store
+            .remote()
+            .fetch(conn, hash_and_format)
+            .await
+            .map_err(|e| Error::SyncFailed(format!("fetch blob: {}", e)))?;
+
+        Ok(hash)
     }
 
     /// Creates a blob ticket for sharing.

@@ -33,7 +33,7 @@
 //!
 //! // Create tickets for sharing
 //! let blob_ticket = sync.blobs().create_ticket(hash, node_addr.clone()).await?;
-//! let doc_ticket = sync.docs().create_ticket(replica_id, node_addr).await?;
+//! let doc_ticket = sync.docs().create_ticket(replica_id).await?;
 //!
 //! println!("Share blob: {}", blob_ticket);
 //! println!("Share replica: {}", doc_ticket);
