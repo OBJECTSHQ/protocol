@@ -1,5 +1,6 @@
 //! API request and response types.
 
+use base64::Engine;
 use objects_data::{Asset, Project};
 use objects_transport::NodeAddr;
 use serde::{Deserialize, Serialize};
@@ -147,7 +148,7 @@ pub struct AssetResponse {
     pub content_type: String,
     /// Size of the content in bytes.
     pub size: u64,
-    /// BLAKE3 hash of the content (hex-encoded).
+    /// BLAKE3 hash of the content (base64-encoded).
     pub content_hash: String,
     /// Unix timestamp when asset was created.
     pub created_at: u64,
@@ -163,7 +164,7 @@ impl From<&Asset> for AssetResponse {
                 .unwrap_or("application/octet-stream")
                 .to_string(),
             size: asset.content_size(),
-            content_hash: asset.content_hash().to_hex(),
+            content_hash: base64::engine::general_purpose::STANDARD.encode(asset.content_hash().0),
             created_at: asset.created_at(),
         }
     }
@@ -364,7 +365,8 @@ mod tests {
             filename: "motor_mount.step".to_string(),
             content_type: "model/step".to_string(),
             size: 1024,
-            content_hash: "ab".repeat(32),
+            content_hash: base64::engine::general_purpose::STANDARD
+                .encode(objects_test_utils::crypto::deterministic_bytes(42)),
             created_at: 1704542400,
         };
 
@@ -397,7 +399,10 @@ mod tests {
         assert_eq!(response.filename, "motor_mount.step");
         assert_eq!(response.content_type, "model/step");
         assert_eq!(response.size, 1024);
-        assert_eq!(response.content_hash, "ab".repeat(32));
+        assert_eq!(
+            response.content_hash,
+            base64::engine::general_purpose::STANDARD.encode([0xab; 32])
+        );
         assert_eq!(response.created_at, 1704542400);
     }
 
@@ -432,7 +437,8 @@ mod tests {
                 filename: "motor_mount.step".to_string(),
                 content_type: "model/step".to_string(),
                 size: 1024,
-                content_hash: "ab".repeat(32),
+                content_hash: base64::engine::general_purpose::STANDARD
+                    .encode(objects_test_utils::crypto::deterministic_bytes(42)),
                 created_at: 1704542400,
             }],
         };
