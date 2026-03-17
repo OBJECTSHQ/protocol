@@ -22,6 +22,18 @@ pub mod registry;
 pub use node::TestNode;
 pub use registry::TestRegistry;
 
+/// Require DATABASE_URL or fail fast with setup instructions.
+///
+/// E2E tests need PostgreSQL. Instead of silently falling back to a
+/// hardcoded URL and hanging for 30 s when the DB is unreachable, we
+/// panic immediately with actionable instructions.
+pub fn require_database_url() -> String {
+    std::env::var("DATABASE_URL").expect(
+        "\n\nDATABASE_URL not set — E2E tests require PostgreSQL.\n\
+         Run: docker compose -f docker/compose.yml up -d && source .env\n",
+    )
+}
+
 /// Complete test harness with registry and two nodes.
 ///
 /// Creates:
@@ -61,7 +73,7 @@ impl TestHarness {
         // Spawn registry first
         let registry = TestRegistry::new().await?;
 
-        // Spawn two nodes
+        // Spawn two nodes — they connect via iroh's N0 relay
         let node_a = TestNode::new(&registry.base_url).await?;
         let node_b = TestNode::new(&registry.base_url).await?;
 
@@ -90,7 +102,7 @@ impl TestHarness {
         // Spawn registry with the provided pool
         let registry = TestRegistry::with_pool(pool, database_url).await?;
 
-        // Spawn two nodes
+        // Spawn two nodes — they connect via iroh's N0 relay
         let node_a = TestNode::new(&registry.base_url).await?;
         let node_b = TestNode::new(&registry.base_url).await?;
 
@@ -180,7 +192,7 @@ impl TestHarness {
         let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
 
         // Create message to sign
-        let message = create_identity_message(identity_id.as_str(), &handle, timestamp);
+        let message = create_identity_message(identity_id.as_str(), handle, timestamp);
 
         // Sign the message
         let signature = signing_key.sign(message.as_bytes());
@@ -205,8 +217,8 @@ impl TestHarness {
         let request = CreateIdentityRequest {
             handle: handle.to_string(),
             signer_type: "PASSKEY".to_string(),
-            signer_public_key: base64::engine::general_purpose::STANDARD.encode(&public_key),
-            nonce: base64::engine::general_purpose::STANDARD.encode(&nonce),
+            signer_public_key: base64::engine::general_purpose::STANDARD.encode(public_key),
+            nonce: base64::engine::general_purpose::STANDARD.encode(nonce),
             timestamp,
             signature: signature_data,
         };
