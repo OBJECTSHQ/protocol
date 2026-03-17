@@ -174,7 +174,7 @@ async fn test_doc_ticket_creation() {
         .node_a
         .sync_engine
         .docs()
-        .create_ticket(replica, harness.node_a_addr().clone())
+        .create_ticket(replica)
         .await
         .unwrap();
 

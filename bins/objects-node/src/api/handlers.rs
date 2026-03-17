@@ -650,14 +650,11 @@ pub async fn create_ticket(
     // 1. Find replica for project
     let replica_id = find_replica_for_project(&state.sync_engine, &req.project_id).await?;
 
-    // 2. Get node address for ticket
-    let node_addr = state.node_info.node_addr.clone();
-
-    // 3. Create DocTicket
+    // 2. Create DocTicket
     let ticket = state
         .sync_engine
         .docs()
-        .create_ticket(replica_id, node_addr)
+        .create_ticket(replica_id)
         .await
         .map_err(|e| NodeError::Internal(format!("Failed to create ticket: {}", e)))?;
 
