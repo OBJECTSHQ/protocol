@@ -106,3 +106,25 @@ pub struct AssetResponse {
 pub struct AssetListResponse {
     pub assets: Vec<AssetResponse>,
 }
+
+// =============================================================================
+// Ticket Types
+// =============================================================================
+
+/// Create ticket request.
+#[derive(Debug, Clone, Serialize)]
+pub struct CreateTicketRequest {
+    pub project_id: String,
+}
+
+/// Ticket response.
+#[derive(Debug, Clone, Deserialize)]
+pub struct TicketResponse {
+    pub ticket: String,
+}
+
+/// Redeem ticket request.
+#[derive(Debug, Clone, Serialize)]
+pub struct RedeemTicketRequest {
+    pub ticket: String,
+}
