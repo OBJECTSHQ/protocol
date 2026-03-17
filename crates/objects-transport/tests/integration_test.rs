@@ -109,22 +109,14 @@ async fn test_network_config_builder() {
 // ============================================================================
 
 #[tokio::test]
-#[ignore = "Requires relay server or localhost network setup"]
 async fn test_two_endpoints_can_connect() {
-    let endpoint1 = transport::endpoint().await;
-    let endpoint2 = transport::endpoint().await;
+    let (endpoint1, endpoint2) = transport::endpoint_pair().await;
 
-    // Give endpoints time to bind and discover local addresses
-    transport::wait_short().await;
+    let addr2 = endpoint2.node_addr();
+    let ep2_node_id = endpoint2.node_id();
 
-    // Get endpoint2's address with local addressing
-    let mut addr2 = endpoint2.node_addr();
-
-    // Add localhost address explicitly for testing
-    // In production, this would come from discovery or relay
-    for socket in endpoint2.inner().bound_sockets() {
-        addr2 = addr2.with_ip_addr(socket);
-    }
+    // Spawn accept on endpoint2 so the QUIC handshake can complete
+    let accept_handle = tokio::spawn(async move { endpoint2.accept().await });
 
     // Connect endpoint1 to endpoint2
     let conn = endpoint1
@@ -133,22 +125,19 @@ async fn test_two_endpoints_can_connect() {
         .expect("should connect successfully");
 
     // Verify connection properties
-    assert_node_ids_match(&endpoint2.node_id(), &conn.remote_node_id());
+    assert_node_ids_match(&ep2_node_id, &conn.remote_node_id());
+
+    let _ = accept_handle.await.expect("accept task panicked");
 }
 
 #[tokio::test]
-#[ignore = "Requires relay server or localhost network setup"]
 async fn test_endpoint_can_accept_connection() {
-    let endpoint1 = transport::endpoint().await;
-    let endpoint2 = transport::endpoint().await;
+    let (endpoint1, endpoint2) = transport::endpoint_pair().await;
 
     let addr1 = endpoint1.node_addr();
 
     // Spawn a task to accept on endpoint1
     let accept_handle = tokio::spawn(async move { endpoint1.accept().await });
-
-    // Give accept time to start listening
-    transport::wait_short().await;
 
     // Connect from endpoint2
     let _conn = endpoint2
@@ -170,20 +159,16 @@ async fn test_endpoint_can_accept_connection() {
 // ============================================================================
 
 #[tokio::test]
-#[ignore = "Requires relay server or localhost network setup"]
 async fn test_bidirectional_stream_communication() {
-    let endpoint1 = transport::endpoint().await;
-    let endpoint2 = transport::endpoint().await;
+    let (endpoint1, endpoint2) = transport::endpoint_pair().await;
 
     let addr2 = endpoint2.node_addr();
 
-    // Connect
-    let conn1 = endpoint1.connect(addr2).await.expect("should connect");
-
-    // Accept on endpoint2
+    // Spawn accept before connect so the QUIC handshake can complete
     let accept_handle = tokio::spawn(async move { endpoint2.accept().await });
 
-    transport::wait_short().await;
+    // Connect
+    let conn1 = endpoint1.connect(addr2).await.expect("should connect");
 
     let conn2 = accept_handle
         .await
@@ -232,20 +217,16 @@ async fn test_bidirectional_stream_communication() {
 }
 
 #[tokio::test]
-#[ignore = "Requires relay server or localhost network setup"]
 async fn test_unidirectional_stream_communication() {
-    let endpoint1 = transport::endpoint().await;
-    let endpoint2 = transport::endpoint().await;
+    let (endpoint1, endpoint2) = transport::endpoint_pair().await;
 
     let addr2 = endpoint2.node_addr();
 
-    // Connect
-    let conn1 = endpoint1.connect(addr2).await.expect("should connect");
-
-    // Accept on endpoint2
+    // Spawn accept before connect so the QUIC handshake can complete
     let accept_handle = tokio::spawn(async move { endpoint2.accept().await });
 
-    transport::wait_short().await;
+    // Connect
+    let conn1 = endpoint1.connect(addr2).await.expect("should connect");
 
     let conn2 = accept_handle
         .await
@@ -278,20 +259,16 @@ async fn test_unidirectional_stream_communication() {
 }
 
 #[tokio::test]
-#[ignore = "Requires relay server or localhost network setup"]
 async fn test_multiple_streams_on_same_connection() {
-    let endpoint1 = transport::endpoint().await;
-    let endpoint2 = transport::endpoint().await;
+    let (endpoint1, endpoint2) = transport::endpoint_pair().await;
 
     let addr2 = endpoint2.node_addr();
 
-    // Connect
-    let conn1 = Arc::new(endpoint1.connect(addr2).await.expect("should connect"));
-
-    // Accept on endpoint2
+    // Spawn accept before connect so the QUIC handshake can complete
     let accept_handle = tokio::spawn(async move { endpoint2.accept().await });
 
-    transport::wait_short().await;
+    // Connect
+    let conn1 = Arc::new(endpoint1.connect(addr2).await.expect("should connect"));
 
     let conn2 = Arc::new(
         accept_handle
@@ -357,14 +334,17 @@ async fn test_multiple_streams_on_same_connection() {
 // ============================================================================
 
 #[tokio::test]
-#[ignore = "Requires relay server or localhost network setup"]
 async fn test_connection_close() {
-    let endpoint1 = transport::endpoint().await;
-    let endpoint2 = transport::endpoint().await;
+    let (endpoint1, endpoint2) = transport::endpoint_pair().await;
 
     let addr2 = endpoint2.node_addr();
 
+    // Spawn accept so the QUIC handshake can complete
+    let accept_handle = tokio::spawn(async move { endpoint2.accept().await });
+
     let conn1 = endpoint1.connect(addr2).await.expect("should connect");
+
+    let _ = accept_handle.await.expect("accept task panicked");
 
     // Close the connection
     conn1.close(0, b"test close");

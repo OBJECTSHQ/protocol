@@ -2,6 +2,7 @@
 //!
 //! Wraps Iroh's Endpoint with OBJECTS-specific configuration.
 
+use iroh::discovery::static_provider::StaticProvider;
 use iroh::endpoint::{Endpoint, RelayMode};
 
 use crate::{
@@ -128,6 +129,8 @@ impl ObjectsEndpoint {
 pub struct EndpointBuilder {
     config: Option<NetworkConfig>,
     secret_key: Option<SecretKey>,
+    static_discovery: Option<StaticProvider>,
+    relay_mode: Option<RelayMode>,
 }
 
 impl EndpointBuilder {
@@ -136,6 +139,8 @@ impl EndpointBuilder {
         Self {
             config: None,
             secret_key: None,
+            static_discovery: None,
+            relay_mode: None,
         }
     }
 
@@ -159,6 +164,24 @@ impl EndpointBuilder {
         self
     }
 
+    /// Add a static discovery provider.
+    ///
+    /// Useful in tests to share peer addresses between endpoints
+    /// without relying on external discovery services.
+    pub fn static_discovery(mut self, provider: StaticProvider) -> Self {
+        self.static_discovery = Some(provider);
+        self
+    }
+
+    /// Set the relay mode.
+    ///
+    /// Defaults to `RelayMode::Default` if not set. Use
+    /// `RelayMode::Disabled` for tests that don't need relay.
+    pub fn relay_mode(mut self, mode: RelayMode) -> Self {
+        self.relay_mode = Some(mode);
+        self
+    }
+
     /// Bind the endpoint and start listening.
     ///
     /// # Errors
@@ -170,18 +193,27 @@ impl EndpointBuilder {
             .secret_key
             .unwrap_or_else(|| SecretKey::generate(&mut rand::rng()));
 
-        // Build the Iroh endpoint with OBJECTS configuration
-        let mut builder = Endpoint::builder()
+        // Build the Iroh endpoint with OBJECTS configuration.
+        // When relay is disabled (tests), use empty_builder to avoid N0 preset
+        // interference. When relay is enabled (production), use the full builder.
+        let relay_mode = self.relay_mode.unwrap_or(RelayMode::Default);
+        let mut builder = match relay_mode {
+            RelayMode::Disabled => Endpoint::empty_builder(RelayMode::Disabled),
+            _ => {
+                let b = Endpoint::builder();
+                // Clear default N0 discovery - we use our own gossip-based discovery
+                b.clear_discovery().relay_mode(relay_mode)
+            }
+        };
+
+        builder = builder
             .secret_key(secret_key.clone())
             .alpns(vec![ALPN.to_vec()]);
 
-        // Configure relay mode
-        // For now, use default relay mode. In production, we'd configure
-        // our own relay using RelayMode::Custom.
-        builder = builder.relay_mode(RelayMode::Default);
-
-        // Clear default discovery - we use our own gossip-based discovery
-        builder = builder.clear_discovery();
+        // Add static discovery if provided (used in tests)
+        if let Some(discovery) = self.static_discovery {
+            builder = builder.discovery(discovery);
+        }
 
         let inner = builder.bind().await.map_err(|e| Error::Iroh(e.into()))?;
 
