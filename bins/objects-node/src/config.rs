@@ -220,10 +220,8 @@ impl NodeConfig {
         // Validate registry URL uses secure transport
         // Allow HTTP only for loopback addresses (127.0.0.0/8, ::1, localhost)
         let scheme = registry_url.scheme();
-        let is_loopback = host == "localhost"
-            || host == "::1"
-            || host == "[::1]"
-            || host.starts_with("127.");
+        let is_loopback =
+            host == "localhost" || host == "::1" || host == "[::1]" || host.starts_with("127.");
 
         match scheme {
             "https" => {}
