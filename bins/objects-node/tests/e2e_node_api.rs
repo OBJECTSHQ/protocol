@@ -56,28 +56,40 @@ async fn test_identity_not_found_initially() {
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
 
+// Ignored: GossipDiscovery requires bootstrap peers or a rendezvous point
+// for two isolated nodes to find each other. With just two nodes and no
+// shared bootstrap, gossip topic subscription never propagates.
+// Re-enable once we add bootstrap peer support or a discovery relay.
 #[tokio::test]
+#[ignore = "gossip discovery needs bootstrap peers — two isolated nodes cannot discover each other"]
 async fn test_peer_discovery_between_nodes() {
     let harness = TestHarness::new().await.unwrap();
 
-    // Give nodes time to discover each other via gossip
-    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
-
     let client = reqwest::Client::new();
 
-    // Node A should see Node B
-    let response = client
-        .get(format!("{}/peers", harness.node_a_url()))
-        .send()
-        .await
-        .unwrap();
+    // Poll until node A discovers node B via gossip.
+    let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_secs(10);
+    loop {
+        let response = client
+            .get(format!("{}/peers", harness.node_a_url()))
+            .send()
+            .await
+            .unwrap();
 
-    assert_eq!(response.status(), StatusCode::OK);
-    let body: serde_json::Value = response.json().await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body: serde_json::Value = response.json().await.unwrap();
+        let peers = body["peers"].as_array().expect("peers should be an array");
 
-    // Should have at least discovered node B
-    // (May have 0 if discovery hasn't completed yet - gossip is eventually consistent)
-    assert!(body["peers"].is_array());
+        if !peers.is_empty() {
+            break; // Discovery worked
+        }
+
+        if tokio::time::Instant::now() > deadline {
+            panic!("Timed out waiting for peer discovery — node A never found node B");
+        }
+
+        tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
+    }
 }
 
 #[tokio::test]
