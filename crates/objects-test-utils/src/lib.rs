@@ -55,4 +55,3 @@ pub mod transport;
 pub use crypto::{PasskeyKeypair, WalletKeypair};
 pub use data::{SignedAssetPasskeyBundle, SignedAssetWalletBundle};
 pub use identity::{RandomPasskeyIdentity, RandomWalletIdentity};
-pub use sync::TwoNodeTestHarness;
