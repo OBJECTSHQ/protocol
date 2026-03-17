@@ -8,9 +8,8 @@ use objects_node::{NodeConfig, NodeState};
 use objects_sync::SyncEngine;
 use objects_sync::storage::StorageConfig;
 use objects_transport::discovery::{DiscoveryConfig, GossipDiscovery};
-use objects_transport::{NodeAddr, RelayUrl};
+use objects_transport::NodeAddr;
 use std::net::SocketAddr;
-use std::str::FromStr;
 use std::sync::{Arc, RwLock};
 use tempfile::TempDir;
 use tokio::sync::Mutex;
@@ -57,7 +56,8 @@ impl TestNode {
         let temp_dir = tempfile::tempdir()?;
         let data_dir = temp_dir.path().to_path_buf();
 
-        // Create node config pointing to test relay
+        // Use iroh's default N0 relay servers (relay.iroh.network regional nodes).
+        // We'll switch to relay.objects.foundation once our first-party relay is up.
         let config = NodeConfig {
             node: objects_node::config::NodeSettings {
                 data_dir: data_dir.to_str().unwrap().to_string(),
@@ -71,7 +71,6 @@ impl TestNode {
             storage: objects_node::config::StorageSettings::default(),
             identity: objects_node::config::IdentitySettings {
                 registry_url: registry_url.to_string(),
-                ..Default::default()
             },
         };
 
@@ -79,15 +78,12 @@ impl TestNode {
         let state_path = std::path::PathBuf::from(&config.node.data_dir).join("state.json");
         let state = NodeState::load_or_create(&state_path)?;
 
-        // Parse relay URL
-        let relay_url = RelayUrl::from_str(&config.network.relay_url)?;
-
-        // Create network config
+        // Use default relay mode — iroh's N0 preset provides relay servers
+        // automatically via Endpoint::builder(). No need to parse a custom
+        // relay URL; the config.network.relay_url is for display/status only.
         let network_config = objects_transport::NetworkConfig::devnet()
-            .with_relay_url(relay_url)
             .with_max_connections(50);
 
-        // Create endpoint with node's secret key
         let endpoint = objects_transport::ObjectsEndpoint::builder()
             .config(network_config)
             .secret_key(state.node_key().clone())
@@ -97,7 +93,7 @@ impl TestNode {
         let node_id = endpoint.node_id();
         let node_addr = endpoint.node_addr();
 
-        // Wait for relay connection
+        // Wait for relay connection before proceeding
         endpoint.inner().online().await;
 
         // Set up peer discovery
