@@ -507,13 +507,8 @@ pub async fn add_asset(
         .await
         .map_err(|e| NodeError::Internal(format!("Failed to store blob: {}", e)))?;
 
-    // 5. Create author for signing entries
-    let author = state
-        .sync_engine
-        .docs()
-        .create_author()
-        .await
-        .map_err(|e| NodeError::Internal(format!("Failed to create author: {}", e)))?;
+    // 5. Get default author for signing entries
+    let author = state.sync_engine.default_author();
 
     // 6. Create Asset with content_hash from blob
     let content_hash = objects_sync::hash_to_content_hash(blob_hash);
@@ -626,15 +621,18 @@ pub async fn get_asset_content(
     // 4. Return with Content-Type header
     let content_type = asset.format().unwrap_or("application/octet-stream");
 
-    Ok(Response::builder()
+    // Sanitize filename: escape backslashes and quotes for Content-Disposition header
+    let safe_name = asset.name().replace('\\', "\\\\").replace('"', "\\\"");
+
+    Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, content_type)
         .header(
             header::CONTENT_DISPOSITION,
-            format!("attachment; filename=\"{}\"", asset.name()),
+            format!("attachment; filename=\"{}\"", safe_name),
         )
         .body(axum::body::Body::from(content.to_vec()))
-        .unwrap())
+        .map_err(|e| NodeError::Internal(format!("Failed to build response: {}", e)))
 }
 
 #[cfg(test)]
