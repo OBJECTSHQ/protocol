@@ -33,11 +33,8 @@ impl TestRegistry {
     /// - Migrations fail
     /// - Server binding fails
     pub async fn new() -> Result<Self> {
-        // Get database URL from environment
-        // Use dedicated test database to avoid interfering with real registry
-        let database_url = std::env::var("DATABASE_URL").unwrap_or_else(|_| {
-            "postgresql://postgres:password@localhost:5432/objects_registry_test".to_string()
-        });
+        // Fail fast if DATABASE_URL is not set (see require_database_url docs)
+        let database_url = super::require_database_url();
 
         // Connect to database
         let connect_options = database_url
