@@ -63,10 +63,12 @@ impl TestNode {
                 data_dir: data_dir.to_str().unwrap().to_string(),
                 api_port: 0, // Random port
                 api_bind: "127.0.0.1".to_string(),
+                quic_port: None,
             },
             network: objects_node::config::NetworkSettings {
                 relay_url: "https://relay.objects.foundation".to_string(),
                 discovery_topic: "/objects/devnet/0.1/discovery".to_string(),
+                bootstrap_nodes: vec![],
             },
             storage: objects_node::config::StorageSettings::default(),
             identity: objects_node::config::IdentitySettings {
