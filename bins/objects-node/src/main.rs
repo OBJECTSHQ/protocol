@@ -141,7 +141,12 @@ async fn main() -> Result<()> {
         let config_clone = config.clone();
         tokio::spawn(async move {
             let app = create_router(app_state);
-            let addr = SocketAddr::from(([127, 0, 0, 1], config_clone.node.api_port));
+            let ip: std::net::IpAddr = config_clone
+                .node
+                .api_bind
+                .parse()
+                .expect("Invalid api_bind address (should have been caught by config validation)");
+            let addr = SocketAddr::from((ip, config_clone.node.api_port));
             let listener = match tokio::net::TcpListener::bind(addr).await {
                 Ok(l) => l,
                 Err(e) => {
