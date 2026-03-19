@@ -48,11 +48,16 @@ impl NodeService {
         );
 
         // Create endpoint with node's secret key
-        let endpoint = ObjectsEndpoint::builder()
+        let mut builder = ObjectsEndpoint::builder()
             .config(network_config)
-            .secret_key(state.node_key().clone())
-            .bind()
-            .await?;
+            .secret_key(state.node_key().clone());
+
+        if let Some(port) = config.node.quic_port {
+            debug!("Binding QUIC endpoint to port {}", port);
+            builder = builder.bind_port(port);
+        }
+
+        let endpoint = builder.bind().await?;
 
         info!("Endpoint created with node_id: {}", endpoint.node_id());
 
