@@ -48,11 +48,16 @@ impl NodeService {
         );
 
         // Create endpoint with node's secret key
-        let endpoint = ObjectsEndpoint::builder()
+        let mut builder = ObjectsEndpoint::builder()
             .config(network_config)
-            .secret_key(state.node_key().clone())
-            .bind()
-            .await?;
+            .secret_key(state.node_key().clone());
+
+        if let Some(port) = config.node.quic_port {
+            debug!("Binding QUIC endpoint to port {}", port);
+            builder = builder.bind_port(port);
+        }
+
+        let endpoint = builder.bind().await?;
 
         info!("Endpoint created with node_id: {}", endpoint.node_id());
 
@@ -66,12 +71,37 @@ impl NodeService {
         // Create gossip instance for this endpoint
         let gossip = iroh_gossip::net::Gossip::builder().spawn(endpoint.inner().clone());
 
+        // Parse bootstrap node IDs into NodeAddr
+        let bootstrap_addrs: Vec<NodeAddr> = config
+            .network
+            .bootstrap_nodes
+            .iter()
+            .filter_map(|id_str| match id_str.parse::<NodeId>() {
+                Ok(node_id) => {
+                    debug!("Adding bootstrap node: {}", node_id);
+                    Some(NodeAddr::from(node_id))
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        node_id = %id_str,
+                        error = %e,
+                        "Skipping invalid bootstrap node ID"
+                    );
+                    None
+                }
+            })
+            .collect();
+
+        if !bootstrap_addrs.is_empty() {
+            info!("Configured {} bootstrap node(s)", bootstrap_addrs.len());
+        }
+
         // Create discovery with devnet config
         let endpoint_arc = Arc::new(endpoint);
         let discovery = GossipDiscovery::new(
             gossip,
             endpoint_arc.clone(),
-            vec![], // No bootstrap nodes for now
+            bootstrap_addrs,
             DiscoveryConfig::devnet(),
         )
         .await?;
