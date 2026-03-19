@@ -22,15 +22,17 @@ pub mod registry;
 pub use node::TestNode;
 pub use registry::TestRegistry;
 
-/// Require DATABASE_URL or fail fast with setup instructions.
+/// Get DATABASE_URL, defaulting to a temp SQLite file if not set.
 ///
-/// E2E tests need a database. For SQLite, set DATABASE_URL to a
-/// sqlite:// URL. Without it, tests will fail immediately.
+/// Since the registry uses SQLite, E2E tests can run without external
+/// database setup. When DATABASE_URL is not set, a temp SQLite file
+/// unique to this process is used.
 pub fn require_database_url() -> String {
-    std::env::var("DATABASE_URL").expect(
-        "\n\nDATABASE_URL not set — E2E tests require a database.\n\
-         Set DATABASE_URL=sqlite://./test_registry.db or source .env\n",
-    )
+    std::env::var("DATABASE_URL").unwrap_or_else(|_| {
+        let tmp_dir = std::env::temp_dir();
+        let db_path = tmp_dir.join(format!("objects_test_{}.db", std::process::id()));
+        format!("sqlite://{}?mode=rwc", db_path.display())
+    })
 }
 
 /// Complete test harness with registry and two nodes.
