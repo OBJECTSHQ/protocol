@@ -1,6 +1,6 @@
 //! Integration tests for OBJECTS Registry REST API.
 //!
-//! These tests use sqlx::test to run against a real PostgreSQL database.
+//! These tests use sqlx::test to run against a SQLite database.
 
 use alloy_primitives::keccak256;
 use axum::body::Body;
@@ -20,7 +20,7 @@ use objects_registry::config::Config;
 use objects_test_utils::{crypto, time};
 use p256::ecdsa::SigningKey as P256SigningKey;
 use sha2::{Digest, Sha256};
-use sqlx::{ConnectOptions, PgPool};
+use sqlx::SqlitePool;
 use tower::ServiceExt;
 
 /// Helper: Create passkey signature for create identity message
@@ -113,9 +113,9 @@ fn sign_create_identity_wallet(
     (sig, address)
 }
 
-async fn setup_test_app(pool: PgPool) -> axum::Router {
+async fn setup_test_app(pool: SqlitePool) -> axum::Router {
     let config = Config {
-        database_url: pool.connect_options().to_url_lossy().to_string(),
+        database_url: String::new(),
         rest_port: 8080,
         grpc_port: 9090,
         timestamp_future_max: std::time::Duration::from_secs(5 * 60),
@@ -125,8 +125,8 @@ async fn setup_test_app(pool: PgPool) -> axum::Router {
     create_router(state)
 }
 
-#[sqlx::test]
-async fn test_create_identity_with_passkey(pool: PgPool) {
+#[sqlx::test(migrator = "objects_registry::MIGRATOR")]
+async fn test_create_identity_with_passkey(pool: SqlitePool) {
     let app = setup_test_app(pool).await;
 
     // Generate passkey and derive identity
@@ -175,8 +175,8 @@ async fn test_create_identity_with_passkey(pool: PgPool) {
     assert_eq!(identity.signer_type, "PASSKEY");
 }
 
-#[sqlx::test]
-async fn test_create_identity_with_wallet(pool: PgPool) {
+#[sqlx::test(migrator = "objects_registry::MIGRATOR")]
+async fn test_create_identity_with_wallet(pool: SqlitePool) {
     let app = setup_test_app(pool).await;
 
     // Generate wallet and derive identity
@@ -225,8 +225,8 @@ async fn test_create_identity_with_wallet(pool: PgPool) {
     assert_eq!(identity.signer_type, "WALLET");
 }
 
-#[sqlx::test]
-async fn test_create_identity_duplicate_handle(pool: PgPool) {
+#[sqlx::test(migrator = "objects_registry::MIGRATOR")]
+async fn test_create_identity_duplicate_handle(pool: SqlitePool) {
     let app = setup_test_app(pool.clone()).await;
 
     // Create first identity with handle "alice"
@@ -308,8 +308,8 @@ async fn test_create_identity_duplicate_handle(pool: PgPool) {
     assert_eq!(response2.status(), StatusCode::CONFLICT);
 }
 
-#[sqlx::test]
-async fn test_resolve_identity_by_handle(pool: PgPool) {
+#[sqlx::test(migrator = "objects_registry::MIGRATOR")]
+async fn test_resolve_identity_by_handle(pool: SqlitePool) {
     let app = setup_test_app(pool.clone()).await;
 
     // Create identity with handle "alice"
