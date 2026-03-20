@@ -6,7 +6,7 @@ use std::time::Duration;
 /// Registry service configuration.
 #[derive(Debug, Clone)]
 pub struct Config {
-    /// PostgreSQL connection URL.
+    /// SQLite connection URL.
     pub database_url: String,
 
     /// Port for REST API server.
@@ -26,7 +26,7 @@ impl Config {
     /// Load configuration from environment variables.
     ///
     /// Required:
-    /// - `DATABASE_URL`: PostgreSQL connection string
+    /// - `DATABASE_URL`: SQLite connection string (e.g. `sqlite://./registry.db`)
     ///
     /// Optional:
     /// - `REST_PORT`: REST API port (default: 8080)

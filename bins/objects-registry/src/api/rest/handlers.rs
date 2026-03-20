@@ -5,7 +5,7 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
 use objects_identity::IdentityId;
-use sqlx::PgPool;
+use sqlx::SqlitePool;
 use tracing::error;
 
 use crate::api::rest::types::*;
@@ -17,7 +17,7 @@ use crate::verification;
 /// Shared state for handlers.
 #[derive(Clone)]
 pub struct AppState {
-    pub pool: PgPool,
+    pub pool: SqlitePool,
     pub config: Config,
 }
 

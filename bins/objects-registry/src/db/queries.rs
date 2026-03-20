@@ -1,6 +1,6 @@
 //! Database queries for OBJECTS Registry.
 
-use sqlx::PgPool;
+use sqlx::SqlitePool;
 
 use crate::db::models::IdentityRow;
 use crate::error::{RegistryError, Result};
@@ -11,24 +11,23 @@ use crate::error::{RegistryError, Result};
 /// Returns `IdentityExists`, `HandleTaken`, or `SignerExists` on unique constraint violation.
 ///
 /// # Atomicity
-/// This function uses a single INSERT statement, which PostgreSQL executes atomically.
+/// This function uses a single INSERT statement, which SQLite executes atomically.
 /// A database transaction is not needed because:
 /// - The operation is a single INSERT statement
-/// - PostgreSQL enforces uniqueness constraints atomically at the database level
+/// - SQLite enforces uniqueness constraints atomically at the database level
 /// - Either the entire insert succeeds or fails completely (no partial writes)
 ///
 /// If future schema changes require coordinated writes across multiple tables
 /// (e.g., audit logs, identity history), this function should be updated to use
 /// an explicit transaction via `pool.begin()`.
-pub async fn insert_identity(pool: &PgPool, row: &IdentityRow) -> Result<IdentityRow> {
-    let result = sqlx::query_as::<_, IdentityRow>(
+pub async fn insert_identity(pool: &SqlitePool, row: &IdentityRow) -> Result<IdentityRow> {
+    let result = sqlx::query(
         r#"
         INSERT INTO identities (
             id, handle, signer_type, signer_public_key, nonce,
             wallet_address, created_at, updated_at
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-        RETURNING *
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(&row.id)
@@ -39,23 +38,28 @@ pub async fn insert_identity(pool: &PgPool, row: &IdentityRow) -> Result<Identit
     .bind(&row.wallet_address)
     .bind(row.created_at)
     .bind(row.updated_at)
-    .fetch_one(pool)
+    .execute(pool)
     .await;
 
     match result {
-        Ok(row) => Ok(row),
+        Ok(_) => {
+            // Fetch and return the inserted row
+            get_identity_by_id(pool, &row.id).await
+        }
         Err(sqlx::Error::Database(db_err)) => {
-            // Check for unique constraint violations
-            if let Some(constraint) = db_err.constraint() {
-                if constraint.contains("pkey") {
+            let msg = db_err.message().to_lowercase();
+            if msg.contains("unique") || msg.contains("constraint") {
+                if msg.contains("identities.id") || msg.contains("pkey") {
                     return Err(RegistryError::IdentityExists(row.id.clone()));
                 }
-                if constraint.contains("handle") {
+                if msg.contains("handle") {
                     return Err(RegistryError::HandleTaken(row.handle.clone()));
                 }
-                if constraint.contains("signer") {
+                if msg.contains("signer") {
                     return Err(RegistryError::SignerExists);
                 }
+                // Generic unique constraint — try to detect by index name
+                return Err(RegistryError::Database(sqlx::Error::Database(db_err)));
             }
             Err(RegistryError::Database(sqlx::Error::Database(db_err)))
         }
@@ -64,8 +68,8 @@ pub async fn insert_identity(pool: &PgPool, row: &IdentityRow) -> Result<Identit
 }
 
 /// Get an identity by ID.
-pub async fn get_identity_by_id(pool: &PgPool, id: &str) -> Result<IdentityRow> {
-    sqlx::query_as::<_, IdentityRow>("SELECT * FROM identities WHERE id = $1")
+pub async fn get_identity_by_id(pool: &SqlitePool, id: &str) -> Result<IdentityRow> {
+    sqlx::query_as::<_, IdentityRow>("SELECT * FROM identities WHERE id = ?")
         .bind(id)
         .fetch_optional(pool)
         .await?
@@ -73,8 +77,8 @@ pub async fn get_identity_by_id(pool: &PgPool, id: &str) -> Result<IdentityRow> 
 }
 
 /// Get an identity by handle (case-insensitive).
-pub async fn get_identity_by_handle(pool: &PgPool, handle: &str) -> Result<IdentityRow> {
-    sqlx::query_as::<_, IdentityRow>("SELECT * FROM identities WHERE LOWER(handle) = LOWER($1)")
+pub async fn get_identity_by_handle(pool: &SqlitePool, handle: &str) -> Result<IdentityRow> {
+    sqlx::query_as::<_, IdentityRow>("SELECT * FROM identities WHERE handle = ? COLLATE NOCASE")
         .bind(handle)
         .fetch_optional(pool)
         .await?
@@ -82,8 +86,8 @@ pub async fn get_identity_by_handle(pool: &PgPool, handle: &str) -> Result<Ident
 }
 
 /// Get an identity by signer public key.
-pub async fn get_identity_by_signer(pool: &PgPool, public_key: &[u8]) -> Result<IdentityRow> {
-    sqlx::query_as::<_, IdentityRow>("SELECT * FROM identities WHERE signer_public_key = $1")
+pub async fn get_identity_by_signer(pool: &SqlitePool, public_key: &[u8]) -> Result<IdentityRow> {
+    sqlx::query_as::<_, IdentityRow>("SELECT * FROM identities WHERE signer_public_key = ?")
         .bind(public_key)
         .fetch_optional(pool)
         .await?
@@ -91,9 +95,12 @@ pub async fn get_identity_by_signer(pool: &PgPool, public_key: &[u8]) -> Result<
 }
 
 /// Get an identity by wallet address.
-pub async fn get_identity_by_wallet(pool: &PgPool, wallet_address: &str) -> Result<IdentityRow> {
+pub async fn get_identity_by_wallet(
+    pool: &SqlitePool,
+    wallet_address: &str,
+) -> Result<IdentityRow> {
     sqlx::query_as::<_, IdentityRow>(
-        "SELECT * FROM identities WHERE LOWER(wallet_address) = LOWER($1)",
+        "SELECT * FROM identities WHERE wallet_address = ? COLLATE NOCASE",
     )
     .bind(wallet_address)
     .fetch_optional(pool)
@@ -105,36 +112,38 @@ pub async fn get_identity_by_wallet(pool: &PgPool, wallet_address: &str) -> Resu
 ///
 /// Returns `WalletLinked` if the wallet is already linked to another identity.
 pub async fn update_identity_wallet(
-    pool: &PgPool,
+    pool: &SqlitePool,
     id: &str,
     wallet_address: &str,
     updated_at: i64,
 ) -> Result<IdentityRow> {
-    let result = sqlx::query_as::<_, IdentityRow>(
+    let result = sqlx::query(
         r#"
         UPDATE identities
-        SET wallet_address = $1, updated_at = $2
-        WHERE id = $3
-        RETURNING *
+        SET wallet_address = ?, updated_at = ?
+        WHERE id = ?
         "#,
     )
     .bind(wallet_address)
     .bind(updated_at)
     .bind(id)
-    .fetch_one(pool)
+    .execute(pool)
     .await;
 
     match result {
-        Ok(row) => Ok(row),
+        Ok(r) => {
+            if r.rows_affected() == 0 {
+                return Err(RegistryError::NotFound(id.to_string()));
+            }
+            get_identity_by_id(pool, id).await
+        }
         Err(sqlx::Error::Database(db_err)) => {
-            if let Some(constraint) = db_err.constraint()
-                && constraint.contains("wallet")
-            {
+            let msg = db_err.message().to_lowercase();
+            if (msg.contains("unique") || msg.contains("constraint")) && msg.contains("wallet") {
                 return Err(RegistryError::WalletLinked(wallet_address.to_string()));
             }
             Err(RegistryError::Database(sqlx::Error::Database(db_err)))
         }
-        Err(sqlx::Error::RowNotFound) => Err(RegistryError::NotFound(id.to_string())),
         Err(e) => Err(RegistryError::Database(e)),
     }
 }
@@ -143,36 +152,38 @@ pub async fn update_identity_wallet(
 ///
 /// Returns `HandleTaken` if the new handle is already in use.
 pub async fn update_identity_handle(
-    pool: &PgPool,
+    pool: &SqlitePool,
     id: &str,
     new_handle: &str,
     updated_at: i64,
 ) -> Result<IdentityRow> {
-    let result = sqlx::query_as::<_, IdentityRow>(
+    let result = sqlx::query(
         r#"
         UPDATE identities
-        SET handle = $1, updated_at = $2
-        WHERE id = $3
-        RETURNING *
+        SET handle = ?, updated_at = ?
+        WHERE id = ?
         "#,
     )
     .bind(new_handle)
     .bind(updated_at)
     .bind(id)
-    .fetch_one(pool)
+    .execute(pool)
     .await;
 
     match result {
-        Ok(row) => Ok(row),
+        Ok(r) => {
+            if r.rows_affected() == 0 {
+                return Err(RegistryError::NotFound(id.to_string()));
+            }
+            get_identity_by_id(pool, id).await
+        }
         Err(sqlx::Error::Database(db_err)) => {
-            if let Some(constraint) = db_err.constraint()
-                && constraint.contains("handle")
-            {
+            let msg = db_err.message().to_lowercase();
+            if (msg.contains("unique") || msg.contains("constraint")) && msg.contains("handle") {
                 return Err(RegistryError::HandleTaken(new_handle.to_string()));
             }
             Err(RegistryError::Database(sqlx::Error::Database(db_err)))
         }
-        Err(sqlx::Error::RowNotFound) => Err(RegistryError::NotFound(id.to_string())),
         Err(e) => Err(RegistryError::Database(e)),
     }
 }
