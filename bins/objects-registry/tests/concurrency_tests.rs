@@ -6,11 +6,11 @@ use objects_identity::IdentityId;
 use objects_registry::db::{IdentityRow, insert_identity, signer_type_to_i16};
 use objects_registry::error::RegistryError;
 use objects_test_utils::crypto;
-use sqlx::PgPool;
+use sqlx::SqlitePool;
 use tokio::task::JoinSet;
 
-#[sqlx::test]
-async fn test_concurrent_identity_creation_with_same_handle(pool: PgPool) {
+#[sqlx::test(migrator = "objects_registry::MIGRATOR")]
+async fn test_concurrent_identity_creation_with_same_handle(pool: SqlitePool) {
     // Spawn 10 tasks trying to create identity with handle "alice" concurrently
     // Exactly 1 should succeed, 9 should fail with HandleTaken
 
@@ -62,8 +62,8 @@ async fn test_concurrent_identity_creation_with_same_handle(pool: PgPool) {
     );
 }
 
-#[sqlx::test]
-async fn test_concurrent_identity_creation_with_same_id(pool: PgPool) {
+#[sqlx::test(migrator = "objects_registry::MIGRATOR")]
+async fn test_concurrent_identity_creation_with_same_id(pool: SqlitePool) {
     // Spawn 10 tasks trying to create identity with same ID concurrently
     // Exactly 1 should succeed, 9 should fail with DuplicateId
 
@@ -101,25 +101,26 @@ async fn test_concurrent_identity_creation_with_same_id(pool: PgPool) {
     }
 
     let mut successes = 0;
-    let mut duplicate_errors = 0;
+    let mut constraint_errors = 0;
 
     while let Some(result) = tasks.join_next().await {
         match result.unwrap() {
             Ok(_) => successes += 1,
-            Err(RegistryError::IdentityExists(_)) => duplicate_errors += 1,
+            // SQLite may report either the primary key or signer unique constraint
+            // since this test uses the same keypair (same id AND signer_public_key).
+            Err(RegistryError::IdentityExists(_)) | Err(RegistryError::SignerExists) => {
+                constraint_errors += 1;
+            }
             Err(e) => panic!("unexpected error: {}", e),
         }
     }
 
     assert_eq!(successes, 1, "Expected exactly 1 success");
-    assert_eq!(
-        duplicate_errors, 9,
-        "Expected exactly 9 duplicate ID errors"
-    );
+    assert_eq!(constraint_errors, 9, "Expected exactly 9 constraint errors");
 }
 
-#[sqlx::test]
-async fn test_concurrent_wallet_linking(pool: PgPool) {
+#[sqlx::test(migrator = "objects_registry::MIGRATOR")]
+async fn test_concurrent_wallet_linking(pool: SqlitePool) {
     // Create 2 identities
     let signing_key1 = crypto::passkey_keypair().signing_key;
     let public_key1: [u8; 33] = signing_key1

@@ -1,7 +1,7 @@
 -- Create identities table for OBJECTS Protocol registry
 -- RFC-001: Identity Protocol
 
-CREATE TABLE identities (
+CREATE TABLE IF NOT EXISTS identities (
     -- Primary key: obj_ + 19-21 base58 characters
     id VARCHAR(25) PRIMARY KEY,
 
@@ -9,43 +9,31 @@ CREATE TABLE identities (
     handle VARCHAR(30) NOT NULL,
 
     -- Signer type: 1=PASSKEY, 2=WALLET
-    signer_type SMALLINT NOT NULL,
+    signer_type SMALLINT NOT NULL CHECK (signer_type IN (1, 2)),
 
     -- Compressed SEC1 public key (33 bytes)
-    signer_public_key BYTEA NOT NULL,
+    signer_public_key BLOB NOT NULL CHECK (length(signer_public_key) = 33),
 
     -- Nonce used in identity derivation (8 bytes)
-    nonce BYTEA NOT NULL,
+    nonce BLOB NOT NULL CHECK (length(nonce) = 8),
 
     -- Linked wallet address (0x + 40 hex), nullable
     wallet_address VARCHAR(42),
 
     -- Unix timestamps in seconds
     created_at BIGINT NOT NULL,
-    updated_at BIGINT NOT NULL,
-
-    -- Constraints
-    CONSTRAINT valid_id CHECK (id ~ '^obj_[1-9A-HJ-NP-Za-km-z]{19,21}$'),
-    CONSTRAINT valid_signer_type CHECK (signer_type IN (1, 2)),
-    CONSTRAINT valid_public_key_len CHECK (octet_length(signer_public_key) = 33),
-    CONSTRAINT valid_nonce_len CHECK (octet_length(nonce) = 8),
-    CONSTRAINT valid_wallet_address CHECK (
-        wallet_address IS NULL OR wallet_address ~ '^0x[a-fA-F0-9]{40}$'
-    )
+    updated_at BIGINT NOT NULL
 );
 
--- Handle uniqueness (case-insensitive)
-CREATE UNIQUE INDEX idx_identities_handle_lower ON identities (LOWER(handle));
+-- Handle uniqueness (SQLite COLLATE NOCASE for case-insensitive)
+CREATE UNIQUE INDEX IF NOT EXISTS idx_identities_handle_lower ON identities (handle COLLATE NOCASE);
 
 -- Signer uniqueness (one identity per signer public key)
-CREATE UNIQUE INDEX idx_identities_signer ON identities (signer_public_key);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_identities_signer ON identities (signer_public_key);
 
 -- Wallet uniqueness (one identity per wallet, case-insensitive, excluding nulls)
-CREATE UNIQUE INDEX idx_identities_wallet ON identities (LOWER(wallet_address))
+CREATE UNIQUE INDEX IF NOT EXISTS idx_identities_wallet ON identities (wallet_address COLLATE NOCASE)
     WHERE wallet_address IS NOT NULL;
 
 -- Index for timestamp-based queries (DESC ordering for recent-first queries)
--- This index supports potential future admin endpoints that list recent identities,
--- such as "GET /admin/identities?limit=100" for monitoring and moderation.
--- The DESC ordering optimizes queries that want newest identities first.
-CREATE INDEX idx_identities_created_at ON identities (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_identities_created_at ON identities (created_at DESC);
