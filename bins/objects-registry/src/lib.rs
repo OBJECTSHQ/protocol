@@ -7,3 +7,6 @@ pub mod config;
 pub mod db;
 pub mod error;
 pub mod verification;
+
+/// SQLite migrator for use in `#[sqlx::test]` tests.
+pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
