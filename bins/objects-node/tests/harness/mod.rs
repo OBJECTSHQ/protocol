@@ -1,7 +1,7 @@
 //! Test harness for spinning up full OBJECTS stack (registry + nodes).
 //!
 //! This module provides a reusable test harness that spins up:
-//! - TestRegistry: In-process registry with PostgreSQL test database
+//! - TestRegistry: In-process registry with SQLite test database
 //! - TestNode: One or more node instances with API servers
 //! - Helper methods for accessing URLs and addresses
 
@@ -13,7 +13,7 @@ use objects_identity::{
     IdentityId, PasskeySigningKey, generate_nonce, message::create_identity_message,
 };
 use objects_transport::NodeAddr;
-use sqlx::{ConnectOptions, PgPool};
+use sqlx::SqlitePool;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub mod node;
@@ -22,16 +22,17 @@ pub mod registry;
 pub use node::TestNode;
 pub use registry::TestRegistry;
 
-/// Require DATABASE_URL or fail fast with setup instructions.
+/// Get DATABASE_URL, defaulting to a temp SQLite file if not set.
 ///
-/// E2E tests need PostgreSQL. Instead of silently falling back to a
-/// hardcoded URL and hanging for 30 s when the DB is unreachable, we
-/// panic immediately with actionable instructions.
+/// Since the registry uses SQLite, E2E tests can run without external
+/// database setup. When DATABASE_URL is not set, a temp SQLite file
+/// unique to this process is used.
 pub fn require_database_url() -> String {
-    std::env::var("DATABASE_URL").expect(
-        "\n\nDATABASE_URL not set — E2E tests require PostgreSQL.\n\
-         Run: docker compose -f docker/compose.yml up -d && source .env\n",
-    )
+    std::env::var("DATABASE_URL").unwrap_or_else(|_| {
+        let tmp_dir = std::env::temp_dir();
+        let db_path = tmp_dir.join(format!("objects_test_{}.db", std::process::id()));
+        format!("sqlite://{}?mode=rwc", db_path.display())
+    })
 }
 
 /// Complete test harness with registry and two nodes.
@@ -58,7 +59,7 @@ impl TestHarness {
     /// Create a new test harness with registry and two nodes.
     ///
     /// This spawns:
-    /// 1. PostgreSQL test database via sqlx::test
+    /// 1. SQLite test database
     /// 2. In-process registry API server
     /// 3. Two nodes with separate temp directories and API servers
     ///
@@ -87,7 +88,7 @@ impl TestHarness {
     /// Create harness with provided database pool (for sqlx::test isolation).
     ///
     /// This is used by E2E tests that need isolated test databases.
-    /// Each test gets its own PostgreSQL schema from sqlx::test.
+    /// Each test gets its own SQLite database from sqlx::test.
     ///
     /// # Errors
     ///
@@ -95,12 +96,9 @@ impl TestHarness {
     /// - Registry server fails to start
     /// - Node initialization fails
     /// - API server binding fails
-    pub async fn with_pool(pool: PgPool) -> Result<Self> {
-        // Get database URL from pool
-        let database_url = pool.connect_options().to_url_lossy().to_string();
-
+    pub async fn with_pool(pool: SqlitePool) -> Result<Self> {
         // Spawn registry with the provided pool
-        let registry = TestRegistry::with_pool(pool, database_url).await?;
+        let registry = TestRegistry::with_pool(pool, String::new()).await?;
 
         // Spawn two nodes — they connect via iroh's N0 relay
         let node_a = TestNode::new(&registry.base_url).await?;

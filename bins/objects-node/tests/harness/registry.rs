@@ -4,25 +4,25 @@ use anyhow::Result;
 use objects_registry::api::rest::handlers::AppState;
 use objects_registry::api::rest::routes::create_router;
 use objects_registry::config::Config;
-use sqlx::{ConnectOptions, PgPool};
+use sqlx::SqlitePool;
 use std::net::SocketAddr;
 use tokio::task::JoinHandle;
 
 /// In-process registry for testing.
 ///
-/// Spawns a test PostgreSQL database and runs the registry API server
+/// Spawns a test SQLite database and runs the registry API server
 /// in-process on a random available port.
 pub struct TestRegistry {
     pub base_url: String,
     _server_handle: JoinHandle<()>,
-    _pool: PgPool,
+    _pool: SqlitePool,
 }
 
 impl TestRegistry {
     /// Create and start a new test registry.
     ///
     /// This:
-    /// 1. Creates a test PostgreSQL database (requires `DATABASE_URL` env var)
+    /// 1. Creates a test SQLite database (requires `DATABASE_URL` env var)
     /// 2. Runs migrations
     /// 3. Spawns an Axum API server on a random port
     ///
@@ -37,11 +37,7 @@ impl TestRegistry {
         let database_url = super::require_database_url();
 
         // Connect to database
-        let connect_options = database_url
-            .parse::<sqlx::postgres::PgConnectOptions>()?
-            .log_statements(log::LevelFilter::Debug);
-
-        let pool = PgPool::connect_with(connect_options).await?;
+        let pool = SqlitePool::connect(&database_url).await?;
 
         Self::with_pool(pool, database_url).await
     }
@@ -55,7 +51,7 @@ impl TestRegistry {
     /// Returns error if:
     /// - Migrations fail
     /// - Server binding fails
-    pub async fn with_pool(pool: PgPool, database_url: String) -> Result<Self> {
+    pub async fn with_pool(pool: SqlitePool, database_url: String) -> Result<Self> {
         // Run migrations to ensure schema is up to date
         sqlx::migrate!("../objects-registry/migrations")
             .run(&pool)
@@ -110,18 +106,15 @@ impl Drop for TestRegistry {
 mod tests {
     use super::*;
 
-    #[sqlx::test]
-    async fn test_registry_creation(pool: PgPool) {
-        // Note: sqlx::test creates a fresh database for us
-        let database_url = pool.connect_options().to_url_lossy().to_string();
-        let registry = TestRegistry::with_pool(pool, database_url).await;
+    #[sqlx::test(migrator = "objects_registry::MIGRATOR")]
+    async fn test_registry_creation(pool: SqlitePool) {
+        let registry = TestRegistry::with_pool(pool, String::new()).await;
         assert!(registry.is_ok(), "Failed to create test registry");
     }
 
-    #[sqlx::test]
-    async fn test_registry_health_endpoint(pool: PgPool) {
-        let database_url = pool.connect_options().to_url_lossy().to_string();
-        let registry = TestRegistry::with_pool(pool, database_url).await.unwrap();
+    #[sqlx::test(migrator = "objects_registry::MIGRATOR")]
+    async fn test_registry_health_endpoint(pool: SqlitePool) {
+        let registry = TestRegistry::with_pool(pool, String::new()).await.unwrap();
 
         // Test health endpoint
         let client = reqwest::Client::new();
