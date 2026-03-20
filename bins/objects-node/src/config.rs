@@ -260,6 +260,7 @@ impl NodeConfig {
     /// - `OBJECTS_DATA_DIR` - Overrides node.data_dir
     /// - `OBJECTS_API_PORT` - Overrides node.api_port (invalid values logged and ignored)
     /// - `OBJECTS_API_BIND` - Overrides node.api_bind
+    /// - `OBJECTS_QUIC_PORT` - Overrides node.quic_port (invalid values logged and ignored)
     /// - `OBJECTS_RELAY_URL` - Overrides network.relay_url
     /// - `OBJECTS_REGISTRY_URL` - Overrides identity.registry_url
     /// - `OBJECTS_STORAGE_PATH` - Overrides storage.base_path
@@ -299,6 +300,26 @@ impl NodeConfig {
             self.node.api_bind = api_bind;
         }
 
+        if let Ok(quic_port_str) = std::env::var("OBJECTS_QUIC_PORT") {
+            match quic_port_str.parse::<u16>() {
+                Ok(port) => {
+                    tracing::debug!(
+                        env_var = "OBJECTS_QUIC_PORT",
+                        value = port,
+                        "Applying environment override"
+                    );
+                    self.node.quic_port = Some(port);
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        env_var = "OBJECTS_QUIC_PORT",
+                        value = %quic_port_str,
+                        error = %e,
+                        "Invalid QUIC port number in environment variable, ignoring"
+                    );
+                }
+            }
+        }
         if let Ok(relay_url) = std::env::var("OBJECTS_RELAY_URL") {
             tracing::debug!(env_var = "OBJECTS_RELAY_URL", value = %relay_url, "Applying environment override");
             self.network.relay_url = relay_url;
@@ -331,6 +352,11 @@ pub struct NodeSettings {
     ///
     /// Environment variable: `OBJECTS_API_BIND`
     pub api_bind: String,
+    /// Port for the QUIC transport endpoint.
+    ///
+    /// If `None`, a random port will be chosen by the OS.
+    /// Environment variable: `OBJECTS_QUIC_PORT`
+    pub quic_port: Option<u16>,
 }
 
 impl Default for NodeSettings {
@@ -339,6 +365,7 @@ impl Default for NodeSettings {
             data_dir: "~/.objects".to_string(),
             api_port: 3420,
             api_bind: "127.0.0.1".to_string(),
+            quic_port: None,
         }
     }
 }
@@ -483,6 +510,7 @@ mod tests {
         assert_eq!(config.node.data_dir, "~/.objects");
         assert_eq!(config.node.api_port, 3420);
         assert_eq!(config.node.api_bind, "127.0.0.1");
+        assert!(config.node.quic_port.is_none());
         assert_eq!(config.network.relay_url, "https://relay.objects.foundation");
         assert_eq!(
             config.network.discovery_topic,
@@ -503,6 +531,7 @@ mod tests {
             [
                 ("OBJECTS_DATA_DIR", None::<&str>),
                 ("OBJECTS_API_PORT", None::<&str>),
+                ("OBJECTS_QUIC_PORT", None::<&str>),
                 ("OBJECTS_RELAY_URL", None::<&str>),
                 ("OBJECTS_REGISTRY_URL", None::<&str>),
             ],
@@ -562,6 +591,7 @@ mod tests {
                 ("OBJECTS_DATA_DIR", Some("/env/data")),
                 ("OBJECTS_API_PORT", Some("9000")),
                 ("OBJECTS_API_BIND", Some("0.0.0.0")),
+                ("OBJECTS_QUIC_PORT", Some("4242")),
                 ("OBJECTS_RELAY_URL", Some("https://relay.example.com")),
                 ("OBJECTS_REGISTRY_URL", Some("https://registry.example.com")),
             ],
@@ -571,6 +601,7 @@ mod tests {
                 assert_eq!(config.node.data_dir, "/env/data");
                 assert_eq!(config.node.api_port, 9000);
                 assert_eq!(config.node.api_bind, "0.0.0.0");
+                assert_eq!(config.node.quic_port, Some(4242));
                 assert_eq!(config.network.relay_url, "https://relay.example.com");
                 assert_eq!(config.identity.registry_url, "https://registry.example.com");
             },

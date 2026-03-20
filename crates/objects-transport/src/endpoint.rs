@@ -2,6 +2,8 @@
 //!
 //! Wraps Iroh's Endpoint with OBJECTS-specific configuration.
 
+use std::net::{Ipv4Addr, SocketAddrV4};
+
 use iroh::discovery::static_provider::StaticProvider;
 use iroh::endpoint::{Endpoint, RelayMode};
 
@@ -131,6 +133,7 @@ pub struct EndpointBuilder {
     secret_key: Option<SecretKey>,
     static_discovery: Option<StaticProvider>,
     relay_mode: Option<RelayMode>,
+    bind_port: Option<u16>,
 }
 
 impl EndpointBuilder {
@@ -141,6 +144,7 @@ impl EndpointBuilder {
             secret_key: None,
             static_discovery: None,
             relay_mode: None,
+            bind_port: None,
         }
     }
 
@@ -182,6 +186,15 @@ impl EndpointBuilder {
         self
     }
 
+    /// Set the QUIC bind port.
+    ///
+    /// If not set, a random port will be chosen by the OS.
+    /// Use this for stable port assignments in production deployments.
+    pub fn bind_port(mut self, port: u16) -> Self {
+        self.bind_port = Some(port);
+        self
+    }
+
     /// Bind the endpoint and start listening.
     ///
     /// # Errors
@@ -209,6 +222,11 @@ impl EndpointBuilder {
         builder = builder
             .secret_key(secret_key.clone())
             .alpns(vec![ALPN.to_vec()]);
+
+        // Set bind port if specified, otherwise OS picks a random port
+        if let Some(port) = self.bind_port {
+            builder = builder.bind_addr_v4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, port));
+        }
 
         // Add static discovery if provided (used in tests)
         if let Some(discovery) = self.static_discovery {
