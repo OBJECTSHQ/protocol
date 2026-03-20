@@ -262,6 +262,7 @@ impl NodeConfig {
     /// - `OBJECTS_API_BIND` - Overrides node.api_bind
     /// - `OBJECTS_QUIC_PORT` - Overrides node.quic_port (invalid values logged and ignored)
     /// - `OBJECTS_RELAY_URL` - Overrides network.relay_url
+    /// - `OBJECTS_BOOTSTRAP_NODES` - Overrides network.bootstrap_nodes (comma-separated node IDs)
     /// - `OBJECTS_REGISTRY_URL` - Overrides identity.registry_url
     /// - `OBJECTS_STORAGE_PATH` - Overrides storage.base_path
     ///
@@ -325,6 +326,20 @@ impl NodeConfig {
             self.network.relay_url = relay_url;
         }
 
+        if let Ok(bootstrap) = std::env::var("OBJECTS_BOOTSTRAP_NODES") {
+            let nodes: Vec<String> = bootstrap
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+            tracing::debug!(
+                env_var = "OBJECTS_BOOTSTRAP_NODES",
+                count = nodes.len(),
+                "Applying environment override"
+            );
+            self.network.bootstrap_nodes = nodes;
+        }
+
         if let Ok(registry_url) = std::env::var("OBJECTS_REGISTRY_URL") {
             tracing::debug!(env_var = "OBJECTS_REGISTRY_URL", value = %registry_url, "Applying environment override");
             self.identity.registry_url = registry_url;
@@ -381,6 +396,12 @@ pub struct NetworkSettings {
     ///
     /// Format: `/objects/{network}/0.1/discovery` where network is `devnet` or `mainnet`.
     pub discovery_topic: String,
+    /// Bootstrap node IDs for initial peer discovery.
+    ///
+    /// Each entry is a node ID string (z-base-32 encoded public key).
+    /// Environment variable: `OBJECTS_BOOTSTRAP_NODES` (comma-separated)
+    #[serde(default)]
+    pub bootstrap_nodes: Vec<String>,
 }
 
 impl Default for NetworkSettings {
@@ -388,6 +409,7 @@ impl Default for NetworkSettings {
         Self {
             relay_url: "https://relay.objects.foundation".to_string(),
             discovery_topic: "/objects/devnet/0.1/discovery".to_string(),
+            bootstrap_nodes: vec![],
         }
     }
 }
@@ -516,6 +538,7 @@ mod tests {
             config.network.discovery_topic,
             "/objects/devnet/0.1/discovery"
         );
+        assert!(config.network.bootstrap_nodes.is_empty());
         assert_eq!(
             config.identity.registry_url,
             "https://registry.objects.foundation"
@@ -533,6 +556,7 @@ mod tests {
                 ("OBJECTS_API_PORT", None::<&str>),
                 ("OBJECTS_QUIC_PORT", None::<&str>),
                 ("OBJECTS_RELAY_URL", None::<&str>),
+                ("OBJECTS_BOOTSTRAP_NODES", None::<&str>),
                 ("OBJECTS_REGISTRY_URL", None::<&str>),
             ],
             || {
@@ -593,6 +617,10 @@ mod tests {
                 ("OBJECTS_API_BIND", Some("0.0.0.0")),
                 ("OBJECTS_QUIC_PORT", Some("4242")),
                 ("OBJECTS_RELAY_URL", Some("https://relay.example.com")),
+                (
+                    "OBJECTS_BOOTSTRAP_NODES",
+                    Some("node1abc,node2def, node3ghi "),
+                ),
                 ("OBJECTS_REGISTRY_URL", Some("https://registry.example.com")),
             ],
             || {
@@ -603,6 +631,10 @@ mod tests {
                 assert_eq!(config.node.api_bind, "0.0.0.0");
                 assert_eq!(config.node.quic_port, Some(4242));
                 assert_eq!(config.network.relay_url, "https://relay.example.com");
+                assert_eq!(
+                    config.network.bootstrap_nodes,
+                    vec!["node1abc", "node2def", "node3ghi"]
+                );
                 assert_eq!(config.identity.registry_url, "https://registry.example.com");
             },
         );
