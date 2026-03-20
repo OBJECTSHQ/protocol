@@ -259,6 +259,7 @@ impl NodeConfig {
     /// Supported environment variables:
     /// - `OBJECTS_DATA_DIR` - Overrides node.data_dir
     /// - `OBJECTS_API_PORT` - Overrides node.api_port (invalid values logged and ignored)
+    /// - `OBJECTS_API_BIND` - Overrides node.api_bind
     /// - `OBJECTS_QUIC_PORT` - Overrides node.quic_port (invalid values logged and ignored)
     /// - `OBJECTS_RELAY_URL` - Overrides network.relay_url
     /// - `OBJECTS_BOOTSTRAP_NODES` - Overrides network.bootstrap_nodes (comma-separated node IDs)
@@ -295,6 +296,11 @@ impl NodeConfig {
             }
         }
 
+        if let Ok(api_bind) = std::env::var("OBJECTS_API_BIND") {
+            tracing::debug!(env_var = "OBJECTS_API_BIND", value = %api_bind, "Applying environment override");
+            self.node.api_bind = api_bind;
+        }
+
         if let Ok(quic_port_str) = std::env::var("OBJECTS_QUIC_PORT") {
             match quic_port_str.parse::<u16>() {
                 Ok(port) => {
@@ -315,7 +321,6 @@ impl NodeConfig {
                 }
             }
         }
-
         if let Ok(relay_url) = std::env::var("OBJECTS_RELAY_URL") {
             tracing::debug!(env_var = "OBJECTS_RELAY_URL", value = %relay_url, "Applying environment override");
             self.network.relay_url = relay_url;
@@ -359,6 +364,8 @@ pub struct NodeSettings {
     /// Environment variable: `OBJECTS_API_PORT`
     pub api_port: u16,
     /// IP address to bind the API server to.
+    ///
+    /// Environment variable: `OBJECTS_API_BIND`
     pub api_bind: String,
     /// Port for the QUIC transport endpoint.
     ///
@@ -607,6 +614,7 @@ mod tests {
             [
                 ("OBJECTS_DATA_DIR", Some("/env/data")),
                 ("OBJECTS_API_PORT", Some("9000")),
+                ("OBJECTS_API_BIND", Some("0.0.0.0")),
                 ("OBJECTS_QUIC_PORT", Some("4242")),
                 ("OBJECTS_RELAY_URL", Some("https://relay.example.com")),
                 (
@@ -620,6 +628,7 @@ mod tests {
 
                 assert_eq!(config.node.data_dir, "/env/data");
                 assert_eq!(config.node.api_port, 9000);
+                assert_eq!(config.node.api_bind, "0.0.0.0");
                 assert_eq!(config.node.quic_port, Some(4242));
                 assert_eq!(config.network.relay_url, "https://relay.example.com");
                 assert_eq!(
