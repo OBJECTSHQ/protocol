@@ -146,14 +146,22 @@ impl GossipDiscovery {
         );
 
         // Join the discovery topic with bootstrap nodes.
-        // Per iroh's recommended pattern, use subscribe_and_join which dials
-        // bootstrap peers and waits for at least one connection (or proceeds
-        // immediately if no bootstrap peers are configured).
+        // Use subscribe_and_join when bootstrap peers exist (waits for at least
+        // one connection), or plain subscribe when alone (returns immediately).
         // Bootstrap node addresses must be added to the endpoint before this call.
-        let topic = gossip
-            .subscribe_and_join(topic_id, bootstrap_ids)
-            .await
-            .map_err(|e| Error::Discovery(e.to_string()))?;
+        let topic = if bootstrap_ids.is_empty() {
+            // No bootstrap peers: subscribe without waiting (first node or testing)
+            gossip
+                .subscribe(topic_id, vec![])
+                .await
+                .map_err(|e| Error::Discovery(e.to_string()))?
+        } else {
+            // Bootstrap peers configured: wait for at least one connection
+            gossip
+                .subscribe_and_join(topic_id, bootstrap_ids)
+                .await
+                .map_err(|e| Error::Discovery(e.to_string()))?
+        };
 
         let mut discovery = Self {
             gossip,
