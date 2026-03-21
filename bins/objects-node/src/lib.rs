@@ -2,6 +2,7 @@
 
 pub mod api;
 pub mod config;
+pub mod defaults;
 pub mod service;
 pub mod state;
 

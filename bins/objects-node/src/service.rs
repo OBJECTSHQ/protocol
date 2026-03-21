@@ -288,6 +288,7 @@ mod tests {
         let temp = TempDir::new().unwrap();
         let mut config = NodeConfig::default();
         config.node.data_dir = temp.path().to_string_lossy().to_string();
+        config.network.bootstrap_nodes = vec![]; // No bootstrap peers in tests
         (config, temp)
     }
 
