@@ -4,6 +4,7 @@
 
 use std::net::{Ipv4Addr, SocketAddrV4};
 
+use iroh::RelayMap;
 use iroh::discovery::static_provider::StaticProvider;
 use iroh::endpoint::{Endpoint, RelayMode};
 
@@ -177,10 +178,14 @@ impl EndpointBuilder {
         self
     }
 
-    /// Set the relay mode.
+    /// Set the relay mode explicitly.
     ///
-    /// Defaults to `RelayMode::Default` if not set. Use
-    /// `RelayMode::Disabled` for tests that don't need relay.
+    /// If not set, the relay mode is derived from the `NetworkConfig`:
+    /// - If a config with `relay_url` is provided, uses `RelayMode::Custom`
+    ///   with that URL (so nodes register with OUR relay, not N0's defaults).
+    /// - If no config is set, falls back to `RelayMode::Default`.
+    ///
+    /// Use `RelayMode::Disabled` for tests that don't need relay.
     pub fn relay_mode(mut self, mode: RelayMode) -> Self {
         self.relay_mode = Some(mode);
         self
@@ -209,19 +214,28 @@ impl EndpointBuilder {
         // Build the Iroh endpoint with OBJECTS configuration.
         // When relay is disabled (tests), use empty_builder to avoid N0 preset
         // interference. When relay is enabled (production), use the full builder.
-        let relay_mode = self.relay_mode.unwrap_or(RelayMode::Default);
+        //
+        // If no explicit relay_mode is set, derive RelayMode::Custom from the
+        // config's relay_url so nodes register with OUR relay server, not N0's
+        // default production relays.
+        let relay_mode = self.relay_mode.unwrap_or_else(|| {
+            let relay_map = RelayMap::from(config.relay_url.clone());
+            RelayMode::Custom(relay_map)
+        });
         let mut builder = match relay_mode {
             RelayMode::Disabled => Endpoint::empty_builder(RelayMode::Disabled),
             _ => {
-                let b = Endpoint::builder();
-                // Clear default N0 discovery - we use our own gossip-based discovery
-                b.clear_discovery().relay_mode(relay_mode)
+                // Keep Iroh's built-in discovery (Pkarr/DNS) active.
+                // This allows peers to find each other by NodeId, which is
+                // required for gossip bootstrap (subscribe_and_join needs to
+                // resolve bootstrap NodeIds to addresses).
+                Endpoint::builder().relay_mode(relay_mode)
             }
         };
 
         builder = builder
             .secret_key(secret_key.clone())
-            .alpns(vec![ALPN.to_vec()]);
+            .alpns(vec![ALPN.to_vec(), iroh_gossip::net::GOSSIP_ALPN.to_vec()]);
 
         // Set bind port if specified, otherwise OS picks a random port
         if let Some(port) = self.bind_port {

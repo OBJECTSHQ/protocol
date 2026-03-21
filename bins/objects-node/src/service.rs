@@ -3,6 +3,7 @@
 use crate::{NodeConfig, NodeState};
 use anyhow::Result;
 use futures::StreamExt;
+use iroh::protocol::Router;
 use objects_sync::SyncEngine;
 use objects_sync::storage::StorageConfig;
 use objects_transport::discovery::{Discovery, DiscoveryConfig, GossipDiscovery};
@@ -22,6 +23,8 @@ pub struct NodeService {
     /// Gossip discovery instance (shared with API layer via Arc<Mutex>).
     pub discovery: Arc<Mutex<GossipDiscovery>>,
     sync_engine: SyncEngine,
+    /// Iroh protocol router handling incoming gossip connections.
+    router: Router,
     shutdown_tx: watch::Sender<bool>,
     shutdown_rx: watch::Receiver<bool>,
 }
@@ -39,7 +42,7 @@ impl NodeService {
 
         // Create network config from node config
         let network_config = NetworkConfig::devnet()
-            .with_relay_url(relay_url)
+            .with_relay_url(relay_url.clone())
             .with_max_connections(50);
 
         debug!(
@@ -61,6 +64,16 @@ impl NodeService {
 
         info!("Endpoint created with node_id: {}", endpoint.node_id());
 
+        // Set up gossip and protocol Router BEFORE going online.
+        // This ensures the gossip ALPN is registered before the node becomes
+        // reachable via relay, preventing "peer doesn't support any known protocol"
+        // errors from early connection attempts.
+        let gossip = iroh_gossip::net::Gossip::builder().spawn(endpoint.inner().clone());
+        let router = Router::builder(endpoint.inner().clone())
+            .accept(iroh_gossip::ALPN, gossip.clone())
+            .spawn();
+        info!("Protocol router started (accepting gossip connections)");
+
         // Wait for relay connection
         endpoint.inner().online().await;
         info!("Connected to relay: {}", config.network.relay_url);
@@ -68,10 +81,9 @@ impl NodeService {
         // Set up peer discovery
         info!("Setting up peer discovery");
 
-        // Create gossip instance for this endpoint
-        let gossip = iroh_gossip::net::Gossip::builder().spawn(endpoint.inner().clone());
-
-        // Parse bootstrap node IDs into NodeAddr
+        // Parse bootstrap node IDs and add their addresses to the endpoint.
+        // Per iroh's gossip pattern, node addresses must be added to the endpoint
+        // BEFORE calling subscribe_and_join so iroh can resolve NodeIds to addresses.
         let bootstrap_addrs: Vec<NodeAddr> = config
             .network
             .bootstrap_nodes
@@ -79,7 +91,8 @@ impl NodeService {
             .filter_map(|id_str| match id_str.parse::<NodeId>() {
                 Ok(node_id) => {
                     debug!("Adding bootstrap node: {}", node_id);
-                    Some(NodeAddr::from(node_id))
+                    let addr = NodeAddr::from(node_id).with_relay_url(relay_url.clone());
+                    Some(addr)
                 }
                 Err(e) => {
                     tracing::warn!(
@@ -130,6 +143,7 @@ impl NodeService {
             endpoint: endpoint_arc,
             discovery: Arc::new(Mutex::new(discovery)),
             sync_engine,
+            router,
             shutdown_tx,
             shutdown_rx,
         })
@@ -233,7 +247,13 @@ impl NodeService {
             info!("Discovery closed");
         }
 
-        info!("Endpoint will close when dropped");
+        // Shutdown the protocol router (closes endpoint and gossip accept loop)
+        if let Err(e) = self.router.shutdown().await {
+            tracing::error!("Error shutting down router: {}", e);
+        } else {
+            info!("Protocol router closed");
+        }
+
         info!("Node service shutdown complete");
         Ok(())
     }
@@ -285,12 +305,17 @@ mod tests {
         let node_id = service.node_id();
         assert_eq!(node_id.as_bytes().len(), 32);
 
-        // Verify relay URL in node address
-        // Note: Currently uses Iroh's default relay (RelayMode::Default)
-        // TODO: Update endpoint.rs to use RelayMode::Custom with config.relay_url
+        // Verify relay URL in node address uses our relay, not N0's default
         let addr = service.node_addr();
         let relay_urls: Vec<_> = addr.relay_urls().collect();
         assert!(!relay_urls.is_empty());
+        assert!(
+            relay_urls
+                .iter()
+                .any(|url| url.as_str().contains("relay.objects.foundation")),
+            "Expected relay.objects.foundation in relay URLs, got: {:?}",
+            relay_urls
+        );
     }
 
     #[tokio::test]
