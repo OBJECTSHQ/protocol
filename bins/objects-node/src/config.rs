@@ -409,7 +409,12 @@ impl Default for NetworkSettings {
         Self {
             relay_url: "https://relay.objects.foundation".to_string(),
             discovery_topic: "/objects/devnet/0.1/discovery".to_string(),
-            bootstrap_nodes: vec![],
+            // TODO: Replace hardcoded defaults with DNS-based bootstrap discovery
+            // (e.g. SRV/TXT records at _bootstrap._objects.objects.foundation)
+            bootstrap_nodes: vec![
+                "2e0a658732832de5d47bdce0571cb66afd54f06aac3e683abaefd702415121fc".into(), // US (us-central1)
+                "cfb922a8c9217d440cd0cd4d7842b2a8b9fd23116c45be607375c336b2a6022b".into(), // Asia (asia-northeast1)
+            ],
         }
     }
 }
@@ -538,7 +543,7 @@ mod tests {
             config.network.discovery_topic,
             "/objects/devnet/0.1/discovery"
         );
-        assert!(config.network.bootstrap_nodes.is_empty());
+        assert_eq!(config.network.bootstrap_nodes.len(), 2);
         assert_eq!(
             config.identity.registry_url,
             "https://registry.objects.foundation"

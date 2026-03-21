@@ -6,9 +6,16 @@ Instructions for AI coding agents working on the OBJECTS Protocol.
 
 OBJECTS Protocol is a decentralized identity and data sync system for design engineering. Rust monorepo using Cargo workspaces, built on Iroh for P2P networking.
 
-**Stack:** Rust 2024 edition, Iroh 0.95, Protocol Buffers (prost), Tokio async runtime, PostgreSQL (registry only)
+**Stack:** Rust 2024 edition, Iroh 0.95, Protocol Buffers (prost), Tokio async runtime, SQLite (registry only)
 
 **Network:** ALPN `/objects/0.1`, Discovery topic `/objects/devnet/0.1/discovery`, Relay `https://relay.objects.foundation`
+
+**Bootstrap Nodes (devnet):** Hardcoded defaults, overridable via `OBJECTS_BOOTSTRAP_NODES` env var (comma-separated). TODO: migrate to DNS-based discovery.
+
+| Region | Node ID |
+|--------|---------|
+| US (us-central1) | `2e0a658732832de5d47bdce0571cb66afd54f06aac3e683abaefd702415121fc` |
+| Asia (asia-northeast1) | `cfb922a8c9217d440cd0cd4d7842b2a8b9fd23116c45be607375c336b2a6022b` |
 
 ## Commands
 
