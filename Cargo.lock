@@ -4188,6 +4188,7 @@ dependencies = [
  "futures",
  "hex",
  "http-body-util",
+ "iroh",
  "iroh-gossip",
  "log",
  "objects-cli",

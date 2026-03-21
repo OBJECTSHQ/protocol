@@ -145,25 +145,15 @@ impl GossipDiscovery {
             "Joining discovery topic"
         );
 
-        // Join the discovery topic with bootstrap nodes
-        // TODO(deployment): For production, configure proper bootstrap nodes instead of
-        // using this development-friendly conditional. Bootstrap nodes should be
-        // persistent, well-known peers (e.g., dedicated discovery nodes on relay network).
-        let topic = if bootstrap_ids.is_empty() {
-            // First node in network: subscribe without waiting for peers
-            // This enables single-node development and testing
-            gossip
-                .subscribe(topic_id, vec![])
-                .await
-                .map_err(|e| Error::Discovery(e.to_string()))?
-        } else {
-            // Joining existing network: wait for bootstrap peers
-            // Ensures P2P connectivity before proceeding
-            gossip
-                .subscribe_and_join(topic_id, bootstrap_ids)
-                .await
-                .map_err(|e| Error::Discovery(e.to_string()))?
-        };
+        // Join the discovery topic with bootstrap nodes.
+        // Per iroh's recommended pattern, use subscribe_and_join which dials
+        // bootstrap peers and waits for at least one connection (or proceeds
+        // immediately if no bootstrap peers are configured).
+        // Bootstrap node addresses must be added to the endpoint before this call.
+        let topic = gossip
+            .subscribe_and_join(topic_id, bootstrap_ids)
+            .await
+            .map_err(|e| Error::Discovery(e.to_string()))?;
 
         let mut discovery = Self {
             gossip,
