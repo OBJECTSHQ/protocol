@@ -17,6 +17,7 @@ tokio.workspace = true
 futures.workspace = true
 
 # P2P
+iroh.workspace = true
 iroh-gossip.workspace = true
 
 # Serialization
