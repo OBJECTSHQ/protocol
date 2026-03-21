@@ -1,5 +1,6 @@
 //! Configuration types for the OBJECTS node daemon.
 
+use crate::defaults;
 use serde::{Deserialize, Serialize};
 use std::net::IpAddr;
 use std::path::{Path, PathBuf};
@@ -407,14 +408,12 @@ pub struct NetworkSettings {
 impl Default for NetworkSettings {
     fn default() -> Self {
         Self {
-            relay_url: "https://relay.objects.foundation".to_string(),
-            discovery_topic: "/objects/devnet/0.1/discovery".to_string(),
-            // TODO: Replace hardcoded defaults with DNS-based bootstrap discovery
-            // (e.g. SRV/TXT records at _bootstrap._objects.objects.foundation)
-            bootstrap_nodes: vec![
-                "2e0a658732832de5d47bdce0571cb66afd54f06aac3e683abaefd702415121fc".into(), // US (us-central1)
-                "cfb922a8c9217d440cd0cd4d7842b2a8b9fd23116c45be607375c336b2a6022b".into(), // Asia (asia-northeast1)
-            ],
+            relay_url: defaults::RELAY_URL.into(),
+            discovery_topic: defaults::DISCOVERY_TOPIC.into(),
+            bootstrap_nodes: defaults::BOOTSTRAP_NODES
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
         }
     }
 }
@@ -501,7 +500,7 @@ pub struct IdentitySettings {
 impl Default for IdentitySettings {
     fn default() -> Self {
         Self {
-            registry_url: "https://registry.objects.foundation".to_string(),
+            registry_url: defaults::REGISTRY_URL.into(),
         }
     }
 }
