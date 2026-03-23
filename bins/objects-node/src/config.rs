@@ -410,10 +410,7 @@ impl Default for NetworkSettings {
         Self {
             relay_url: defaults::RELAY_URL.into(),
             discovery_topic: defaults::DISCOVERY_TOPIC.into(),
-            bootstrap_nodes: defaults::BOOTSTRAP_NODES
-                .iter()
-                .map(|s| s.to_string())
-                .collect(),
+            bootstrap_nodes: Vec::new(),
         }
     }
 }
@@ -542,7 +539,7 @@ mod tests {
             config.network.discovery_topic,
             "/objects/devnet/0.1/discovery"
         );
-        assert_eq!(config.network.bootstrap_nodes.len(), 2);
+        assert!(config.network.bootstrap_nodes.is_empty());
         assert_eq!(
             config.identity.registry_url,
             "https://registry.objects.foundation"
