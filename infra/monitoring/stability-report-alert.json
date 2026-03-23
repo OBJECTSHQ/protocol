@@ -1,0 +1,24 @@
+{
+  "displayName": "48-Hour Stability Watch Complete",
+  "combiner": "OR",
+  "conditions": [
+    {
+      "displayName": "Stability report logged",
+      "conditionMatchedLog": {
+        "filter": "resource.type=\"cloud_run_revision\" AND textPayload=~\"STABILITY_REPORT_COMPLETE\""
+      }
+    }
+  ],
+  "notificationChannels": [
+    "projects/objects-devnet/notificationChannels/9071061813963373197"
+  ],
+  "documentation": {
+    "content": "The 48-hour devnet stability watch has completed.\n\nView the full report in Cloud Logging:\nhttps://console.cloud.google.com/logs?project=objects-devnet&query=STABILITY_REPORT_COMPLETE\n\nUptime dashboard:\nhttps://console.cloud.google.com/monitoring/uptime?project=objects-devnet\n\nIf all checks passed, proceed with A8 (quickstart README).",
+    "mimeType": "text/markdown"
+  },
+  "alertStrategy": {
+    "notificationRateLimit": {
+      "period": "300s"
+    }
+  }
+}

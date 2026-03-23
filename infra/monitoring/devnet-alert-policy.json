@@ -1,0 +1,67 @@
+{
+  "displayName": "Devnet Uptime Failures",
+  "combiner": "OR",
+  "conditions": [
+    {
+      "displayName": "Registry uptime check failing",
+      "conditionThreshold": {
+        "filter": "metric.type=\"monitoring.googleapis.com/uptime_check/check_passed\" AND metric.label.check_id=\"registry-health-OziyeK6kXKs\" AND resource.type=\"uptime_url\"",
+        "aggregations": [
+          {
+            "alignmentPeriod": "300s",
+            "perSeriesAligner": "ALIGN_NEXT_OLDER",
+            "crossSeriesReducer": "REDUCE_COUNT_FALSE",
+            "groupByFields": ["resource.label.*"]
+          }
+        ],
+        "comparison": "COMPARISON_GT",
+        "thresholdValue": 1,
+        "duration": "600s",
+        "trigger": { "count": 1 }
+      }
+    },
+    {
+      "displayName": "Bootstrap US uptime check failing",
+      "conditionThreshold": {
+        "filter": "metric.type=\"monitoring.googleapis.com/uptime_check/check_passed\" AND metric.label.check_id=\"bootstrap-us-health-OziyeK6kVQY\" AND resource.type=\"uptime_url\"",
+        "aggregations": [
+          {
+            "alignmentPeriod": "300s",
+            "perSeriesAligner": "ALIGN_NEXT_OLDER",
+            "crossSeriesReducer": "REDUCE_COUNT_FALSE",
+            "groupByFields": ["resource.label.*"]
+          }
+        ],
+        "comparison": "COMPARISON_GT",
+        "thresholdValue": 1,
+        "duration": "600s",
+        "trigger": { "count": 1 }
+      }
+    },
+    {
+      "displayName": "Bootstrap Asia uptime check failing",
+      "conditionThreshold": {
+        "filter": "metric.type=\"monitoring.googleapis.com/uptime_check/check_passed\" AND metric.label.check_id=\"bootstrap-asia-health-FK5hrKnUaME\" AND resource.type=\"uptime_url\"",
+        "aggregations": [
+          {
+            "alignmentPeriod": "300s",
+            "perSeriesAligner": "ALIGN_NEXT_OLDER",
+            "crossSeriesReducer": "REDUCE_COUNT_FALSE",
+            "groupByFields": ["resource.label.*"]
+          }
+        ],
+        "comparison": "COMPARISON_GT",
+        "thresholdValue": 1,
+        "duration": "600s",
+        "trigger": { "count": 1 }
+      }
+    }
+  ],
+  "notificationChannels": [
+    "projects/objects-devnet/notificationChannels/9071061813963373197"
+  ],
+  "documentation": {
+    "content": "One or more devnet uptime checks have failed 2 consecutive times (10 minutes). Check the failing service immediately.\n\n- Registry: https://registry.objects.foundation/health\n- Bootstrap US: http://104.154.168.138:3420/health\n- Bootstrap Asia: http://34.146.198.253:3420/health",
+    "mimeType": "text/markdown"
+  }
+}
