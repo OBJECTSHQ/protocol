@@ -127,6 +127,7 @@ async fn main() -> Result<()> {
         config: config.clone(),
         registry_client: RegistryClient::new(&config),
         sync_engine: service.sync_engine().clone(),
+        endpoint: service.endpoint(),
     };
 
     // Create shutdown channel for coordinating tasks
