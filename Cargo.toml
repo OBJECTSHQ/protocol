@@ -87,6 +87,9 @@ tempfile = "3"
 serial_test = "3"
 temp-env = "0.3"
 
+# DNS
+hickory-resolver = "0.25"
+
 # Config
 toml = "0.8"
 url = "2"
