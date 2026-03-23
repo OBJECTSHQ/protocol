@@ -4187,6 +4187,7 @@ dependencies = [
  "dirs 5.0.1",
  "futures",
  "hex",
+ "hickory-resolver",
  "http-body-util",
  "iroh",
  "iroh-gossip",

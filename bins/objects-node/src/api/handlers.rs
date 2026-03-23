@@ -8,7 +8,7 @@ use objects_data::Project;
 use objects_identity::{Handle, IdentityId, SignerType};
 use objects_sync::{PROJECT_KEY, ReplicaId, SyncEngine};
 use objects_transport::discovery::{Discovery, GossipDiscovery};
-use objects_transport::{NodeAddr, NodeId};
+use objects_transport::{NodeAddr, NodeId, ObjectsEndpoint, Watcher};
 use std::path::Path;
 use std::sync::{Arc, RwLock};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -45,6 +45,7 @@ pub struct NodeInfo {
 /// - NodeConfig: Immutable clone
 /// - RegistryClient: Stateless, clone-safe
 /// - SyncEngine: Clone-safe wrapper over iroh components
+/// - ObjectsEndpoint: For querying per-peer connection types
 #[derive(Clone)]
 pub struct AppState {
     /// Immutable node information.
@@ -59,6 +60,8 @@ pub struct AppState {
     pub registry_client: RegistryClient,
     /// Sync engine for blob and metadata sync.
     pub sync_engine: SyncEngine,
+    /// Transport endpoint for connection type queries.
+    pub endpoint: Arc<ObjectsEndpoint>,
 }
 
 /// Health check handler.
@@ -134,10 +137,20 @@ pub async fn list_peers(State(state): State<AppState>) -> Json<serde_json::Value
     let peer_details = state.discovery.lock().await.peer_details();
     let peers: Vec<PeerInfo> = peer_details
         .into_iter()
-        .map(|(addr, elapsed)| PeerInfo {
-            node_id: addr.id.to_string(),
-            relay_url: addr.relay_urls().next().map(|u| u.to_string()),
-            last_seen_ago: format_elapsed(elapsed),
+        .map(|(addr, elapsed)| {
+            let connection_type = state
+                .endpoint
+                .inner()
+                .conn_type(addr.id)
+                .map(|mut watcher| format!("{}", watcher.get()))
+                .unwrap_or_else(|| "none".to_string());
+
+            PeerInfo {
+                node_id: addr.id.to_string(),
+                relay_url: addr.relay_urls().next().map(|u| u.to_string()),
+                last_seen_ago: format_elapsed(elapsed),
+                connection_type,
+            }
         })
         .collect();
     Json(serde_json::json!({ "peers": peers }))

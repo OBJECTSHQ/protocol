@@ -49,6 +49,8 @@ pub struct PeerInfo {
     pub relay_url: Option<String>,
     /// Human-readable time since last seen (e.g., "2m ago").
     pub last_seen_ago: String,
+    /// Connection type: "direct(addr)", "relay(url)", "mixed(addr, url)", or "none".
+    pub connection_type: String,
 }
 
 // =============================================================================
@@ -245,6 +247,7 @@ mod tests {
             node_id: "abc123".to_string(),
             relay_url: Some("https://relay.example.com".to_string()),
             last_seen_ago: "5m ago".to_string(),
+            connection_type: "none".to_string(),
         };
 
         let json = serde_json::to_string(&peer).unwrap();
