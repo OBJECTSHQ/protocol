@@ -1,7 +1,7 @@
 //! Test harness for spinning up full OBJECTS stack (registry + nodes).
 //!
 //! This module provides a reusable test harness that spins up:
-//! - TestRegistry: In-process registry with SQLite test database
+//! - TestRegistry: Docker-based registry container
 //! - TestNode: One or more node instances with API servers
 //! - Helper methods for accessing URLs and addresses
 
@@ -13,7 +13,6 @@ use objects_identity::{
     IdentityId, PasskeySigningKey, generate_nonce, message::create_identity_message,
 };
 use objects_transport::NodeAddr;
-use sqlx::SqlitePool;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub mod node;
@@ -22,23 +21,10 @@ pub mod registry;
 pub use node::TestNode;
 pub use registry::TestRegistry;
 
-/// Get DATABASE_URL, defaulting to a temp SQLite file if not set.
-///
-/// Since the registry uses SQLite, E2E tests can run without external
-/// database setup. When DATABASE_URL is not set, a temp SQLite file
-/// unique to this process is used.
-pub fn require_database_url() -> String {
-    std::env::var("DATABASE_URL").unwrap_or_else(|_| {
-        let tmp_dir = std::env::temp_dir();
-        let db_path = tmp_dir.join(format!("objects_test_{}.db", std::process::id()));
-        format!("sqlite://{}?mode=rwc", db_path.display())
-    })
-}
-
 /// Complete test harness with registry and two nodes.
 ///
 /// Creates:
-/// - One in-process registry with test database
+/// - One Docker-based registry container
 /// - Two node instances (node_a and node_b)
 /// - Each node has a running API server
 ///
@@ -47,7 +33,7 @@ pub fn require_database_url() -> String {
 /// The harness implements proper cleanup on drop:
 /// - Shuts down API servers
 /// - Cleans up temporary directories
-/// - Closes database connections
+/// - Stops registry container
 pub struct TestHarness {
     pub registry: TestRegistry,
     pub node_a: TestNode,
@@ -59,46 +45,11 @@ impl TestHarness {
     /// Create a new test harness with registry and two nodes.
     ///
     /// This spawns:
-    /// 1. SQLite test database
-    /// 2. In-process registry API server
-    /// 3. Two nodes with separate temp directories and API servers
-    ///
-    /// # Errors
-    ///
-    /// Returns error if:
-    /// - Database connection fails
-    /// - Registry server fails to start
-    /// - Node initialization fails
-    /// - API server binding fails
+    /// 1. Docker-based registry container
+    /// 2. Two nodes with separate temp directories and API servers
     pub async fn new() -> Result<Self> {
         // Spawn registry first
         let registry = TestRegistry::new().await?;
-
-        // Spawn two nodes — they connect via iroh's N0 relay
-        let node_a = TestNode::new(&registry.base_url).await?;
-        let node_b = TestNode::new(&registry.base_url).await?;
-
-        Ok(Self {
-            registry,
-            node_a,
-            node_b,
-        })
-    }
-
-    /// Create harness with provided database pool (for sqlx::test isolation).
-    ///
-    /// This is used by E2E tests that need isolated test databases.
-    /// Each test gets its own SQLite database from sqlx::test.
-    ///
-    /// # Errors
-    ///
-    /// Returns error if:
-    /// - Registry server fails to start
-    /// - Node initialization fails
-    /// - API server binding fails
-    pub async fn with_pool(pool: SqlitePool) -> Result<Self> {
-        // Spawn registry with the provided pool
-        let registry = TestRegistry::with_pool(pool, String::new()).await?;
 
         // Spawn two nodes — they connect via iroh's N0 relay
         let node_a = TestNode::new(&registry.base_url).await?;
@@ -148,54 +99,31 @@ impl TestHarness {
 
     /// Register test identities on both nodes via registry.
     ///
-    /// Creates identities with fixed handles ("test_user_a" and "test_user_b").
-    /// Safe to use fixed handles because each test gets an isolated database via sqlx::test.
-    ///
+    /// Creates identities with unique handles (using process ID for isolation).
     /// Required before creating projects or other operations that need an identity.
-    ///
-    /// # Errors
-    ///
-    /// Returns error if:
-    /// - HTTP request to identity endpoint fails
-    /// - Registry returns non-success status
-    /// - Cryptographic operations fail
     pub async fn register_test_identities(&self) -> Result<()> {
-        // Use fixed handles - safe because each test gets isolated database
-        self.register_identity(self.node_a_url(), "test_user_a")
+        let pid = std::process::id();
+        self.register_identity(self.node_a_url(), &format!("test_user_a_{pid}"))
             .await?;
-        self.register_identity(self.node_b_url(), "test_user_b")
+        self.register_identity(self.node_b_url(), &format!("test_user_b_{pid}"))
             .await?;
         Ok(())
     }
 
     /// Register a single identity on a node with a specified handle.
-    ///
-    /// Helper that generates keys, signs the identity creation message with the provided
-    /// handle, and posts to the node's /identity endpoint.
     async fn register_identity(&self, node_url: &str, handle: &str) -> Result<()> {
-        // Generate signing key
         let signing_key = PasskeySigningKey::generate();
         let public_key_bytes = signing_key.public_key();
         let public_key: [u8; 33] = public_key_bytes
             .try_into()
             .map_err(|_| anyhow::anyhow!("Public key must be 33 bytes"))?;
 
-        // Generate nonce
         let nonce = generate_nonce();
-
-        // Derive identity ID (unique per keypair + nonce)
         let identity_id = IdentityId::derive(&public_key, &nonce);
-
-        // Get timestamp
         let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
-
-        // Create message to sign
         let message = create_identity_message(identity_id.as_str(), handle, timestamp);
-
-        // Sign the message
         let signature = signing_key.sign(message.as_bytes());
 
-        // Build signature data
         let signature_data = SignatureData {
             signature: base64::engine::general_purpose::STANDARD
                 .encode(signature.signature_bytes()),
@@ -211,7 +139,6 @@ impl TestHarness {
                 .map(|cdj| base64::engine::general_purpose::STANDARD.encode(cdj)),
         };
 
-        // Build create identity request
         let request = CreateIdentityRequest {
             handle: handle.to_string(),
             signer_type: "PASSKEY".to_string(),
@@ -221,7 +148,6 @@ impl TestHarness {
             signature: signature_data,
         };
 
-        // Post to node
         let client = reqwest::Client::new();
         let response = client
             .post(format!("{}/identity", node_url))
@@ -247,11 +173,7 @@ impl TestHarness {
     }
 
     /// Shut down the test harness.
-    ///
-    /// This is called automatically on drop, but can be called explicitly
-    /// to handle shutdown errors.
     pub async fn shutdown(self) -> Result<()> {
-        // Shutdown happens via Drop implementations
         Ok(())
     }
 }
@@ -270,23 +192,16 @@ mod tests {
     async fn test_harness_urls() {
         let harness = TestHarness::new().await.unwrap();
 
-        // Verify URLs are non-empty
         assert!(!harness.registry_url().is_empty());
         assert!(!harness.node_a_url().is_empty());
         assert!(!harness.node_b_url().is_empty());
-
-        // Verify URLs are different
         assert_ne!(harness.node_a_url(), harness.node_b_url());
     }
 
     #[tokio::test]
     async fn test_cli_clients() {
         let harness = TestHarness::new().await.unwrap();
-
         let _client_a = harness.cli_client_a();
         let _client_b = harness.cli_client_b();
-
-        // Clients are created successfully
-        // (NodeClient doesn't expose base_url for comparison)
     }
 }
