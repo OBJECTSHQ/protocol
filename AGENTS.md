@@ -10,12 +10,34 @@ OBJECTS Protocol is a decentralized identity and data sync system for design eng
 
 **Network:** ALPN `/objects/0.1`, Discovery topic `/objects/devnet/0.1/discovery`, Relay `https://relay.objects.foundation`
 
-**Bootstrap Nodes (devnet):** Resolved from DNS TXT records at `_objects-bootstrap.objects.foundation`, with hardcoded fallback. Override via `OBJECTS_BOOTSTRAP_NODES` env var (comma-separated). DNS hostname override via `OBJECTS_BOOTSTRAP_DNS`.
+**Bootstrap Nodes (devnet):** Resolved from DNS TXT records at `_objects-bootstrap.objects.foundation` (TTL 300s), with hardcoded fallback. Override via `OBJECTS_BOOTSTRAP_NODES` env var (comma-separated). DNS hostname override via `OBJECTS_BOOTSTRAP_DNS`.
 
 | Region | Node ID |
 |--------|---------|
 | US (us-central1) | `2e0a658732832de5d47bdce0571cb66afd54f06aac3e683abaefd702415121fc` |
 | Asia (asia-northeast1) | `cfb922a8c9217d440cd0cd4d7842b2a8b9fd23116c45be607375c336b2a6022b` |
+
+**Bootstrap node rotation (no code change needed):**
+```bash
+# Add a node — create TXT record via Cloudflare API
+source .env  # loads CF_API_TOKEN and CF_ZONE_ID
+curl -X POST "https://api.cloudflare.com/client/v4/zones/$CF_ZONE_ID/dns_records" \
+  -H "Authorization: Bearer $CF_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"type":"TXT","name":"_objects-bootstrap","content":"node=<hex_node_id> region=<region>","ttl":300}'
+
+# Remove a node — delete the TXT record
+curl -X DELETE "https://api.cloudflare.com/client/v4/zones/$CF_ZONE_ID/dns_records/<record_id>" \
+  -H "Authorization: Bearer $CF_API_TOKEN"
+
+# List current records
+curl -s "https://api.cloudflare.com/client/v4/zones/$CF_ZONE_ID/dns_records?type=TXT&name=_objects-bootstrap.objects.foundation" \
+  -H "Authorization: Bearer $CF_API_TOKEN" | python3 -m json.tool
+
+# Verify propagation
+dig TXT _objects-bootstrap.objects.foundation @1.1.1.1 +short
+```
+DNS TXT record format: `node=<64-char hex node ID> region=<gcp-region>`. Unknown keys are ignored (forward-compatible).
 
 ## Commands
 
