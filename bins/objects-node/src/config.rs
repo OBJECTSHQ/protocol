@@ -341,6 +341,11 @@ impl NodeConfig {
             self.network.bootstrap_nodes = nodes;
         }
 
+        if let Ok(bootstrap_dns) = std::env::var("OBJECTS_BOOTSTRAP_DNS") {
+            tracing::debug!(env_var = "OBJECTS_BOOTSTRAP_DNS", value = %bootstrap_dns, "Applying environment override");
+            self.network.bootstrap_dns = bootstrap_dns;
+        }
+
         if let Ok(registry_url) = std::env::var("OBJECTS_REGISTRY_URL") {
             tracing::debug!(env_var = "OBJECTS_REGISTRY_URL", value = %registry_url, "Applying environment override");
             self.identity.registry_url = registry_url;
@@ -397,12 +402,24 @@ pub struct NetworkSettings {
     ///
     /// Format: `/objects/{network}/0.1/discovery` where network is `devnet` or `mainnet`.
     pub discovery_topic: String,
-    /// Bootstrap node IDs for initial peer discovery.
+    /// Bootstrap node IDs for initial peer discovery (fallback when DNS fails).
     ///
     /// Each entry is a node ID string (z-base-32 encoded public key).
-    /// Environment variable: `OBJECTS_BOOTSTRAP_NODES` (comma-separated)
+    /// Environment variable: `OBJECTS_BOOTSTRAP_NODES` (comma-separated).
+    /// When set, DNS resolution is skipped entirely.
     #[serde(default)]
     pub bootstrap_nodes: Vec<String>,
+    /// DNS hostname for bootstrap node discovery.
+    ///
+    /// TXT records at this hostname contain `node=<hex_node_id>`.
+    /// Resolved on startup and periodically (every 5 min).
+    /// Environment variable: `OBJECTS_BOOTSTRAP_DNS`
+    #[serde(default = "default_bootstrap_dns")]
+    pub bootstrap_dns: String,
+}
+
+fn default_bootstrap_dns() -> String {
+    defaults::BOOTSTRAP_DNS.to_string()
 }
 
 impl Default for NetworkSettings {
@@ -414,6 +431,7 @@ impl Default for NetworkSettings {
                 .iter()
                 .map(|s| s.to_string())
                 .collect(),
+            bootstrap_dns: defaults::BOOTSTRAP_DNS.into(),
         }
     }
 }

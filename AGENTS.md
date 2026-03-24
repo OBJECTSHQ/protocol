@@ -10,7 +10,7 @@ OBJECTS Protocol is a decentralized identity and data sync system for design eng
 
 **Network:** ALPN `/objects/0.1`, Discovery topic `/objects/devnet/0.1/discovery`, Relay `https://relay.objects.foundation`
 
-**Bootstrap Nodes (devnet):** Hardcoded defaults, overridable via `OBJECTS_BOOTSTRAP_NODES` env var (comma-separated). TODO: migrate to DNS-based discovery.
+**Bootstrap Nodes (devnet):** Resolved from DNS TXT records at `_objects-bootstrap.objects.foundation`, with hardcoded fallback. Override via `OBJECTS_BOOTSTRAP_NODES` env var (comma-separated). DNS hostname override via `OBJECTS_BOOTSTRAP_DNS`.
 
 | Region | Node ID |
 |--------|---------|
