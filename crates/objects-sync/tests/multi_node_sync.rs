@@ -11,9 +11,11 @@
 
 use bytes::Bytes;
 use objects_test_utils::sync::{asset, project_from_replica, sync_engine_pair};
+use serial_test::serial;
 
 /// Verify the two engines can actually connect via iroh_blobs ALPN.
 #[tokio::test]
+#[serial]
 async fn test_engines_can_connect() {
     let (sync_a, sync_b) = sync_engine_pair().await.unwrap();
 
@@ -29,6 +31,7 @@ async fn test_engines_can_connect() {
 
 /// Node A adds blob → creates ticket → Node B downloads via ticket → verify content matches.
 #[tokio::test]
+#[serial]
 async fn test_blob_transfer_via_ticket() {
     let (sync_a, sync_b) = sync_engine_pair().await.unwrap();
 
@@ -55,6 +58,7 @@ async fn test_blob_transfer_via_ticket() {
 /// Node A creates replica, writes entries → creates ticket → Node B imports ticket →
 /// Node B syncs → verify entries appear on Node B.
 #[tokio::test]
+#[serial]
 async fn test_doc_sync_via_ticket() {
     let (sync_a, sync_b) = sync_engine_pair().await.unwrap();
 
@@ -92,6 +96,7 @@ async fn test_doc_sync_via_ticket() {
 /// Node A stores Project + Asset in replica → creates ticket → Node B imports →
 /// verify Project and Asset retrievable on Node B.
 #[tokio::test]
+#[serial]
 async fn test_project_sharing_via_ticket() {
     let (sync_a, sync_b) = sync_engine_pair().await.unwrap();
 
@@ -146,6 +151,7 @@ async fn test_project_sharing_via_ticket() {
 
 /// Transfer 1MB+ blob between nodes to verify chunked transfer works.
 #[tokio::test]
+#[serial]
 async fn test_blob_transfer_large_content() {
     let (sync_a, sync_b) = sync_engine_pair().await.unwrap();
 

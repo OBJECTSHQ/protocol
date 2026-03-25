@@ -31,10 +31,21 @@ cargo test --workspace
 cargo test -p objects-identity          # Single crate
 cargo test identity_derivation          # Single test
 
-# E2E tests (require Docker with objects-registry:latest image)
+# Test modes:
+# 1. Local (default) — no network needed, fast, CI-friendly
+cargo test --workspace
+
+# 2. Relay integration — tests real production relay path (needs internet)
+cargo test --workspace -- --ignored
+
+# 3. E2E tests (require Docker with objects-registry:latest image)
 docker compose -f docker/test-compose.yml up -d
 cargo test -p objects-node --test e2e_full_stack
 docker compose -f docker/test-compose.yml down
+
+# Multi-endpoint tests (sync, transport) use #[serial] to avoid
+# QUIC port contention. sync_engine_pair() uses RelayMode::Disabled
+# for local connections. Relay variants use relay.objects.foundation.
 
 # Lint
 cargo clippy --workspace -- -D warnings
