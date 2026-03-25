@@ -102,10 +102,10 @@ impl TestHarness {
     /// Creates identities with unique handles (using process ID for isolation).
     /// Required before creating projects or other operations that need an identity.
     pub async fn register_test_identities(&self) -> Result<()> {
-        let pid = std::process::id();
-        self.register_identity(self.node_a_url(), &format!("test_user_a_{pid}"))
+        let id: u32 = rand::random();
+        self.register_identity(self.node_a_url(), &format!("test_a_{id:08x}"))
             .await?;
-        self.register_identity(self.node_b_url(), &format!("test_user_b_{pid}"))
+        self.register_identity(self.node_b_url(), &format!("test_b_{id:08x}"))
             .await?;
         Ok(())
     }

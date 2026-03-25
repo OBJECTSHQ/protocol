@@ -1,7 +1,8 @@
 //! Docker-based test registry harness.
 //!
 //! Spawns the registry container via Docker Compose and exposes
-//! the base URL for E2E tests.
+//! the base URL for E2E tests. Detects if compose is already running
+//! (e.g., started by CI) and reuses it without tearing down on drop.
 
 use anyhow::{Context, Result};
 use std::process::Command;
@@ -21,30 +22,40 @@ pub fn docker_available() -> bool {
 
 /// Docker-based registry for testing.
 ///
-/// Starts the registry container on creation and stops it on drop.
-/// The container uses SQLite on tmpfs — no external database needed.
+/// If compose is already running (CI started it), reuses the existing
+/// container. If not, starts compose and tears it down on drop.
 pub struct TestRegistry {
     pub base_url: String,
     compose_file: String,
+    owns_lifecycle: bool,
 }
 
 impl TestRegistry {
-    /// Start a new test registry container.
+    /// Connect to or start a test registry container.
     ///
-    /// This:
-    /// 1. Starts the registry via `docker compose up -d`
-    /// 2. Discovers the mapped port
-    /// 3. Polls `/health` until the registry is ready (timeout 30s)
+    /// 1. Checks if compose is already running (CI workflow starts it)
+    /// 2. If running: discovers port and reuses it (no teardown on drop)
+    /// 3. If not: starts compose, discovers port, tears down on drop
     pub async fn new() -> Result<Self> {
         let compose_file = workspace_compose_path()?;
 
-        // Start the container
-        let status = Command::new("docker")
-            .args(["compose", "-f", &compose_file, "up", "-d", "--wait"])
-            .status()
-            .context("Failed to start docker compose")?;
+        // Check if the registry container is already running
+        let ps_output = Command::new("docker")
+            .args(["compose", "-f", &compose_file, "ps", "-q", "registry"])
+            .output()
+            .context("Failed to check docker compose status")?;
 
-        anyhow::ensure!(status.success(), "docker compose up failed");
+        let already_running = !String::from_utf8_lossy(&ps_output.stdout).trim().is_empty();
+
+        if !already_running {
+            // Start compose ourselves — we own the lifecycle
+            let status = Command::new("docker")
+                .args(["compose", "-f", &compose_file, "up", "-d", "--wait"])
+                .status()
+                .context("Failed to start docker compose")?;
+
+            anyhow::ensure!(status.success(), "docker compose up failed");
+        }
 
         // Discover the mapped port
         let output = Command::new("docker")
@@ -58,9 +69,9 @@ impl TestRegistry {
         let registry = Self {
             base_url,
             compose_file,
+            owns_lifecycle: !already_running,
         };
 
-        // Wait for health
         registry.wait_for_health(Duration::from_secs(30)).await?;
 
         Ok(registry)
@@ -89,22 +100,21 @@ impl TestRegistry {
 
 impl Drop for TestRegistry {
     fn drop(&mut self) {
-        // Stop and remove the container
-        let _ = Command::new("docker")
-            .args(["compose", "-f", &self.compose_file, "down"])
-            .status();
+        // Only tear down compose if we started it ourselves.
+        // If CI started it, leave it running for other tests.
+        if self.owns_lifecycle {
+            let _ = Command::new("docker")
+                .args(["compose", "-f", &self.compose_file, "down"])
+                .status();
+        }
     }
 }
 
 /// Resolve the compose file path relative to the workspace root.
-///
-/// Walks up from CARGO_MANIFEST_DIR to find the workspace root
-/// (where the top-level Cargo.toml with [workspace] lives).
 fn workspace_compose_path() -> Result<String> {
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".to_string());
     let mut dir = std::path::PathBuf::from(&manifest_dir);
 
-    // Walk up to find workspace root (has docker/ directory)
     loop {
         if dir.join(COMPOSE_FILE).exists() {
             return Ok(dir.join(COMPOSE_FILE).to_string_lossy().to_string());
@@ -114,6 +124,5 @@ fn workspace_compose_path() -> Result<String> {
         }
     }
 
-    // Fallback: assume we're in the workspace root
     Ok(COMPOSE_FILE.to_string())
 }
