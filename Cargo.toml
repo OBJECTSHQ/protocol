@@ -93,6 +93,7 @@ hickory-resolver = "0.25"
 # Config
 toml = "0.8"
 url = "2"
+new_mime_guess = "4"
 
 # Build
 prost-build = "0.14"
