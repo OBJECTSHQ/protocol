@@ -1,110 +1,132 @@
-//! Docker-based test registry harness.
-//!
-//! Spawns the registry container via Docker Compose and exposes
-//! the base URL for E2E tests.
+//! Test registry harness for spawning in-process registry server.
 
-use anyhow::{Context, Result};
-use std::process::Command;
-use std::time::Duration;
+use anyhow::Result;
+use objects_registry::api::rest::handlers::AppState;
+use objects_registry::api::rest::routes::create_router;
+use objects_registry::config::Config;
+use sqlx::SqlitePool;
+use std::net::SocketAddr;
+use tokio::task::JoinHandle;
 
-/// Path to the test Docker Compose file, relative to the workspace root.
-const COMPOSE_FILE: &str = "docker/test-compose.yml";
-
-/// Docker-based registry for testing.
+/// In-process registry for testing.
 ///
-/// Starts the registry container on creation and stops it on drop.
-/// The container uses SQLite on tmpfs — no external database needed.
+/// Spawns a test SQLite database and runs the registry API server
+/// in-process on a random available port.
 pub struct TestRegistry {
     pub base_url: String,
-    compose_file: String,
+    _server_handle: JoinHandle<()>,
+    _pool: SqlitePool,
 }
 
 impl TestRegistry {
-    /// Start a new test registry container.
+    /// Create and start a new test registry.
     ///
     /// This:
-    /// 1. Starts the registry via `docker compose up -d`
-    /// 2. Discovers the mapped port
-    /// 3. Polls `/health` until the registry is ready (timeout 30s)
+    /// 1. Creates a test SQLite database (requires `DATABASE_URL` env var)
+    /// 2. Runs migrations
+    /// 3. Spawns an Axum API server on a random port
+    ///
+    /// # Errors
+    ///
+    /// Returns error if:
+    /// - Database connection fails
+    /// - Migrations fail
+    /// - Server binding fails
     pub async fn new() -> Result<Self> {
-        let compose_file = workspace_compose_path()?;
+        // Fail fast if DATABASE_URL is not set (see require_database_url docs)
+        let database_url = super::require_database_url();
 
-        // Start the container
-        let status = Command::new("docker")
-            .args(["compose", "-f", &compose_file, "up", "-d", "--wait"])
-            .status()
-            .context("Failed to start docker compose")?;
+        // Connect to database
+        let pool = SqlitePool::connect(&database_url).await?;
 
-        anyhow::ensure!(status.success(), "docker compose up failed");
-
-        // Discover the mapped port
-        let output = Command::new("docker")
-            .args(["compose", "-f", &compose_file, "port", "registry", "8080"])
-            .output()
-            .context("Failed to get registry port")?;
-
-        let port_mapping = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        let base_url = format!("http://{port_mapping}");
-
-        let registry = Self {
-            base_url,
-            compose_file,
-        };
-
-        // Wait for health
-        registry.wait_for_health(Duration::from_secs(30)).await?;
-
-        Ok(registry)
+        Self::with_pool(pool, database_url).await
     }
 
-    /// Poll the registry's `/health` endpoint until it returns 200.
-    async fn wait_for_health(&self, timeout: Duration) -> Result<()> {
-        let client = reqwest::Client::new();
-        let start = std::time::Instant::now();
+    /// Create and start a test registry with provided pool.
+    ///
+    /// This variant is used when tests already have a pool from sqlx::test.
+    ///
+    /// # Errors
+    ///
+    /// Returns error if:
+    /// - Migrations fail
+    /// - Server binding fails
+    pub async fn with_pool(pool: SqlitePool, database_url: String) -> Result<Self> {
+        // Run migrations to ensure schema is up to date
+        sqlx::migrate!("../objects-registry/migrations")
+            .run(&pool)
+            .await
+            .ok(); // Ignore errors if migrations already applied
 
-        loop {
-            if start.elapsed() > timeout {
-                anyhow::bail!(
-                    "Registry did not become healthy within {}s",
-                    timeout.as_secs()
-                );
-            }
+        // Create app state
+        let config = Config {
+            database_url: database_url.clone(),
+            rest_port: 0, // Will be set by actual binding
+            grpc_port: 0,
+            timestamp_future_max: std::time::Duration::from_secs(5 * 60),
+            timestamp_past_max: std::time::Duration::from_secs(24 * 60 * 60),
+        };
+        let state = AppState {
+            pool: pool.clone(),
+            config,
+        };
 
-            match client.get(format!("{}/health", self.base_url)).send().await {
-                Ok(resp) if resp.status().is_success() => return Ok(()),
-                _ => tokio::time::sleep(Duration::from_millis(500)).await,
-            }
-        }
+        // Create router
+        let app = create_router(state);
+
+        // Bind to random port
+        let addr: SocketAddr = "127.0.0.1:0".parse()?;
+        let listener = tokio::net::TcpListener::bind(addr).await?;
+        let bound_addr = listener.local_addr()?;
+        let base_url = format!("http://{}", bound_addr);
+
+        // Spawn server
+        let server_handle = tokio::spawn(async move {
+            axum::serve(listener, app)
+                .await
+                .expect("Registry server failed");
+        });
+
+        Ok(Self {
+            base_url,
+            _server_handle: server_handle,
+            _pool: pool,
+        })
     }
 }
 
 impl Drop for TestRegistry {
     fn drop(&mut self) {
-        // Stop and remove the container
-        let _ = Command::new("docker")
-            .args(["compose", "-f", &self.compose_file, "down"])
-            .status();
+        // Server handle is aborted on drop
+        self._server_handle.abort();
     }
 }
 
-/// Resolve the compose file path relative to the workspace root.
-///
-/// Walks up from CARGO_MANIFEST_DIR to find the workspace root
-/// (where the top-level Cargo.toml with [workspace] lives).
-fn workspace_compose_path() -> Result<String> {
-    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".to_string());
-    let mut dir = std::path::PathBuf::from(&manifest_dir);
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    // Walk up to find workspace root (has docker/ directory)
-    loop {
-        if dir.join(COMPOSE_FILE).exists() {
-            return Ok(dir.join(COMPOSE_FILE).to_string_lossy().to_string());
-        }
-        if !dir.pop() {
-            break;
-        }
+    #[sqlx::test(migrator = "objects_registry::MIGRATOR")]
+    async fn test_registry_creation(pool: SqlitePool) {
+        let registry = TestRegistry::with_pool(pool, String::new()).await;
+        assert!(registry.is_ok(), "Failed to create test registry");
     }
 
-    // Fallback: assume we're in the workspace root
-    Ok(COMPOSE_FILE.to_string())
+    #[sqlx::test(migrator = "objects_registry::MIGRATOR")]
+    async fn test_registry_health_endpoint(pool: SqlitePool) {
+        let registry = TestRegistry::with_pool(pool, String::new()).await.unwrap();
+
+        // Test health endpoint
+        let client = reqwest::Client::new();
+        let response = client
+            .get(format!("{}/health", registry.base_url))
+            .send()
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), 200);
+
+        let body: serde_json::Value = response.json().await.unwrap();
+        assert_eq!(body["status"], "ok");
+    }
 }

@@ -6,6 +6,7 @@ mod harness;
 
 use harness::TestHarness;
 use reqwest::StatusCode;
+use sqlx::SqlitePool;
 
 #[tokio::test]
 async fn test_health_check_all_components() {
@@ -61,9 +62,9 @@ async fn test_node_status_includes_network_info() {
     assert!(body["relay_url"].is_string());
 }
 
-#[tokio::test]
-async fn test_projects_lifecycle() {
-    let harness = TestHarness::new().await.unwrap();
+#[sqlx::test(migrator = "objects_registry::MIGRATOR")]
+async fn test_projects_lifecycle(pool: SqlitePool) {
+    let harness = TestHarness::with_pool(pool).await.unwrap();
 
     // Register identities before creating projects
     harness.register_test_identities().await.unwrap();
@@ -131,9 +132,9 @@ async fn test_cli_client_can_communicate() {
     assert_eq!(health_b.unwrap().status, "ok");
 }
 
-#[tokio::test]
-async fn test_two_nodes_independent_operations() {
-    let harness = TestHarness::new().await.unwrap();
+#[sqlx::test(migrator = "objects_registry::MIGRATOR")]
+async fn test_two_nodes_independent_operations(pool: SqlitePool) {
+    let harness = TestHarness::with_pool(pool).await.unwrap();
 
     // Register identities before creating projects
     harness.register_test_identities().await.unwrap();
