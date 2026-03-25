@@ -6,7 +6,9 @@ Instructions for AI coding agents working on the OBJECTS Protocol.
 
 OBJECTS Protocol is a decentralized identity and data sync system for design engineering. Rust monorepo using Cargo workspaces, built on Iroh for P2P networking.
 
-**Stack:** Rust 2024 edition, Iroh 0.95, Protocol Buffers (prost), Tokio async runtime, SQLite (registry only)
+**Stack:** Rust 2024 edition, Iroh 0.95, Protocol Buffers (prost), Tokio async runtime
+
+**Registry:** The identity registry is a separate service (SQLite, deployed on Cloud Run at `registry.objects.foundation`).
 
 **Network:** ALPN `/objects/0.1`, Discovery topic `/objects/devnet/0.1/discovery`, Relay `https://relay.objects.foundation`
 
@@ -14,8 +16,8 @@ OBJECTS Protocol is a decentralized identity and data sync system for design eng
 
 | Region | Node ID |
 |--------|---------|
-| US (us-central1) | `2e0a658732832de5d47bdce0571cb66afd54f06aac3e683abaefd702415121fc` |
-| Asia (asia-northeast1) | `cfb922a8c9217d440cd0cd4d7842b2a8b9fd23116c45be607375c336b2a6022b` |
+| US (us-central1) | `e1b52711c11d3bda3e4a280cce6068b411800bec8faea4bf60a3a3a23e1e2145` |
+| Asia (asia-northeast1) | `3709827d11224e34929f21411174e0538766c4770989b0611305b0e319db5dd3` |
 
 **Bootstrap node rotation (no code change needed):**
 ```bash
@@ -58,6 +60,11 @@ cargo test --workspace
 # 2. Relay integration — tests real production relay path (needs internet)
 cargo test --workspace -- --ignored
 
+# 3. E2E tests (require Docker with objects-registry:latest image)
+docker compose -f docker/test-compose.yml up -d
+cargo test -p objects-node --test e2e_full_stack
+docker compose -f docker/test-compose.yml down
+
 # Multi-endpoint tests (sync, transport) use #[serial] to avoid
 # QUIC port contention. sync_engine_pair() uses RelayMode::Disabled
 # for local connections. Relay variants use relay.objects.foundation.
@@ -73,7 +80,6 @@ cargo build -p objects-identity --features codegen
 # Run binaries
 cargo run -p objects-cli -- identity create
 cargo run -p objects-node
-cargo run -p objects-registry
 
 # Dev tools
 cargo nextest run                       # Fast parallel test runner
@@ -165,8 +171,7 @@ crates/
 
 bins/
 ├── objects-cli/         # CLI tool for all operations
-├── objects-node/        # Node daemon (transport + sync)
-└── objects-registry/    # Centralized registry service (REST + gRPC)
+└── objects-node/        # Node daemon (transport + sync)
 
 proto/
 └── objects/             # Protobuf definitions (identity/v1, data/v1)
