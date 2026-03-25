@@ -117,6 +117,7 @@ mod tests {
             config: config.clone(),
             registry_client: RegistryClient::new(&config),
             sync_engine,
+            endpoint: endpoint_arc,
         };
 
         (app_state, temp)
