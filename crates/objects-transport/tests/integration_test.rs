@@ -7,6 +7,7 @@ use objects_test_utils::transport::assert_node_ids_match;
 use objects_transport::{
     ALPN, DEFAULT_RELAY_URL, DISCOVERY_TOPIC_DEVNET, NetworkConfig, NodeAddr, ObjectsEndpoint,
 };
+use serial_test::serial;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -109,6 +110,7 @@ async fn test_network_config_builder() {
 // ============================================================================
 
 #[tokio::test]
+#[serial]
 async fn test_two_endpoints_can_connect() {
     let (endpoint1, endpoint2) = transport::endpoint_pair().await;
 
@@ -131,6 +133,7 @@ async fn test_two_endpoints_can_connect() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_endpoint_can_accept_connection() {
     let (endpoint1, endpoint2) = transport::endpoint_pair().await;
 
@@ -159,6 +162,7 @@ async fn test_endpoint_can_accept_connection() {
 // ============================================================================
 
 #[tokio::test]
+#[serial]
 async fn test_bidirectional_stream_communication() {
     let (endpoint1, endpoint2) = transport::endpoint_pair().await;
 
@@ -217,6 +221,7 @@ async fn test_bidirectional_stream_communication() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_unidirectional_stream_communication() {
     let (endpoint1, endpoint2) = transport::endpoint_pair().await;
 
@@ -259,6 +264,7 @@ async fn test_unidirectional_stream_communication() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_multiple_streams_on_same_connection() {
     let (endpoint1, endpoint2) = transport::endpoint_pair().await;
 
@@ -334,6 +340,7 @@ async fn test_multiple_streams_on_same_connection() {
 // ============================================================================
 
 #[tokio::test]
+#[serial]
 async fn test_connection_close() {
     let (endpoint1, endpoint2) = transport::endpoint_pair().await;
 

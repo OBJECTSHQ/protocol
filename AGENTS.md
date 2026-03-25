@@ -31,12 +31,16 @@ cargo test --workspace
 cargo test -p objects-identity          # Single crate
 cargo test identity_derivation          # Single test
 
-# Database (required for objects-node e2e and objects-registry tests)
-docker compose -f docker/compose.yml up -d   # Start Postgres
-source .env                                    # Load DATABASE_URL
-cargo test --workspace                         # Now includes e2e tests
-# Without DATABASE_URL, objects-node e2e and objects-registry tests will fail.
-# All other crates test fine without it.
+# Test modes:
+# 1. Local (default) — no network needed, fast, CI-friendly
+cargo test --workspace
+
+# 2. Relay integration — tests real production relay path (needs internet)
+cargo test --workspace -- --ignored
+
+# Multi-endpoint tests (sync, transport) use #[serial] to avoid
+# QUIC port contention. sync_engine_pair() uses RelayMode::Disabled
+# for local connections. Relay variants use relay.objects.foundation.
 
 # Lint
 cargo clippy --workspace -- -D warnings
