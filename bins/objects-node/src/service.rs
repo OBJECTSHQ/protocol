@@ -105,6 +105,13 @@ impl NodeService {
             })
             .collect();
 
+        // Filter out our own node ID from bootstrap list (avoid self-dial)
+        let our_id = endpoint.node_id();
+        let bootstrap_addrs: Vec<NodeAddr> = bootstrap_addrs
+            .into_iter()
+            .filter(|addr| addr.id != our_id)
+            .collect();
+
         if !bootstrap_addrs.is_empty() {
             info!("Configured {} bootstrap node(s)", bootstrap_addrs.len());
         }

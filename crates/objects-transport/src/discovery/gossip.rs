@@ -146,21 +146,41 @@ impl GossipDiscovery {
         );
 
         // Join the discovery topic with bootstrap nodes.
-        // Use subscribe_and_join when bootstrap peers exist (waits for at least
-        // one connection), or plain subscribe when alone (returns immediately).
-        // Bootstrap node addresses must be added to the endpoint before this call.
+        // Per iroh's pattern: use subscribe_and_join with a timeout so we don't
+        // block forever when peers are unreachable (rolling deploy, first boot).
+        // Fallback to subscribe() which still passes bootstrap peers for
+        // background connection.
         let topic = if bootstrap_ids.is_empty() {
-            // No bootstrap peers: subscribe without waiting (first node or testing)
             gossip
                 .subscribe(topic_id, vec![])
                 .await
                 .map_err(|e| Error::Discovery(e.to_string()))?
         } else {
-            // Bootstrap peers configured: wait for at least one connection
-            gossip
-                .subscribe_and_join(topic_id, bootstrap_ids)
-                .await
-                .map_err(|e| Error::Discovery(e.to_string()))?
+            match tokio::time::timeout(
+                std::time::Duration::from_secs(10),
+                gossip.subscribe_and_join(topic_id, bootstrap_ids.clone()),
+            )
+            .await
+            {
+                Ok(Ok(topic)) => {
+                    info!("Joined gossip topic with bootstrap peers");
+                    topic
+                }
+                Ok(Err(e)) => {
+                    warn!("Bootstrap join failed, subscribing without waiting: {}", e);
+                    gossip
+                        .subscribe(topic_id, bootstrap_ids)
+                        .await
+                        .map_err(|e| Error::Discovery(e.to_string()))?
+                }
+                Err(_) => {
+                    warn!("Bootstrap join timed out after 10s, subscribing without waiting");
+                    gossip
+                        .subscribe(topic_id, bootstrap_ids)
+                        .await
+                        .map_err(|e| Error::Discovery(e.to_string()))?
+                }
+            }
         };
 
         let mut discovery = Self {
