@@ -121,7 +121,7 @@ impl NodeClient {
             .unwrap_or("file")
             .to_string();
 
-        let content_type = mime_guess::from_path(file_path)
+        let content_type = new_mime_guess::from_path(file_path)
             .first_or_octet_stream()
             .to_string();
 
