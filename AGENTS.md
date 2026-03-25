@@ -6,9 +6,7 @@ Instructions for AI coding agents working on the OBJECTS Protocol.
 
 OBJECTS Protocol is a decentralized identity and data sync system for design engineering. Rust monorepo using Cargo workspaces, built on Iroh for P2P networking.
 
-**Stack:** Rust 2024 edition, Iroh 0.95, Protocol Buffers (prost), Tokio async runtime
-
-**Registry:** The identity registry is a separate service (SQLite, deployed on Cloud Run at `registry.objects.foundation`).
+**Stack:** Rust 2024 edition, Iroh 0.95, Protocol Buffers (prost), Tokio async runtime, SQLite (registry only)
 
 **Network:** ALPN `/objects/0.1`, Discovery topic `/objects/devnet/0.1/discovery`, Relay `https://relay.objects.foundation`
 
@@ -31,10 +29,16 @@ cargo test --workspace
 cargo test -p objects-identity          # Single crate
 cargo test identity_derivation          # Single test
 
-# E2E tests (require Docker with objects-registry:latest image)
-docker compose -f docker/test-compose.yml up -d
-cargo test -p objects-node --test e2e_full_stack
-docker compose -f docker/test-compose.yml down
+# Test modes:
+# 1. Local (default) — no network needed, fast, CI-friendly
+cargo test --workspace
+
+# 2. Relay integration — tests real production relay path (needs internet)
+cargo test --workspace -- --ignored
+
+# Multi-endpoint tests (sync, transport) use #[serial] to avoid
+# QUIC port contention. sync_engine_pair() uses RelayMode::Disabled
+# for local connections. Relay variants use relay.objects.foundation.
 
 # Lint
 cargo clippy --workspace -- -D warnings
@@ -47,6 +51,7 @@ cargo build -p objects-identity --features codegen
 # Run binaries
 cargo run -p objects-cli -- identity create
 cargo run -p objects-node
+cargo run -p objects-registry
 
 # Dev tools
 cargo nextest run                       # Fast parallel test runner
@@ -63,17 +68,17 @@ cargo install-update -a                 # Update all cargo-installed tools
 
 We use [Jujutsu](https://github.com/martinvonz/jj) (jj) for version control with Git colocated mode.
 
-**Documentation:** The `/jujutsu` skill (global at `~/.claude/skills/jujutsu/`) loads automatically for jj-related tasks. Reference files:
-- **Workflows:** `references/workflows.md` - General jj development workflows, PR creation, conflict resolution
-- **Stacked PRs (jj-spr):** `references/jj-spr.md` - Setup, single vs stack submission, review feedback, landing PRs
-- **Command Reference:** `references/commands.md` - Detailed command documentation
-- **Revset Syntax:** `references/revsets.md` - Query language for selecting commits
+**Documentation:**
+- **Overview & Quick Start:** [.claude/skills/jujutsu/SKILL.md](.claude/skills/jujutsu/SKILL.md)
+- **Workflows & Patterns:** [.claude/skills/jujutsu/workflows.md](.claude/skills/jujutsu/workflows.md) - Complete workflows for commits, PRs, stacked PRs with jj-spr, rebasing, and conflict resolution
+- **Command Reference:** [.claude/skills/jujutsu/commands-reference.md](.claude/skills/jujutsu/commands-reference.md) - Detailed command documentation
+- **Revset Syntax:** [.claude/skills/jujutsu/revsets.md](.claude/skills/jujutsu/revsets.md) - Query language for selecting commits
 
 **Key workflows:**
-- Creating stacked PRs: See jj-spr.md § "Creating a Stack of PRs"
-- Handling review feedback: See jj-spr.md § "Handling Review Feedback"
-- Landing PRs in order: See jj-spr.md § "Landing PRs (In Order)"
-- Continuing work on unmerged stacks: Follow Meta/Google pattern in jj-spr.md
+- Creating stacked PRs: See workflows.md § "Using jj-spr for Stacked PRs"
+- Handling review feedback: See workflows.md § "Handling Review Feedback"
+- Landing PRs in order: See workflows.md § "Landing PRs (In Order)"
+- Continuing work on unmerged stacks: Follow Meta/Google pattern in workflows.md
 
 **PR description format:**
 
@@ -138,7 +143,8 @@ crates/
 
 bins/
 ├── objects-cli/         # CLI tool for all operations
-└── objects-node/        # Node daemon (transport + sync)
+├── objects-node/        # Node daemon (transport + sync)
+└── objects-registry/    # Centralized registry service (REST + gRPC)
 
 proto/
 └── objects/             # Protobuf definitions (identity/v1, data/v1)

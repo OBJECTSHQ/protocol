@@ -38,79 +38,6 @@ cargo test --workspace
 cargo run -p objects-cli -- --help
 ```
 
-## Devnet Quickstart
-
-Run through the full flow: start a node, create an identity, share a project with a peer.
-
-### Prerequisites
-
-- [Rust toolchain](https://rustup.rs/) (2024 edition)
-- `cargo build --workspace`
-
-### 1. Run a Node
-
-```bash
-# Start the node daemon (connects to devnet automatically)
-cargo run -p objects-node
-```
-
-The node connects to the OBJECTS relay and bootstrap nodes by default. Override with environment variables if needed:
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `OBJECTS_DATA_DIR` | `~/.objects` | Local data storage directory |
-| `OBJECTS_API_PORT` | `3420` | HTTP API port |
-| `OBJECTS_QUIC_PORT` | `3421` | QUIC transport port |
-| `OBJECTS_REGISTRY_URL` | `https://registry.objects.foundation` | Identity registry |
-| `OBJECTS_BOOTSTRAP_NODES` | *(hardcoded devnet nodes)* | Comma-separated node IDs |
-
-### 2. Create an Identity
-
-```bash
-cargo run -p objects-cli -- identity create --handle "my-handle"
-```
-
-### 3. Create a Project
-
-```bash
-cargo run -p objects-cli -- project create --name "My Project"
-# Returns a project ID (32 hex characters)
-```
-
-### 4. Add an Asset
-
-```bash
-cargo run -p objects-cli -- asset add --project <project-id> ./file.obj
-```
-
-### 5. Share with a Peer
-
-**On Node A** — generate a share ticket:
-
-```bash
-cargo run -p objects-cli -- ticket create --project <project-id>
-# Prints a ticket string
-```
-
-**On Node B** — redeem the ticket:
-
-```bash
-# Start a second node (different ports)
-OBJECTS_API_PORT=3422 OBJECTS_QUIC_PORT=3423 cargo run -p objects-node
-
-# Redeem the ticket
-cargo run -p objects-cli -- ticket redeem <ticket>
-```
-
-### 6. Verify Sync
-
-On Node B, confirm the project and assets arrived:
-
-```bash
-cargo run -p objects-cli -- project list
-cargo run -p objects-cli -- asset list --project <project-id>
-```
-
 ## Repository Structure
 
 ```
@@ -123,7 +50,8 @@ crates/
 
 bins/
 ├── objects-cli         # CLI tool
-└── objects-node        # Node daemon
+├── objects-node        # Node daemon
+└── objects-registry    # Identity registry service
 
 proto/
 └── objects/            # Protobuf definitions (identity/v1, data/v1)
