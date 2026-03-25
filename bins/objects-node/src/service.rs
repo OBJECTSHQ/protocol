@@ -157,6 +157,11 @@ impl NodeService {
         self.endpoint.as_ref().node_addr()
     }
 
+    /// Get the transport endpoint.
+    pub fn endpoint(&self) -> Arc<ObjectsEndpoint> {
+        self.endpoint.clone()
+    }
+
     /// Get a reference to the sync engine.
     pub fn sync_engine(&self) -> &SyncEngine {
         &self.sync_engine

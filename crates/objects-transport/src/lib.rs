@@ -44,6 +44,9 @@ pub use iroh::discovery::static_provider::StaticProvider;
 /// Re-export Iroh's relay mode for endpoint configuration.
 pub use iroh::endpoint::RelayMode;
 
+/// Re-export Iroh's Watcher trait for observing connection type changes.
+pub use iroh::Watcher;
+
 // Re-export Iroh types with RFC-002 terminology.
 // This provides protocol independence - if we switch from Iroh,
 // we only change these re-exports.

@@ -131,6 +131,7 @@ impl TestNode {
             config: config.clone(),
             registry_client,
             sync_engine: sync_engine.clone(),
+            endpoint: endpoint_arc,
         };
 
         // Create router
