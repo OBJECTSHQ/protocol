@@ -12,9 +12,11 @@
 //! Per RFC-002 §5.5, discovery mechanisms are additive - a node MAY use
 //! multiple mechanisms simultaneously.
 
+pub mod bootstrap;
 mod gossip;
 mod peer_table;
 
+pub use bootstrap::BootstrapResolver;
 pub use gossip::{DiscoveryConfig, GossipDiscovery};
 pub use peer_table::{PeerInfo, PeerTable};
 

@@ -8,16 +8,38 @@ OBJECTS Protocol is a decentralized identity and data sync system for design eng
 
 **Stack:** Rust 2024 edition, Iroh 0.95, Protocol Buffers (prost), Tokio async runtime
 
-**Registry:** The identity registry is a separate service (SQLite, deployed on Cloud Run at `registry.objects.foundation`).
+**Registry:** The identity registry is a separate service (SQLite, deployed on GCE VM `objects-registry` in `us-central1-a` at `registry.objects.foundation`).
 
 **Network:** ALPN `/objects/0.1`, Discovery topic `/objects/devnet/0.1/discovery`, Relay `https://relay.objects.foundation`
 
-**Bootstrap Nodes (devnet):** Hardcoded defaults, overridable via `OBJECTS_BOOTSTRAP_NODES` env var (comma-separated). TODO: migrate to DNS-based discovery.
+**Bootstrap Nodes (devnet):** Resolved from DNS TXT records at `_objects-bootstrap.objects.foundation` (TTL 300s), with hardcoded fallback. Override via `OBJECTS_BOOTSTRAP_NODES` env var (comma-separated). DNS hostname override via `OBJECTS_BOOTSTRAP_DNS`.
 
 | Region | Node ID |
 |--------|---------|
 | US (us-central1) | `e1b52711c11d3bda3e4a280cce6068b411800bec8faea4bf60a3a3a23e1e2145` |
 | Asia (asia-northeast1) | `3709827d11224e34929f21411174e0538766c4770989b0611305b0e319db5dd3` |
+
+**Bootstrap node rotation (no code change needed):**
+```bash
+# Add a node — create TXT record via Cloudflare API
+source .env  # loads CF_API_TOKEN and CF_ZONE_ID
+curl -X POST "https://api.cloudflare.com/client/v4/zones/$CF_ZONE_ID/dns_records" \
+  -H "Authorization: Bearer $CF_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"type":"TXT","name":"_objects-bootstrap","content":"node=<hex_node_id> region=<region>","ttl":300}'
+
+# Remove a node — delete the TXT record
+curl -X DELETE "https://api.cloudflare.com/client/v4/zones/$CF_ZONE_ID/dns_records/<record_id>" \
+  -H "Authorization: Bearer $CF_API_TOKEN"
+
+# List current records
+curl -s "https://api.cloudflare.com/client/v4/zones/$CF_ZONE_ID/dns_records?type=TXT&name=_objects-bootstrap.objects.foundation" \
+  -H "Authorization: Bearer $CF_API_TOKEN" | python3 -m json.tool
+
+# Verify propagation
+dig TXT _objects-bootstrap.objects.foundation @1.1.1.1 +short
+```
+DNS TXT record format: `node=<64-char hex node ID> region=<gcp-region>`. Unknown keys are ignored (forward-compatible).
 
 ## Commands
 

@@ -69,6 +69,7 @@ impl TestNode {
                 relay_url: "https://relay.objects.foundation".to_string(),
                 discovery_topic: "/objects/devnet/0.1/discovery".to_string(),
                 bootstrap_nodes: vec![],
+                bootstrap_dns: "_objects-bootstrap.objects.foundation".to_string(),
             },
             storage: objects_node::config::StorageSettings::default(),
             identity: objects_node::config::IdentitySettings {

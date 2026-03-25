@@ -6,7 +6,9 @@ use futures::StreamExt;
 use iroh::protocol::Router;
 use objects_sync::SyncEngine;
 use objects_sync::storage::StorageConfig;
-use objects_transport::discovery::{Discovery, DiscoveryConfig, GossipDiscovery};
+use objects_transport::discovery::{
+    BootstrapResolver, Discovery, DiscoveryConfig, GossipDiscovery,
+};
 use objects_transport::{NetworkConfig, NodeAddr, NodeId, ObjectsEndpoint, RelayUrl};
 use std::str::FromStr;
 use std::sync::Arc;
@@ -25,6 +27,8 @@ pub struct NodeService {
     sync_engine: SyncEngine,
     /// Iroh protocol router handling incoming gossip connections.
     router: Router,
+    /// Background DNS refresh task (if DNS bootstrap is active).
+    dns_refresh: Option<tokio::task::JoinHandle<()>>,
     shutdown_tx: watch::Sender<bool>,
     shutdown_rx: watch::Receiver<bool>,
 }
@@ -81,43 +85,29 @@ impl NodeService {
         // Set up peer discovery
         info!("Setting up peer discovery");
 
-        // Parse bootstrap node IDs and add their addresses to the endpoint.
-        // Per iroh's gossip pattern, node addresses must be added to the endpoint
-        // BEFORE calling subscribe_and_join so iroh can resolve NodeIds to addresses.
-        let bootstrap_addrs: Vec<NodeAddr> = config
-            .network
-            .bootstrap_nodes
-            .iter()
-            .filter_map(|id_str| match id_str.parse::<NodeId>() {
-                Ok(node_id) => {
-                    debug!("Adding bootstrap node: {}", node_id);
-                    let addr = NodeAddr::from(node_id).with_relay_url(relay_url.clone());
-                    Some(addr)
-                }
-                Err(e) => {
-                    tracing::warn!(
-                        node_id = %id_str,
-                        error = %e,
-                        "Skipping invalid bootstrap node ID"
-                    );
-                    None
-                }
-            })
-            .collect();
+        // Resolve bootstrap nodes: DNS → hardcoded fallback → env override
+        let env_override = std::env::var("OBJECTS_BOOTSTRAP_NODES").is_ok();
+        let resolver = BootstrapResolver::new(
+            &config.network.bootstrap_dns,
+            config.network.bootstrap_nodes.clone(),
+            relay_url.clone(),
+            env_override,
+        );
+        let boot_result = resolver.resolve().await;
 
         // Filter out our own node ID from bootstrap list (avoid self-dial)
         let our_id = endpoint.node_id();
-        let bootstrap_addrs: Vec<NodeAddr> = bootstrap_addrs
+        let bootstrap_addrs: Vec<NodeAddr> = boot_result
+            .addrs
             .into_iter()
             .filter(|addr| addr.id != our_id)
             .collect();
 
-        if !bootstrap_addrs.is_empty() {
-            info!("Configured {} bootstrap node(s)", bootstrap_addrs.len());
-        }
-
         // Create discovery with devnet config
         let endpoint_arc = Arc::new(endpoint);
+
+        // Spawn periodic DNS refresh (every 5 min) for observability
+        let dns_refresh = resolver.spawn_refresh(std::time::Duration::from_secs(300));
         let discovery = GossipDiscovery::new(
             gossip,
             endpoint_arc.clone(),
@@ -151,6 +141,7 @@ impl NodeService {
             discovery: Arc::new(Mutex::new(discovery)),
             sync_engine,
             router,
+            dns_refresh,
             shutdown_tx,
             shutdown_rx,
         })
@@ -251,6 +242,12 @@ impl NodeService {
     /// Internal shutdown logic shared by run() and shutdown().
     async fn shutdown_inner(&mut self) -> Result<()> {
         info!("Shutting down node service...");
+
+        // Abort DNS refresh background task
+        if let Some(handle) = self.dns_refresh.take() {
+            handle.abort();
+            debug!("DNS refresh task aborted");
+        }
 
         // Shutdown discovery
         if let Err(e) = self.discovery.lock().await.shutdown().await {
