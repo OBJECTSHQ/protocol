@@ -2,7 +2,8 @@
 resolver = "2"
 members = [
     "crates/*",
-    "bins/*",
+    "bins/objects-cli",
+    "bins/objects-node",
 ]
 
 [workspace.package]

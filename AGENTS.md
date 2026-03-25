@@ -6,7 +6,9 @@ Instructions for AI coding agents working on the OBJECTS Protocol.
 
 OBJECTS Protocol is a decentralized identity and data sync system for design engineering. Rust monorepo using Cargo workspaces, built on Iroh for P2P networking.
 
-**Stack:** Rust 2024 edition, Iroh 0.95, Protocol Buffers (prost), Tokio async runtime, SQLite (registry only)
+**Stack:** Rust 2024 edition, Iroh 0.95, Protocol Buffers (prost), Tokio async runtime
+
+**Registry:** The identity registry is a separate service (SQLite, deployed on Cloud Run at `registry.objects.foundation`).
 
 **Network:** ALPN `/objects/0.1`, Discovery topic `/objects/devnet/0.1/discovery`, Relay `https://relay.objects.foundation`
 
@@ -36,6 +38,11 @@ cargo test --workspace
 # 2. Relay integration — tests real production relay path (needs internet)
 cargo test --workspace -- --ignored
 
+# 3. E2E tests (require Docker with objects-registry:latest image)
+docker compose -f docker/test-compose.yml up -d
+cargo test -p objects-node --test e2e_full_stack
+docker compose -f docker/test-compose.yml down
+
 # Multi-endpoint tests (sync, transport) use #[serial] to avoid
 # QUIC port contention. sync_engine_pair() uses RelayMode::Disabled
 # for local connections. Relay variants use relay.objects.foundation.
@@ -51,7 +58,6 @@ cargo build -p objects-identity --features codegen
 # Run binaries
 cargo run -p objects-cli -- identity create
 cargo run -p objects-node
-cargo run -p objects-registry
 
 # Dev tools
 cargo nextest run                       # Fast parallel test runner
@@ -143,8 +149,7 @@ crates/
 
 bins/
 ├── objects-cli/         # CLI tool for all operations
-├── objects-node/        # Node daemon (transport + sync)
-└── objects-registry/    # Centralized registry service (REST + gRPC)
+└── objects-node/        # Node daemon (transport + sync)
 
 proto/
 └── objects/             # Protobuf definitions (identity/v1, data/v1)
