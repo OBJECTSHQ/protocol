@@ -218,6 +218,38 @@ pub async fn endpoint_pair() -> (ObjectsEndpoint, ObjectsEndpoint) {
     (ep1, ep2)
 }
 
+/// Create a pair of test endpoints connected via the OBJECTS relay.
+///
+/// Uses `relay.objects.foundation` + `StaticProvider` for address exchange.
+/// Slower than `endpoint_pair()` and requires internet.
+/// Use in `#[ignore]` integration tests.
+///
+/// # Panics
+/// Panics if endpoint creation fails.
+pub async fn endpoint_pair_with_relay() -> (ObjectsEndpoint, ObjectsEndpoint) {
+    let discovery = StaticProvider::new();
+    let relay_config = network_config_with_relay("https://relay.objects.foundation");
+
+    let ep1 = ObjectsEndpoint::builder()
+        .config(relay_config.clone())
+        .static_discovery(discovery.clone())
+        .bind()
+        .await
+        .expect("failed to create relay endpoint 1");
+
+    let ep2 = ObjectsEndpoint::builder()
+        .config(relay_config)
+        .static_discovery(discovery.clone())
+        .bind()
+        .await
+        .expect("failed to create relay endpoint 2");
+
+    discovery.add_endpoint_info(ep1.node_addr());
+    discovery.add_endpoint_info(ep2.node_addr());
+
+    (ep1, ep2)
+}
+
 // ============================================================================
 // Cryptographic Primitives
 // ============================================================================
