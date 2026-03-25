@@ -42,6 +42,7 @@ tracing.workspace = true
 
 [dev-dependencies]
 objects-test-utils.workspace = true
+serial_test.workspace = true
 tokio-test.workspace = true
 rstest.workspace = true
 proptest.workspace = true
