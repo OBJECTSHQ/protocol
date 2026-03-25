@@ -2,7 +2,8 @@
 resolver = "2"
 members = [
     "crates/*",
-    "bins/*",
+    "bins/objects-cli",
+    "bins/objects-node",
 ]
 
 [workspace.package]
@@ -86,9 +87,6 @@ serde_test = "1"
 tempfile = "3"
 serial_test = "3"
 temp-env = "0.3"
-
-# DNS
-hickory-resolver = "0.25"
 
 # Config
 toml = "0.8"

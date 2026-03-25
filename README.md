@@ -123,8 +123,7 @@ crates/
 
 bins/
 ├── objects-cli         # CLI tool
-├── objects-node        # Node daemon
-└── objects-registry    # Identity registry service
+└── objects-node        # Node daemon
 
 proto/
 └── objects/            # Protobuf definitions (identity/v1, data/v1)
