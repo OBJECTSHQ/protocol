@@ -16,8 +16,8 @@ OBJECTS Protocol is a decentralized identity and data sync system for design eng
 
 | Region | Node ID |
 |--------|---------|
-| US (us-central1) | `2e0a658732832de5d47bdce0571cb66afd54f06aac3e683abaefd702415121fc` |
-| Asia (asia-northeast1) | `cfb922a8c9217d440cd0cd4d7842b2a8b9fd23116c45be607375c336b2a6022b` |
+| US (us-central1) | `e1b52711c11d3bda3e4a280cce6068b411800bec8faea4bf60a3a3a23e1e2145` |
+| Asia (asia-northeast1) | `3709827d11224e34929f21411174e0538766c4770989b0611305b0e319db5dd3` |
 
 ## Commands
 

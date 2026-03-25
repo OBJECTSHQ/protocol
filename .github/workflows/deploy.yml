@@ -106,6 +106,17 @@ jobs:
             --command="
               gcloud auth configure-docker us-central1-docker.pkg.dev --quiet 2>/dev/null
               docker pull ${AR_REGISTRY}/objects-node:latest
+
+              # Safety: verify node.key exists in volume before replacing container
+              if docker volume inspect objects-data > /dev/null 2>&1; then
+                NODE_KEY=\$(docker run --rm -v objects-data:/data alpine cat /data/node.key 2>/dev/null | head -c 20)
+                if [ -n \"\$NODE_KEY\" ]; then
+                  echo 'node.key preserved in volume'
+                else
+                  echo 'WARNING: node.key not found in volume — new key will be generated'
+                fi
+              fi
+
               docker stop objects-node 2>/dev/null || true
               docker rm objects-node 2>/dev/null || true
               docker run -d \
