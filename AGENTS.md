@@ -117,7 +117,7 @@ Pull Request: https://github.com/OBJECTSHQ/protocol/pull/<pr-number>
 
 **Updating PR descriptions:**
 - Local: `jj describe -r <change-id> -m "description"`
-- Sync to GitHub: `jj spr diff -r <change-id> --update-message` (run outside sandbox)
+- Sync to GitHub: `jj spr diff -r <change-id> --update-message`
 
 ## Code Quality & Formatting
 
