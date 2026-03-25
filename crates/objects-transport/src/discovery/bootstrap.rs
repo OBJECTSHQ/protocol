@@ -77,6 +77,16 @@ impl BootstrapResolver {
             };
         }
 
+        // Empty fallback list signals "no bootstrap peers wanted" (e.g., unit tests,
+        // first node in a new network). Skip DNS to respect caller intent.
+        if self.fallback_nodes.is_empty() {
+            info!("No bootstrap nodes configured, skipping DNS resolution");
+            return BootstrapResult {
+                addrs: vec![],
+                source: BootstrapSource::Fallback,
+            };
+        }
+
         match self.resolve_dns().await {
             Ok(node_ids) if !node_ids.is_empty() => {
                 let addrs = self.node_ids_to_addrs(&node_ids);
