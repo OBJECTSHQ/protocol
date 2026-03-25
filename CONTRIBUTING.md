@@ -37,19 +37,42 @@ Before creating an issue, please search existing issues to avoid duplicates. Whe
    cargo build --workspace
    ```
 
-3. **Start database** (needed for e2e tests and registry)
+3. **Run tests**
    ```bash
-   docker compose -f docker/compose.yml up -d
-   ```
-
-4. **Run tests**
-   ```bash
-   source .env
    cargo test --workspace
    ```
 
-   > **Note:** Most crates (`objects-identity`, `objects-transport`, `objects-sync`, etc.)
-   > don't need the database. Only `objects-node` e2e tests and `objects-registry` tests require it.
+4. **E2E tests** (require Docker)
+   ```bash
+   docker compose -f docker/test-compose.yml up -d
+   cargo test -p objects-node --test e2e_full_stack
+   docker compose -f docker/test-compose.yml down
+   ```
+
+   > **Note:** Unit and integration tests run without Docker. Only `objects-node` E2E tests require the Docker-based test registry.
+
+## CLI Reference
+
+The `objects-cli` tool communicates with a running node via its HTTP API.
+
+```bash
+cargo run -p objects-cli -- <command>
+```
+
+| Command | Description |
+|---------|-------------|
+| `init` | Initialize a new node |
+| `status` | Show node status |
+| `identity create --handle <name>` | Create a new identity |
+| `identity show` | Show current identity |
+| `project create --name <name> [-d <desc>]` | Create a project |
+| `project list` | List all projects |
+| `project get <id>` | Get project by ID (32 hex chars) |
+| `asset add --project <id> <file>` | Add a file as an asset |
+| `asset list --project <id>` | List assets in a project |
+| `ticket create --project <id>` | Generate a share ticket |
+| `ticket redeem <ticket>` | Join a project via ticket |
+| `sync` | Sync with peers |
 
 ## Making Changes
 
