@@ -125,11 +125,8 @@ jobs:
                 -p 3420:3420 \
                 -p 7824:7824/udp \
                 -v objects-data:/data \
-                -e OBJECTS_API_BIND \
-                -e OBJECTS_QUIC_PORT \
-                -e OBJECTS_RELAY_URL \
-                -e OBJECTS_REGISTRY_URL \
-                -e RUST_LOG \
+                -e OBJECTS_QUIC_PORT=7824 \
+                -e RUST_LOG=info,objects_node=debug \
                 ${AR_REGISTRY}/objects-node:latest
             "
 
