@@ -1,7 +1,4 @@
 //! Default network infrastructure for the OBJECTS devnet.
-//!
-//! TODO: Migrate to DNS-based bootstrap discovery (e.g. TXT records at
-//! `bootstrap.objects.foundation`) so nodes can be rotated without code changes.
 
 /// Relay server URL for NAT traversal.
 pub const RELAY_URL: &str = "https://relay.objects.foundation";
@@ -12,9 +9,15 @@ pub const REGISTRY_URL: &str = "https://registry.objects.foundation";
 /// Gossip discovery topic.
 pub const DISCOVERY_TOPIC: &str = "/objects/devnet/0.1/discovery";
 
-/// Bootstrap node IDs for initial peer discovery.
+/// DNS hostname for bootstrap node discovery.
 ///
-/// These are the well-known devnet bootstrap peers. Override via
+/// TXT records at this hostname contain `node=<hex_node_id> region=<region>`.
+/// Nodes resolve this on startup and periodically to discover bootstrap peers.
+pub const BOOTSTRAP_DNS: &str = "_objects-bootstrap.objects.foundation";
+
+/// Hardcoded bootstrap node IDs (fallback when DNS resolution fails).
+///
+/// These are well-known devnet bootstrap peers. Override via
 /// `OBJECTS_BOOTSTRAP_NODES` env var (comma-separated node IDs).
 pub const BOOTSTRAP_NODES: &[&str] = &[
     // US (us-central1)
