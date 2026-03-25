@@ -26,7 +26,7 @@ clap.workspace = true
 
 # HTTP
 reqwest.workspace = true
-mime_guess = "2"
+new_mime_guess.workspace = true
 
 # Config
 toml.workspace = true
