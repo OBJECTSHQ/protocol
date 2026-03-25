@@ -6,8 +6,18 @@ mod harness;
 
 use harness::TestHarness;
 
+macro_rules! require_docker {
+    () => {
+        if !harness::registry::docker_available() {
+            eprintln!("Skipping: Docker registry image not available");
+            return;
+        }
+    };
+}
+
 #[tokio::test]
 async fn test_blob_addition_and_retrieval() {
+    require_docker!();
     let harness = TestHarness::new().await.unwrap();
 
     // Node A: Add a blob
@@ -39,6 +49,7 @@ async fn test_blob_addition_and_retrieval() {
 
 #[tokio::test]
 async fn test_blob_ticket_creation() {
+    require_docker!();
     let harness = TestHarness::new().await.unwrap();
 
     // Node A: Add a blob
@@ -66,6 +77,7 @@ async fn test_blob_ticket_creation() {
 
 #[tokio::test]
 async fn test_doc_replica_creation() {
+    require_docker!();
     let harness = TestHarness::new().await.unwrap();
 
     // Create a docs replica
@@ -94,6 +106,7 @@ async fn test_doc_replica_creation() {
 
 #[tokio::test]
 async fn test_doc_set_and_get_bytes() {
+    require_docker!();
     let harness = TestHarness::new().await.unwrap();
 
     // Create replica
@@ -158,6 +171,7 @@ async fn test_doc_set_and_get_bytes() {
 
 #[tokio::test]
 async fn test_doc_ticket_creation() {
+    require_docker!();
     let harness = TestHarness::new().await.unwrap();
 
     // Create replica
@@ -184,6 +198,7 @@ async fn test_doc_ticket_creation() {
 
 #[tokio::test]
 async fn test_multiple_doc_replicas() {
+    require_docker!();
     let harness = TestHarness::new().await.unwrap();
 
     // Create multiple replicas
@@ -220,6 +235,7 @@ async fn test_multiple_doc_replicas() {
 
 #[tokio::test]
 async fn test_node_sync_engines_independent() {
+    require_docker!();
     let harness = TestHarness::new().await.unwrap();
 
     // Node A adds a blob
