@@ -57,18 +57,6 @@ jobs:
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
 
-      - name: Build and push objects-registry image
-        env:
-          IMAGE_TAG: ${{ steps.tag.outputs.tag }}
-        run: |
-          docker build \
-            -f docker/registry.Dockerfile \
-            -t "${REGISTRY}/objects-registry:${IMAGE_TAG}" \
-            -t "${REGISTRY}/objects-registry:latest" \
-            .
-          docker push "${REGISTRY}/objects-registry:${IMAGE_TAG}"
-          docker push "${REGISTRY}/objects-registry:latest"
-
       - name: Build and push objects-node image
         env:
           IMAGE_TAG: ${{ steps.tag.outputs.tag }}
@@ -80,61 +68,6 @@ jobs:
             .
           docker push "${REGISTRY}/objects-node:${IMAGE_TAG}"
           docker push "${REGISTRY}/objects-node:latest"
-
-  deploy-registry:
-    name: Deploy Registry
-    needs: build-and-push
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - name: Authenticate to GCP
-        uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
-
-      - name: Set up gcloud CLI
-        uses: google-github-actions/setup-gcloud@v2
-
-      - name: Deploy registry
-        env:
-          AR_REGISTRY: ${{ env.REGISTRY }}
-        run: |
-          gcloud compute ssh objects-registry \
-            --zone=us-central1-a \
-            --project="${PROJECT_ID}" \
-            --command="
-              docker pull ${AR_REGISTRY}/objects-registry:latest
-              docker stop objects-registry 2>/dev/null || true
-              docker rm objects-registry 2>/dev/null || true
-              docker run -d \
-                --name objects-registry \
-                --restart unless-stopped \
-                -p 8080:8080 \
-                -e DATABASE_URL \
-                -e RUST_LOG \
-                ${AR_REGISTRY}/objects-registry:latest
-            "
-
-      - name: Health check
-        run: |
-          gcloud compute ssh objects-registry \
-            --zone=us-central1-a \
-            --project="${PROJECT_ID}" \
-            --command='
-              for i in $(seq 1 30); do
-                if curl -sf http://localhost:8080/health > /dev/null 2>&1; then
-                  echo "Registry healthy"
-                  exit 0
-                fi
-                echo "Waiting for registry... ($i/30)"
-                sleep 2
-              done
-              echo "Registry health check failed"
-              exit 1
-            '
 
   deploy-nodes:
     name: Deploy ${{ matrix.name }}
