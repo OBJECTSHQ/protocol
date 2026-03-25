@@ -77,6 +77,7 @@ jobs:
       contents: read
       id-token: write
     strategy:
+      max-parallel: 1
       matrix:
         include:
           - name: objects-bootstrap-us
@@ -103,6 +104,7 @@ jobs:
             --zone="${VM_ZONE}" \
             --project="${PROJECT_ID}" \
             --command="
+              gcloud auth configure-docker us-central1-docker.pkg.dev --quiet 2>/dev/null
               docker pull ${AR_REGISTRY}/objects-node:latest
               docker stop objects-node 2>/dev/null || true
               docker rm objects-node 2>/dev/null || true
