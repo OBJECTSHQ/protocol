@@ -1,6 +1,0 @@
-target/
-.git/
-.env
-*.db
-.jj/
-docker/
