@@ -9,10 +9,13 @@ use std::time::Duration;
 use hickory_resolver::Resolver;
 use hickory_resolver::config::{ResolverConfig, ResolverOpts};
 use hickory_resolver::lookup::TxtLookup;
+use hickory_resolver::name_server::TokioConnectionProvider;
 use tokio::task::JoinHandle;
 use tracing::{debug, info, warn};
 
 use crate::{NodeAddr, NodeId, RelayUrl};
+
+type DnsResolver = Resolver<TokioConnectionProvider>;
 
 /// Source of bootstrap node resolution.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -40,6 +43,7 @@ pub struct BootstrapResolver {
     fallback_nodes: Vec<String>,
     relay_url: RelayUrl,
     env_override: bool,
+    resolver: DnsResolver,
 }
 
 impl BootstrapResolver {
@@ -53,11 +57,19 @@ impl BootstrapResolver {
         relay_url: RelayUrl,
         env_override: bool,
     ) -> Self {
+        let resolver = Resolver::builder_with_config(
+            ResolverConfig::cloudflare(),
+            TokioConnectionProvider::default(),
+        )
+        .with_options(ResolverOpts::default())
+        .build();
+
         Self {
             dns_hostname: dns_hostname.to_string(),
             fallback_nodes,
             relay_url,
             env_override,
+            resolver,
         }
     }
 
@@ -129,14 +141,7 @@ impl BootstrapResolver {
 
     /// Resolve TXT records from DNS and extract node IDs.
     async fn resolve_dns(&self) -> anyhow::Result<Vec<String>> {
-        let resolver = Resolver::builder_with_config(
-            ResolverConfig::cloudflare(),
-            hickory_resolver::name_server::TokioConnectionProvider::default(),
-        )
-        .with_options(ResolverOpts::default())
-        .build();
-
-        let response: TxtLookup = resolver.txt_lookup(&self.dns_hostname).await?;
+        let response: TxtLookup = self.resolver.txt_lookup(&self.dns_hostname).await?;
 
         let mut node_ids = Vec::new();
         for record in response.iter() {

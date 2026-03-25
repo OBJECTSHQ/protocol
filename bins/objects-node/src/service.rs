@@ -27,6 +27,8 @@ pub struct NodeService {
     sync_engine: SyncEngine,
     /// Iroh protocol router handling incoming gossip connections.
     router: Router,
+    /// Background DNS refresh task (if DNS bootstrap is active).
+    dns_refresh: Option<tokio::task::JoinHandle<()>>,
     shutdown_tx: watch::Sender<bool>,
     shutdown_rx: watch::Receiver<bool>,
 }
@@ -105,7 +107,7 @@ impl NodeService {
         let endpoint_arc = Arc::new(endpoint);
 
         // Spawn periodic DNS refresh (every 5 min) for observability
-        let _dns_refresh = resolver.spawn_refresh(std::time::Duration::from_secs(300));
+        let dns_refresh = resolver.spawn_refresh(std::time::Duration::from_secs(300));
         let discovery = GossipDiscovery::new(
             gossip,
             endpoint_arc.clone(),
@@ -139,6 +141,7 @@ impl NodeService {
             discovery: Arc::new(Mutex::new(discovery)),
             sync_engine,
             router,
+            dns_refresh,
             shutdown_tx,
             shutdown_rx,
         })
@@ -234,6 +237,12 @@ impl NodeService {
     /// Internal shutdown logic shared by run() and shutdown().
     async fn shutdown_inner(&mut self) -> Result<()> {
         info!("Shutting down node service...");
+
+        // Abort DNS refresh background task
+        if let Some(handle) = self.dns_refresh.take() {
+            handle.abort();
+            debug!("DNS refresh task aborted");
+        }
 
         // Shutdown discovery
         if let Err(e) = self.discovery.lock().await.shutdown().await {
