@@ -131,14 +131,16 @@ jobs:
             --zone="${VM_ZONE}" \
             --project="${PROJECT_ID}" \
             --command='
-              for i in $(seq 1 30); do
-                if curl -sf http://localhost:3420/health > /dev/null 2>&1; then
+              for i in $(seq 1 24); do
+                STATUS=$(docker inspect --format="{{.State.Health.Status}}" objects-node 2>/dev/null || echo "missing")
+                if [ "$STATUS" = "healthy" ]; then
                   echo "Node healthy"
                   exit 0
                 fi
-                echo "Waiting for node... ($i/30)"
-                sleep 2
+                echo "Waiting for node... status=$STATUS ($i/24)"
+                sleep 5
               done
               echo "Node health check failed"
+              docker logs --tail 20 objects-node 2>&1 || true
               exit 1
             '

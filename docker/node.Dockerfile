@@ -19,7 +19,7 @@ RUN cargo build --release -p objects-node \
 FROM debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates libssl3 \
+    ca-certificates libssl3 curl \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /src/target/release/objects-node /usr/local/bin/objects-node
@@ -31,5 +31,8 @@ VOLUME /data
 
 # 3420 = HTTP API, 7824/udp = QUIC transport
 EXPOSE 3420 7824/udp
+
+HEALTHCHECK --interval=5s --timeout=3s --start-period=90s --retries=3 \
+  CMD curl -sf http://localhost:3420/health || exit 1
 
 ENTRYPOINT ["objects-node"]
