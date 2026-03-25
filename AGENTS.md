@@ -8,7 +8,7 @@ OBJECTS Protocol is a decentralized identity and data sync system for design eng
 
 **Stack:** Rust 2024 edition, Iroh 0.95, Protocol Buffers (prost), Tokio async runtime
 
-**Registry:** The identity registry is a separate service (SQLite, deployed on Cloud Run at `registry.objects.foundation`).
+**Registry:** The identity registry is a separate service (SQLite, deployed on GCE VM `objects-registry` in `us-central1-a` at `registry.objects.foundation`).
 
 **Network:** ALPN `/objects/0.1`, Discovery topic `/objects/devnet/0.1/discovery`, Relay `https://relay.objects.foundation`
 
