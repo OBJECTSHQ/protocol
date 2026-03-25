@@ -1,6 +1,9 @@
 # Build output
 /target/
 
+# Local cargo config (incremental=false for jj mtime workaround)
+.cargo/
+
 # Cargo.lock for libraries (keep for binaries - you have bins/, so keeping it)
 # Cargo.lock
 
