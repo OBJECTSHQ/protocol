@@ -1,6 +1,6 @@
 //! Node service orchestrating transport layer components.
 
-use crate::{NodeConfig, NodeState, defaults};
+use crate::{NodeConfig, NodeState};
 use anyhow::Result;
 use futures::StreamExt;
 use iroh::protocol::Router;
@@ -81,24 +81,12 @@ impl NodeService {
         // Set up peer discovery
         info!("Setting up peer discovery");
 
-        // Resolve bootstrap nodes: env var/config override > DNS lookup > empty
-        let bootstrap_ids = if !config.network.bootstrap_nodes.is_empty() {
-            info!("Using configured bootstrap nodes");
-            config.network.bootstrap_nodes.clone()
-        } else {
-            let dns_nodes = defaults::resolve_bootstrap_nodes().await;
-            if dns_nodes.is_empty() {
-                info!("No bootstrap nodes found via DNS, starting without bootstrap peers");
-            } else {
-                info!("Resolved {} bootstrap node(s) from DNS", dns_nodes.len());
-            }
-            dns_nodes
-        };
-
         // Parse bootstrap node IDs and add their addresses to the endpoint.
         // Per iroh's gossip pattern, node addresses must be added to the endpoint
         // BEFORE calling subscribe_and_join so iroh can resolve NodeIds to addresses.
-        let bootstrap_addrs: Vec<NodeAddr> = bootstrap_ids
+        let bootstrap_addrs: Vec<NodeAddr> = config
+            .network
+            .bootstrap_nodes
             .iter()
             .filter_map(|id_str| match id_str.parse::<NodeId>() {
                 Ok(node_id) => {
@@ -171,14 +159,14 @@ impl NodeService {
         self.endpoint.as_ref().node_addr()
     }
 
+    /// Get the transport endpoint.
+    pub fn endpoint(&self) -> Arc<ObjectsEndpoint> {
+        self.endpoint.clone()
+    }
+
     /// Get a reference to the sync engine.
     pub fn sync_engine(&self) -> &SyncEngine {
         &self.sync_engine
-    }
-
-    /// Get the endpoint for connection type queries.
-    pub fn endpoint(&self) -> Arc<ObjectsEndpoint> {
-        self.endpoint.clone()
     }
 
     /// Run the node service, listening for peer announcements.

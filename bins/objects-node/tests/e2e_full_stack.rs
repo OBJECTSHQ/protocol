@@ -6,10 +6,22 @@ mod harness;
 
 use harness::TestHarness;
 use reqwest::StatusCode;
-use sqlx::SqlitePool;
+
+/// Skip E2E tests when Docker registry image isn't available.
+/// These tests require `objects-registry:latest` Docker image.
+/// Run the E2E CI job or build the image manually first.
+macro_rules! require_docker {
+    () => {
+        if !harness::registry::docker_available() {
+            eprintln!("Skipping: Docker registry image not available");
+            return;
+        }
+    };
+}
 
 #[tokio::test]
 async fn test_health_check_all_components() {
+    require_docker!();
     let harness = TestHarness::new().await.unwrap();
     let client = reqwest::Client::new();
 
@@ -40,6 +52,7 @@ async fn test_health_check_all_components() {
 
 #[tokio::test]
 async fn test_node_status_includes_network_info() {
+    require_docker!();
     let harness = TestHarness::new().await.unwrap();
     let client = reqwest::Client::new();
 
@@ -62,9 +75,10 @@ async fn test_node_status_includes_network_info() {
     assert!(body["relay_url"].is_string());
 }
 
-#[sqlx::test(migrator = "objects_registry::MIGRATOR")]
-async fn test_projects_lifecycle(pool: SqlitePool) {
-    let harness = TestHarness::with_pool(pool).await.unwrap();
+#[tokio::test]
+async fn test_projects_lifecycle() {
+    require_docker!();
+    let harness = TestHarness::new().await.unwrap();
 
     // Register identities before creating projects
     harness.register_test_identities().await.unwrap();
@@ -116,6 +130,7 @@ async fn test_projects_lifecycle(pool: SqlitePool) {
 
 #[tokio::test]
 async fn test_cli_client_can_communicate() {
+    require_docker!();
     let harness = TestHarness::new().await.unwrap();
 
     let client_a = harness.cli_client_a();
@@ -132,9 +147,10 @@ async fn test_cli_client_can_communicate() {
     assert_eq!(health_b.unwrap().status, "ok");
 }
 
-#[sqlx::test(migrator = "objects_registry::MIGRATOR")]
-async fn test_two_nodes_independent_operations(pool: SqlitePool) {
-    let harness = TestHarness::with_pool(pool).await.unwrap();
+#[tokio::test]
+async fn test_two_nodes_independent_operations() {
+    require_docker!();
+    let harness = TestHarness::new().await.unwrap();
 
     // Register identities before creating projects
     harness.register_test_identities().await.unwrap();
@@ -201,6 +217,7 @@ async fn test_two_nodes_independent_operations(pool: SqlitePool) {
 
 #[tokio::test]
 async fn test_registry_integration() {
+    require_docker!();
     let harness = TestHarness::new().await.unwrap();
 
     // Registry should be accessible
