@@ -77,6 +77,7 @@ jobs:
       contents: read
       id-token: write
     strategy:
+      max-parallel: 1
       matrix:
         include:
           - name: objects-bootstrap-us
