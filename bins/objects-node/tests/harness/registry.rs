@@ -10,6 +10,15 @@ use std::time::Duration;
 /// Path to the test Docker Compose file, relative to the workspace root.
 const COMPOSE_FILE: &str = "docker/test-compose.yml";
 
+/// Check if Docker and the registry image are available for E2E tests.
+pub fn docker_available() -> bool {
+    Command::new("docker")
+        .args(["image", "inspect", "objects-registry:latest"])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
 /// Docker-based registry for testing.
 ///
 /// Starts the registry container on creation and stops it on drop.

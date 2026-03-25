@@ -184,12 +184,20 @@ mod tests {
 
     #[tokio::test]
     async fn test_harness_creation() {
+        if !registry::docker_available() {
+            eprintln!("Skipping: Docker registry image not available");
+            return;
+        }
         let harness = TestHarness::new().await;
         assert!(harness.is_ok(), "Failed to create test harness");
     }
 
     #[tokio::test]
     async fn test_harness_urls() {
+        if !registry::docker_available() {
+            eprintln!("Skipping: Docker registry image not available");
+            return;
+        }
         let harness = TestHarness::new().await.unwrap();
 
         assert!(!harness.registry_url().is_empty());
@@ -200,6 +208,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_cli_clients() {
+        if !registry::docker_available() {
+            eprintln!("Skipping: Docker registry image not available");
+            return;
+        }
         let harness = TestHarness::new().await.unwrap();
         let _client_a = harness.cli_client_a();
         let _client_b = harness.cli_client_b();

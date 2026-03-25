@@ -7,8 +7,21 @@ mod harness;
 use harness::TestHarness;
 use reqwest::StatusCode;
 
+/// Skip E2E tests when Docker registry image isn't available.
+/// These tests require `objects-registry:latest` Docker image.
+/// Run the E2E CI job or build the image manually first.
+macro_rules! require_docker {
+    () => {
+        if !harness::registry::docker_available() {
+            eprintln!("Skipping: Docker registry image not available");
+            return;
+        }
+    };
+}
+
 #[tokio::test]
 async fn test_health_check_all_components() {
+    require_docker!();
     let harness = TestHarness::new().await.unwrap();
     let client = reqwest::Client::new();
 
@@ -39,6 +52,7 @@ async fn test_health_check_all_components() {
 
 #[tokio::test]
 async fn test_node_status_includes_network_info() {
+    require_docker!();
     let harness = TestHarness::new().await.unwrap();
     let client = reqwest::Client::new();
 
@@ -63,6 +77,7 @@ async fn test_node_status_includes_network_info() {
 
 #[tokio::test]
 async fn test_projects_lifecycle() {
+    require_docker!();
     let harness = TestHarness::new().await.unwrap();
 
     // Register identities before creating projects
@@ -115,6 +130,7 @@ async fn test_projects_lifecycle() {
 
 #[tokio::test]
 async fn test_cli_client_can_communicate() {
+    require_docker!();
     let harness = TestHarness::new().await.unwrap();
 
     let client_a = harness.cli_client_a();
@@ -133,6 +149,7 @@ async fn test_cli_client_can_communicate() {
 
 #[tokio::test]
 async fn test_two_nodes_independent_operations() {
+    require_docker!();
     let harness = TestHarness::new().await.unwrap();
 
     // Register identities before creating projects
@@ -200,6 +217,7 @@ async fn test_two_nodes_independent_operations() {
 
 #[tokio::test]
 async fn test_registry_integration() {
+    require_docker!();
     let harness = TestHarness::new().await.unwrap();
 
     // Registry should be accessible

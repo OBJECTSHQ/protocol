@@ -18,7 +18,7 @@ pub const DISCOVERY_TOPIC: &str = "/objects/devnet/0.1/discovery";
 /// `OBJECTS_BOOTSTRAP_NODES` env var (comma-separated node IDs).
 pub const BOOTSTRAP_NODES: &[&str] = &[
     // US (us-central1)
-    "2e0a658732832de5d47bdce0571cb66afd54f06aac3e683abaefd702415121fc",
+    "e1b52711c11d3bda3e4a280cce6068b411800bec8faea4bf60a3a3a23e1e2145",
     // Asia (asia-northeast1)
-    "cfb922a8c9217d440cd0cd4d7842b2a8b9fd23116c45be607375c336b2a6022b",
+    "3709827d11224e34929f21411174e0538766c4770989b0611305b0e319db5dd3",
 ];
