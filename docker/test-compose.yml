@@ -8,5 +8,12 @@ services:
       DATABASE_URL: "sqlite:///data/registry.db"
     ports:
       - "0:8080"
+      - "0:9090"
     tmpfs:
       - /data
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+      start_period: 10s

@@ -7,8 +7,18 @@ mod harness;
 use harness::TestHarness;
 use reqwest::StatusCode;
 
+macro_rules! require_docker {
+    () => {
+        if !harness::registry::docker_available() {
+            eprintln!("Skipping: Docker registry image not available");
+            return;
+        }
+    };
+}
+
 #[tokio::test]
 async fn test_health_endpoint() {
+    require_docker!();
     let harness = TestHarness::new().await.unwrap();
 
     let client = reqwest::Client::new();
@@ -26,6 +36,7 @@ async fn test_health_endpoint() {
 
 #[tokio::test]
 async fn test_status_endpoint() {
+    require_docker!();
     let harness = TestHarness::new().await.unwrap();
 
     let client = reqwest::Client::new();
@@ -44,6 +55,7 @@ async fn test_status_endpoint() {
 
 #[tokio::test]
 async fn test_identity_not_found_initially() {
+    require_docker!();
     let harness = TestHarness::new().await.unwrap();
 
     let client = reqwest::Client::new();
@@ -63,6 +75,7 @@ async fn test_identity_not_found_initially() {
 #[tokio::test]
 #[ignore = "gossip discovery needs bootstrap peers — two isolated nodes cannot discover each other"]
 async fn test_peer_discovery_between_nodes() {
+    require_docker!();
     let harness = TestHarness::new().await.unwrap();
 
     let client = reqwest::Client::new();
@@ -94,6 +107,7 @@ async fn test_peer_discovery_between_nodes() {
 
 #[tokio::test]
 async fn test_projects_list_empty_initially() {
+    require_docker!();
     let harness = TestHarness::new().await.unwrap();
 
     let client = reqwest::Client::new();
@@ -112,6 +126,7 @@ async fn test_projects_list_empty_initially() {
 
 #[tokio::test]
 async fn test_invalid_endpoint_returns_404() {
+    require_docker!();
     let harness = TestHarness::new().await.unwrap();
 
     let client = reqwest::Client::new();
@@ -126,6 +141,7 @@ async fn test_invalid_endpoint_returns_404() {
 
 #[tokio::test]
 async fn test_cors_headers() {
+    require_docker!();
     let harness = TestHarness::new().await.unwrap();
 
     let client = reqwest::Client::new();
