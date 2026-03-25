@@ -110,16 +110,16 @@ pub fn asset(id: impl Into<String>, content_hash: ContentHash) -> anyhow::Result
 /// }
 /// ```
 pub async fn sync_engine_pair() -> anyhow::Result<(SyncEngine, SyncEngine)> {
-    use objects_transport::StaticProvider;
+    use objects_transport::{RelayMode, StaticProvider};
 
-    // Each node gets its own StaticProvider (matches iroh's test pattern)
     let sp1 = StaticProvider::new();
     let sp2 = StaticProvider::new();
 
-    // Use Default relay mode (iroh canonical test pattern uses RelayMode::Default
-    // which enables the N0 relay as fallback for QUIC connections).
+    // Use RelayMode::Disabled for fast, deterministic local connections.
+    // Matches transport::endpoint_pair() pattern.
     let ep1 = objects_transport::ObjectsEndpoint::builder()
         .config(transport::network_config())
+        .relay_mode(RelayMode::Disabled)
         .static_discovery(sp1.clone())
         .bind()
         .await
@@ -127,12 +127,12 @@ pub async fn sync_engine_pair() -> anyhow::Result<(SyncEngine, SyncEngine)> {
 
     let ep2 = objects_transport::ObjectsEndpoint::builder()
         .config(transport::network_config())
+        .relay_mode(RelayMode::Disabled)
         .static_discovery(sp2.clone())
         .bind()
         .await
         .expect("failed to create endpoint 2");
 
-    // Create sync engines (which spawn Routers that take over the endpoints)
     let sync1 = SyncEngine::new(ep1)
         .await
         .map_err(|e| anyhow::anyhow!("sync engine 1: {}", e))?;
@@ -141,7 +141,46 @@ pub async fn sync_engine_pair() -> anyhow::Result<(SyncEngine, SyncEngine)> {
         .map_err(|e| anyhow::anyhow!("sync engine 2: {}", e))?;
 
     // Cross-register addresses AFTER Routers are spawned (iroh canonical pattern).
-    // This ensures the addresses reflect the post-Router endpoint state.
+    sp1.add_endpoint_info(sync2.endpoint().addr());
+    sp2.add_endpoint_info(sync1.endpoint().addr());
+
+    Ok((sync1, sync2))
+}
+
+/// Creates two sync engines connected via the OBJECTS relay.
+///
+/// Uses `relay.objects.foundation` for NAT traversal, testing the
+/// real production relay path. Slower than `sync_engine_pair()` and
+/// requires internet. Use in `#[ignore]` integration tests.
+pub async fn sync_engine_pair_with_relay() -> anyhow::Result<(SyncEngine, SyncEngine)> {
+    use objects_transport::StaticProvider;
+
+    let sp1 = StaticProvider::new();
+    let sp2 = StaticProvider::new();
+
+    let relay_config = transport::network_config_with_relay("https://relay.objects.foundation");
+
+    let ep1 = objects_transport::ObjectsEndpoint::builder()
+        .config(relay_config.clone())
+        .static_discovery(sp1.clone())
+        .bind()
+        .await
+        .expect("failed to create relay endpoint 1");
+
+    let ep2 = objects_transport::ObjectsEndpoint::builder()
+        .config(relay_config)
+        .static_discovery(sp2.clone())
+        .bind()
+        .await
+        .expect("failed to create relay endpoint 2");
+
+    let sync1 = SyncEngine::new(ep1)
+        .await
+        .map_err(|e| anyhow::anyhow!("sync engine 1: {}", e))?;
+    let sync2 = SyncEngine::new(ep2)
+        .await
+        .map_err(|e| anyhow::anyhow!("sync engine 2: {}", e))?;
+
     sp1.add_endpoint_info(sync2.endpoint().addr());
     sp2.add_endpoint_info(sync1.endpoint().addr());
 
