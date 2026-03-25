@@ -1,0 +1,29 @@
+[package]
+name = "objects-test-utils"
+version.workspace = true
+edition.workspace = true
+description = "Shared test utilities for OBJECTS Protocol"
+
+[dependencies]
+# Tier 0: Crypto primitives
+p256.workspace = true
+k256.workspace = true
+hex.workspace = true
+rand.workspace = true
+sha2.workspace = true
+base64.workspace = true
+alloy-primitives.workspace = true
+
+# Tier 1: Identity
+objects-identity.workspace = true
+
+# Tier 2: Data
+objects-data.workspace = true
+
+# Tier 3: Transport
+objects-transport.workspace = true
+tokio.workspace = true
+
+# Tier 4: Sync
+objects-sync.workspace = true
+anyhow.workspace = true

@@ -1,0 +1,100 @@
+syntax = "proto3";
+package objects.identity.v1;
+
+enum SignerType {
+  SIGNER_TYPE_UNSPECIFIED = 0;
+  SIGNER_TYPE_PASSKEY = 1;
+  SIGNER_TYPE_WALLET = 2;
+}
+
+message Identity {
+  // REQUIRED. Identity identifier. Format: "obj_" + 20 base58 characters.
+  string id = 1;
+
+  // REQUIRED. Human-readable handle. 1-30 characters, lowercase alphanumeric,
+  // underscore, and period. Must not start with period or underscore.
+  string handle = 2;
+
+  // REQUIRED. Type of signer that controls this identity.
+  SignerType signer_type = 3;
+
+  // REQUIRED. Compressed SEC1 public key of the signer. Exactly 33 bytes.
+  bytes signer_public_key = 4;
+
+  // REQUIRED. Random nonce used in ID derivation. Exactly 8 bytes.
+  bytes nonce = 5;
+
+  // OPTIONAL. Linked Ethereum wallet address for payments.
+  // Format: "0x" + 40 lowercase hex characters.
+  string wallet_address = 6;
+
+  // REQUIRED. Unix timestamp (seconds) when identity was created.
+  uint64 created_at = 7;
+
+  // REQUIRED. Unix timestamp (seconds) when identity was last updated.
+  uint64 updated_at = 8;
+}
+
+message Signature {
+  // REQUIRED. Type of signer that produced this signature.
+  SignerType signer_type = 1;
+
+  // REQUIRED. Raw signature bytes.
+  bytes signature = 2;
+
+  // CONDITIONAL. Required for passkey signatures.
+  bytes public_key = 3;
+
+  // CONDITIONAL. Required for wallet signatures.
+  string address = 4;
+
+  // CONDITIONAL. Required for passkey signatures.
+  bytes authenticator_data = 5;
+
+  // CONDITIONAL. Required for passkey signatures.
+  bytes client_data_json = 6;
+}
+
+message CreateIdentityRequest {
+  string handle = 1;
+  SignerType signer_type = 2;
+  bytes signer_public_key = 3;
+  bytes nonce = 4;
+  Signature signature = 5;
+  uint64 timestamp = 6;
+}
+
+message LinkWalletRequest {
+  string identity_id = 1;
+  string wallet_address = 2;
+  Signature identity_signature = 3;
+  Signature wallet_signature = 4;
+  uint64 timestamp = 5;
+}
+
+message ChangeHandleRequest {
+  string identity_id = 1;
+  string new_handle = 2;
+  Signature signature = 3;
+  uint64 timestamp = 4;
+}
+
+message GetIdentityRequest {
+  string identity_id = 1;
+}
+
+message ResolveIdentityRequest {
+  oneof query {
+    string handle = 1;
+    bytes signer_public_key = 2;
+    string wallet_address = 3;
+  }
+}
+
+service IdentityRegistry {
+  rpc CreateIdentity(CreateIdentityRequest) returns (Identity);
+  rpc GetIdentity(GetIdentityRequest) returns (Identity);
+  rpc ResolveIdentity(ResolveIdentityRequest) returns (Identity);
+  rpc LinkWallet(LinkWalletRequest) returns (Identity);
+  rpc ChangeHandle(ChangeHandleRequest) returns (Identity);
+}

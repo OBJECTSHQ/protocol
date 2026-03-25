@@ -1,0 +1,100 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/*",
+    "bins/objects-cli",
+    "bins/objects-node",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/objectshq/protocol"
+
+[workspace.dependencies]
+# OBJECTS crates
+objects-identity = { path = "crates/objects-identity" }
+objects-transport = { path = "crates/objects-transport" }
+objects-sync = { path = "crates/objects-sync" }
+objects-data = { path = "crates/objects-data" }
+objects-common = { path = "crates/objects-common" }
+objects-test-utils = { path = "crates/objects-test-utils" }
+
+# Iroh
+iroh = "0.95.1"
+iroh-blobs = "0.97"
+iroh-docs = "0.95"
+iroh-gossip = "0.95"
+
+# Crypto
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+p256 = { version = "0.13.2", features = ["ecdsa"] }
+k256 = { version = "0.13.3", features = ["ecdsa"] }
+blake3 = "1"
+sha2 = "0.10"
+bs58 = "0.5"
+rand = "0.9"
+hex = "0.4"
+hkdf = "0.12"
+chacha20poly1305 = "0.10"
+base64 = "0.22"
+
+# Ethereum (Alloy)
+alloy-primitives = "1"
+alloy-sol-types = "1"
+alloy-signer = "0.7"
+alloy-signer-local = "0.7"
+
+# Async
+tokio = { version = "1", features = ["full"] }
+futures = "0.3"
+
+# Serialization
+prost = "0.14"
+prost-types = "0.14"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+bytes = "1"
+
+# Web/API
+axum = "0.8"
+axum-extra = { version = "0.10", features = ["multipart"] }
+tonic = "0.14"
+tower = "0.5"
+reqwest = { version = "0.13", features = ["json", "multipart"] }
+
+# Database
+sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio", "migrate"] }
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# Error handling
+anyhow = "1"
+thiserror = "2"
+
+# DNS
+hickory-resolver = { version = "0.25", features = ["tokio", "system-config"] }
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Testing
+tokio-test = "0.4"
+rstest = "0.26.1"
+proptest = "1.4"
+wiremock = "0.6"
+serde_test = "1"
+tempfile = "3"
+serial_test = "3"
+temp-env = "0.3"
+
+# Config
+toml = "0.8"
+url = "2"
+new_mime_guess = "4"
+
+# Build
+prost-build = "0.14"

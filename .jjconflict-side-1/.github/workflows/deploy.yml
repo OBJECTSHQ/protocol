@@ -1,0 +1,157 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'crates/**'
+      - 'bins/**'
+      - 'docker/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Image tag to deploy (defaults to git SHA)'
+        required: false
+        type: string
+
+env:
+  PROJECT_ID: objects-devnet
+  REGISTRY: us-central1-docker.pkg.dev/objects-devnet/objects
+
+jobs:
+  build-and-push:
+    name: Build & Push Images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      image_tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Determine image tag
+        id: tag
+        env:
+          INPUT_TAG: ${{ inputs.image_tag }}
+          GIT_SHA: ${{ github.sha }}
+        run: |
+          if [ -n "$INPUT_TAG" ]; then
+            echo "tag=$INPUT_TAG" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=$GIT_SHA" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud CLI
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+
+      - name: Build and push objects-node image
+        env:
+          IMAGE_TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          docker build \
+            -f docker/node.Dockerfile \
+            -t "${REGISTRY}/objects-node:${IMAGE_TAG}" \
+            -t "${REGISTRY}/objects-node:latest" \
+            .
+          docker push "${REGISTRY}/objects-node:${IMAGE_TAG}"
+          docker push "${REGISTRY}/objects-node:latest"
+
+  deploy-nodes:
+    name: Deploy ${{ matrix.name }}
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    strategy:
+      max-parallel: 1
+      matrix:
+        include:
+          - name: objects-bootstrap-us
+            zone: us-central1-a
+          - name: objects-bootstrap-asia
+            zone: asia-northeast1-a
+    steps:
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud CLI
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Deploy node
+        env:
+          VM_NAME: ${{ matrix.name }}
+          VM_ZONE: ${{ matrix.zone }}
+          AR_REGISTRY: ${{ env.REGISTRY }}
+        run: |
+          gcloud compute ssh "${VM_NAME}" \
+            --zone="${VM_ZONE}" \
+            --project="${PROJECT_ID}" \
+            --command="
+              gcloud auth configure-docker us-central1-docker.pkg.dev --quiet 2>/dev/null
+              docker pull ${AR_REGISTRY}/objects-node:latest
+
+              # Safety: verify node.key exists in volume before replacing container
+              if docker volume inspect objects-data > /dev/null 2>&1; then
+                NODE_KEY=\$(docker run --rm -v objects-data:/data alpine cat /data/node.key 2>/dev/null | head -c 20)
+                if [ -n \"\$NODE_KEY\" ]; then
+                  echo 'node.key preserved in volume'
+                else
+                  echo 'WARNING: node.key not found in volume — new key will be generated'
+                fi
+              fi
+
+              docker stop objects-node 2>/dev/null || true
+              docker rm objects-node 2>/dev/null || true
+              docker run -d \
+                --name objects-node \
+                --restart unless-stopped \
+                -p 3420:3420 \
+                -p 7824:7824/udp \
+                -v objects-data:/data \
+                -e OBJECTS_API_BIND \
+                -e OBJECTS_QUIC_PORT \
+                -e OBJECTS_RELAY_URL \
+                -e OBJECTS_REGISTRY_URL \
+                -e RUST_LOG \
+                ${AR_REGISTRY}/objects-node:latest
+            "
+
+      - name: Health check
+        env:
+          VM_NAME: ${{ matrix.name }}
+          VM_ZONE: ${{ matrix.zone }}
+        run: |
+          gcloud compute ssh "${VM_NAME}" \
+            --zone="${VM_ZONE}" \
+            --project="${PROJECT_ID}" \
+            --command='
+              for i in $(seq 1 24); do
+                STATUS=$(docker inspect --format="{{.State.Health.Status}}" objects-node 2>/dev/null || echo "missing")
+                if [ "$STATUS" = "healthy" ]; then
+                  echo "Node healthy"
+                  exit 0
+                fi
+                echo "Waiting for node... status=$STATUS ($i/24)"
+                sleep 5
+              done
+              echo "Node health check failed"
+              docker logs --tail 20 objects-node 2>&1 || true
+              exit 1
+            '

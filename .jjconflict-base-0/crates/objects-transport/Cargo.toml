@@ -1,0 +1,50 @@
+[package]
+name = "objects-transport"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "P2P transport layer for OBJECTS Protocol"
+
+[dependencies]
+# Iroh (transport substrate - replaceable)
+iroh.workspace = true
+iroh-gossip.workspace = true
+
+# Crypto (standard, not Iroh-specific)
+ed25519-dalek.workspace = true
+
+# Async
+tokio.workspace = true
+futures.workspace = true
+async-trait = "0.1"
+async-stream = "0.3"
+
+# Types
+url = "2"
+bytes = "1"
+
+# Hashing
+blake3 = "1"
+
+# Random
+rand.workspace = true
+
+# Error handling
+thiserror.workspace = true
+anyhow.workspace = true
+
+# DNS
+hickory-resolver.workspace = true
+
+# Logging
+tracing.workspace = true
+
+[dev-dependencies]
+objects-test-utils.workspace = true
+serial_test.workspace = true
+tokio-test.workspace = true
+rstest.workspace = true
+proptest.workspace = true
+hex.workspace = true
+anyhow.workspace = true
