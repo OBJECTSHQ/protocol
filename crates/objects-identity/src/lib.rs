@@ -17,6 +17,6 @@ pub use error::Error;
 pub use handle::Handle;
 pub use id::{IdentityId, NONCE_SIZE, generate_nonce};
 pub use signature::Signature;
-pub use signer::{Signer, SignerType};
-pub use signing::{PasskeySigningKey, WalletSigningKey};
+pub use signer::Signer;
+pub use signing::Ed25519SigningKey;
 pub use vault::VaultKeys;
