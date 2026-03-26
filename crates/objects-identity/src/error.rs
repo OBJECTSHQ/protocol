@@ -19,9 +19,6 @@ pub enum Error {
     #[error("author ID mismatch: expected {expected}, got {actual}")]
     AuthorIdMismatch { expected: String, actual: String },
 
-    #[error("unsupported signer type: {0}")]
-    UnsupportedSignerType(u32),
-
     #[error("vault derivation failed: {0}")]
     VaultDerivation(String),
 }
