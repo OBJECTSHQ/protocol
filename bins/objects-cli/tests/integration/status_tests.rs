@@ -23,8 +23,7 @@ async fn test_status_node_running() {
             "identity": {
                 "id": "obj_test123",
                 "handle": "@alice",
-                "nonce": "0102030405060708",
-                "signer_type": "passkey"
+                "nonce": "AQIDBAUGBwg="
             }
         })))
         .mount(&mock)

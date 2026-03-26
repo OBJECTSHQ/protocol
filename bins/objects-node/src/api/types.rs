@@ -36,8 +36,6 @@ pub struct IdentityResponse {
     pub handle: String,
     /// 8-byte nonce encoded as base64.
     pub nonce: String,
-    /// Signer type ("passkey" or "wallet").
-    pub signer_type: String,
 }
 
 /// Peer information for listing discovered peers.
@@ -233,7 +231,6 @@ mod tests {
             id: "obj_2dMiYc8RhnYkorPc5pVh9".to_string(),
             handle: "@alice".to_string(),
             nonce: "AQIDBAUGBwg=".to_string(), // base64 encoding of [1,2,3,4,5,6,7,8]
-            signer_type: "passkey".to_string(),
         };
 
         let json = serde_json::to_string(&response).unwrap();

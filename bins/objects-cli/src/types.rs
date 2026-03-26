@@ -23,38 +23,25 @@ pub struct IdentityResponse {
     pub id: String,
     pub handle: String,
     pub nonce: String,
-    pub signer_type: String,
 }
 
 /// Create identity request.
 #[derive(Debug, Clone, Serialize)]
 pub struct CreateIdentityRequest {
     pub handle: String,
-    pub signer_type: String,
-    pub signer_public_key: String,
+    pub public_key: String,
     pub nonce: String,
     pub timestamp: u64,
     pub signature: SignatureData,
 }
 
-/// Signature data for identity creation.
-/// Matches the registry's SignatureRequest format.
+/// Signature data for identity creation (Ed25519).
 #[derive(Debug, Clone, Serialize)]
 pub struct SignatureData {
-    /// Base64-encoded signature bytes
+    /// Base64-encoded Ed25519 signature bytes (64 bytes).
     pub signature: String,
-    /// Base64-encoded public key (required for passkey)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub public_key: Option<String>,
-    /// Wallet address (required for wallet signatures)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub address: Option<String>,
-    /// Base64-encoded authenticator data (required for passkey)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub authenticator_data: Option<String>,
-    /// Base64-encoded client data JSON (required for passkey)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub client_data_json: Option<String>,
+    /// Base64-encoded Ed25519 public key (32 bytes).
+    pub public_key: String,
 }
 
 // =============================================================================
