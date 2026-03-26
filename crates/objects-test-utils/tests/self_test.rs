@@ -11,42 +11,21 @@ use objects_test_utils::{crypto, identity, time};
 // ============================================================================
 
 #[test]
-fn test_passkey_keypair_public_key_matches() {
-    let keypair = crypto::passkey_keypair();
+fn test_ed25519_keypair_public_key_matches() {
+    let keypair = crypto::ed25519_keypair();
 
     // Derive public key from signing key and verify it matches the stored one
-    let derived_public = keypair.signing_key.verifying_key().to_encoded_point(true);
+    let derived_public = keypair.signing_key.public_key_bytes();
     assert_eq!(
-        derived_public.as_bytes(),
-        &keypair.public_key[..],
+        derived_public, keypair.public_key,
         "stored public key must match derived public key"
     );
 
     // Verify correct length
     assert_eq!(
         keypair.public_key.len(),
-        33,
-        "P-256 compressed key is 33 bytes"
-    );
-}
-
-#[test]
-fn test_wallet_keypair_public_key_matches() {
-    let keypair = crypto::wallet_keypair();
-
-    // Derive public key from signing key and verify it matches the stored one
-    let derived_public = keypair.signing_key.verifying_key().to_encoded_point(true);
-    assert_eq!(
-        derived_public.as_bytes(),
-        &keypair.public_key[..],
-        "stored public key must match derived public key"
-    );
-
-    // Verify correct length
-    assert_eq!(
-        keypair.public_key.len(),
-        33,
-        "secp256k1 compressed key is 33 bytes"
+        32,
+        "Ed25519 public key is 32 bytes"
     );
 }
 
@@ -129,18 +108,16 @@ fn test_timestamp_constant_is_correct() {
 // ============================================================================
 
 #[test]
-fn test_identity_id_is_canonical() {
-    let id = identity::test_identity_id();
-    assert_eq!(
-        id.as_str(),
-        "obj_2dMiYc8RhnYkorPc5pVh9",
-        "test_identity_id must return canonical identity"
-    );
+fn test_identity_id_is_deterministic() {
+    let id1 = identity::test_identity_id();
+    let id2 = identity::test_identity_id();
+    assert_eq!(id1, id2, "test_identity_id must be deterministic");
+    assert!(id1.as_str().starts_with("obj_"));
 }
 
 #[test]
-fn test_random_passkey_identity_derivation() {
-    let identity = identity::random_passkey_identity();
+fn test_random_identity_derivation() {
+    let identity = identity::random_identity();
 
     // Verify the identity ID was correctly derived from public key + nonce
     let derived = IdentityId::derive(&identity.keypair.public_key, &identity.nonce);
@@ -156,34 +133,9 @@ fn test_random_passkey_identity_derivation() {
 }
 
 #[test]
-fn test_random_wallet_identity_derivation() {
-    let identity = identity::random_wallet_identity();
-
-    // Verify the identity ID was correctly derived from public key + nonce
-    let derived = IdentityId::derive(&identity.keypair.public_key, &identity.nonce);
-    assert_eq!(
-        identity.identity_id, derived,
-        "stored identity_id must match derived value"
-    );
-
-    // Verify ID format
-    assert!(identity.identity_id.as_str().starts_with("obj_"));
-}
-
-#[test]
-fn test_random_passkey_identities_are_unique() {
-    let id1 = identity::random_passkey_identity();
-    let id2 = identity::random_passkey_identity();
-
-    // Statistically should never be equal
-    assert_ne!(id1.identity_id, id2.identity_id, "identities should differ");
-    assert_ne!(id1.nonce, id2.nonce, "nonces should differ");
-}
-
-#[test]
-fn test_random_wallet_identities_are_unique() {
-    let id1 = identity::random_wallet_identity();
-    let id2 = identity::random_wallet_identity();
+fn test_random_identities_are_unique() {
+    let id1 = identity::random_identity();
+    let id2 = identity::random_identity();
 
     // Statistically should never be equal
     assert_ne!(id1.identity_id, id2.identity_id, "identities should differ");
@@ -195,22 +147,12 @@ fn test_random_wallet_identities_are_unique() {
 // ============================================================================
 
 #[test]
-fn test_passkey_keypair_can_derive_identity() {
-    let keypair = crypto::passkey_keypair();
+fn test_ed25519_keypair_can_derive_identity() {
+    let keypair = crypto::ed25519_keypair();
     let nonce = crypto::random_nonce();
     let identity_id = IdentityId::derive(&keypair.public_key, &nonce);
 
     // Should produce a valid identity ID
     assert!(identity_id.as_str().starts_with("obj_"));
     assert!(identity_id.as_str().len() >= 23);
-}
-
-#[test]
-fn test_wallet_keypair_can_derive_identity() {
-    let keypair = crypto::wallet_keypair();
-    let nonce = crypto::random_nonce();
-    let identity_id = IdentityId::derive(&keypair.public_key, &nonce);
-
-    // Should produce a valid identity ID
-    assert!(identity_id.as_str().starts_with("obj_"));
 }

@@ -34,6 +34,9 @@ pub enum Error {
     #[error("storage limit exceeded: {current} / {limit} bytes")]
     StorageLimitExceeded { current: u64, limit: u64 },
 
+    #[error("catalog encryption error: {0}")]
+    CatalogEncryption(String),
+
     #[error("transport error: {0}")]
     Transport(#[from] objects_transport::Error),
 

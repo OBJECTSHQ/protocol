@@ -1,8 +1,6 @@
 //! Asset types for OBJECTS Protocol.
 
-use alloy_primitives::keccak256;
-use k256::ecdsa::{RecoveryId, Signature as K256Sig, VerifyingKey};
-use objects_identity::{IdentityId, Signature, SignerType, message::sign_asset_message};
+use objects_identity::{IdentityId, Signature, message::sign_asset_message};
 use serde::{Deserialize, Serialize};
 
 use crate::Error;
@@ -208,7 +206,7 @@ impl<'de> Deserialize<'de> for Nonce {
 /// A signed asset with authorship proof.
 ///
 /// The nonce is required for author_id verification:
-/// 1. Verify signature over message using signer public key
+/// 1. Verify Ed25519 signature over message using public key
 /// 2. Derive identity_id from signature.public_key + nonce
 /// 3. Confirm derived ID matches asset.author_id
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -248,12 +246,10 @@ impl SignedAsset {
 
     /// Verifies the signed asset.
     ///
-    /// Verification steps (per RFC-001 Appendix D):
+    /// Verification steps:
     /// 1. Validate the asset fields
     /// 2. Construct the signature message using asset metadata
-    /// 3. Verify signature and extract signer's public key:
-    ///    - Passkey: verify signature, then extract public_key from signature
-    ///    - Wallet: recover public_key from signature, then verify address
+    /// 3. Verify Ed25519 signature over the message
     /// 4. Derive identity_id from signer public_key + nonce
     /// 5. Confirm derived ID matches asset.author_id
     pub fn verify(&self) -> Result<(), Error> {
@@ -261,18 +257,21 @@ impl SignedAsset {
         self.asset.validate()?;
 
         // 2. Construct the message (RFC-001 Section 5.3)
-        // Uses created_at timestamp per Appendix D
         let message = sign_asset_message(
             self.asset.author_id.as_str(),
             &self.asset.content_hash.to_hex(),
             self.asset.created_at,
         );
 
-        // 3. Verify signature
+        // 3. Verify Ed25519 signature
         self.signature.verify(message.as_bytes())?;
 
-        // 4. Get signer's compressed public key (33 bytes SEC1)
-        let public_key = self.get_signer_public_key(&message)?;
+        // 4. Get signer's public key (32 bytes Ed25519)
+        let public_key: [u8; 32] = self
+            .signature
+            .public_key_bytes()
+            .try_into()
+            .map_err(|_| Error::InvalidAsset("public key must be 32 bytes".to_string()))?;
 
         // 5. Derive identity_id from public_key + nonce
         let derived_id = IdentityId::derive(&public_key, &self.nonce.0);
@@ -287,68 +286,6 @@ impl SignedAsset {
 
         Ok(())
     }
-
-    /// Extracts the signer's public key from the signature.
-    fn get_signer_public_key(&self, message: &str) -> Result<[u8; 33], Error> {
-        match self.signature.signer_type() {
-            SignerType::Passkey => {
-                // Passkey: public_key stored directly in signature
-                let pk = self
-                    .signature
-                    .public_key_bytes()
-                    .ok_or(Error::InvalidAsset(
-                        "passkey signature requires public_key".to_string(),
-                    ))?;
-                pk.try_into()
-                    .map_err(|_| Error::InvalidAsset("public_key must be 33 bytes".to_string()))
-            }
-            SignerType::Wallet => {
-                // Wallet: recover public key from signature
-                self.recover_wallet_public_key(message.as_bytes())
-            }
-        }
-    }
-
-    /// Recovers and compresses the public key from a wallet signature.
-    fn recover_wallet_public_key(&self, message: &[u8]) -> Result<[u8; 33], Error> {
-        // EIP-191 prefix
-        let prefixed = format!("\x19Ethereum Signed Message:\n{}", message.len());
-        let mut full_message = prefixed.into_bytes();
-        full_message.extend_from_slice(message);
-        let message_hash = keccak256(&full_message);
-
-        // Parse signature (r || s || v)
-        let sig_bytes = self.signature.signature_bytes();
-        if sig_bytes.len() != 65 {
-            return Err(Error::InvalidAsset(
-                "wallet signature must be 65 bytes".to_string(),
-            ));
-        }
-        let r_s = &sig_bytes[..64];
-        let v = sig_bytes[64];
-
-        let recovery_id = match v {
-            27 | 0 => RecoveryId::new(false, false),
-            28 | 1 => RecoveryId::new(true, false),
-            _ => return Err(Error::InvalidAsset(format!("invalid recovery id: {}", v))),
-        };
-
-        let sig = K256Sig::try_from(r_s)
-            .map_err(|e| Error::InvalidAsset(format!("invalid signature: {}", e)))?;
-
-        let recovered_key =
-            VerifyingKey::recover_from_prehash(message_hash.as_slice(), &sig, recovery_id)
-                .map_err(|e| Error::InvalidAsset(format!("key recovery failed: {}", e)))?;
-
-        // Compress to SEC1 33-byte format
-        let compressed: [u8; 33] = recovered_key
-            .to_sec1_bytes()
-            .as_ref()
-            .try_into()
-            .map_err(|_| Error::InvalidAsset("compressed key not 33 bytes".to_string()))?;
-
-        Ok(compressed)
-    }
 }
 
 #[cfg(test)]
@@ -360,7 +297,14 @@ mod tests {
     }
 
     fn test_author_id() -> IdentityId {
-        IdentityId::parse("obj_2dMiYc8RhnYkorPc5pVh9").unwrap()
+        // Derive from canonical test key + nonce (matches objects-test-utils)
+        let public_key: [u8; 32] = [
+            0xc6, 0x04, 0x7f, 0x94, 0x41, 0xed, 0x7d, 0x6d, 0x30, 0x45, 0x40, 0x6e, 0x95, 0xc0,
+            0x7c, 0xd8, 0x5c, 0x77, 0x8e, 0x4b, 0x8c, 0xef, 0x3c, 0xa7, 0xab, 0xac, 0x09, 0xb9,
+            0x5c, 0x70, 0x9e, 0xe5,
+        ];
+        let nonce = objects_identity::generate_nonce();
+        IdentityId::derive(&public_key, &nonce)
     }
 
     fn valid_asset() -> Asset {
@@ -498,126 +442,25 @@ mod tests {
     #[cfg(test)]
     mod signed_asset_tests {
         use super::*;
-        use alloy_primitives::keccak256;
-        use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
-        use k256::ecdsa::SigningKey as K256SigningKey;
-        use k256::elliptic_curve::rand_core::OsRng;
-        use objects_identity::{IdentityId, Signature, SignerType, message::sign_asset_message};
-        use p256::ecdsa::{SigningKey as P256SigningKey, signature::Signer as _};
-        use sha2::{Digest, Sha256};
+        use objects_identity::{Ed25519SigningKey, IdentityId, message::sign_asset_message};
 
-        // Test helper: Generate passkey signing key
-        fn test_passkey_key() -> P256SigningKey {
-            P256SigningKey::random(&mut OsRng)
-        }
-
-        // Test helper: Generate wallet signing key
-        fn test_wallet_key() -> K256SigningKey {
-            K256SigningKey::random(&mut OsRng)
-        }
-
-        // Test helper: Sign asset with passkey
-        fn sign_asset_with_passkey(
-            asset: &Asset,
-            signing_key: &P256SigningKey,
-            _nonce: [u8; 8],
-        ) -> Signature {
-            let verifying_key = signing_key.verifying_key();
-            let public_key_bytes: [u8; 33] = verifying_key
-                .to_encoded_point(true)
-                .as_bytes()
-                .try_into()
-                .unwrap();
-
-            // Create message per RFC-001
+        // Test helper: Sign asset with Ed25519
+        fn sign_asset_ed25519(asset: &Asset, signing_key: &Ed25519SigningKey) -> Signature {
             let message = sign_asset_message(
                 asset.author_id.as_str(),
                 &asset.content_hash.to_hex(),
                 asset.created_at,
             );
-
-            // Create minimal WebAuthn data
-            let rp_id_hash = Sha256::digest(b"example.com");
-            let flags = 0x05u8;
-            let counter = 0u32.to_be_bytes();
-            let mut authenticator_data = rp_id_hash.to_vec();
-            authenticator_data.push(flags);
-            authenticator_data.extend_from_slice(&counter);
-
-            let client_data_json = format!(
-                r#"{{"type":"webauthn.get","challenge":"{}"}}"#,
-                URL_SAFE_NO_PAD.encode(message.as_bytes())
-            )
-            .into_bytes();
-
-            let client_data_hash = Sha256::digest(&client_data_json);
-            let mut signed_data = authenticator_data.clone();
-            signed_data.extend_from_slice(&client_data_hash);
-
-            let signature_der: p256::ecdsa::Signature = signing_key.sign(&signed_data);
-
-            Signature::Passkey {
-                signature: signature_der.to_der().to_bytes().to_vec(),
-                public_key: public_key_bytes.to_vec(),
-                authenticator_data,
-                client_data_json,
-            }
-        }
-
-        // Test helper: Sign asset with wallet
-        fn sign_asset_with_wallet(
-            asset: &Asset,
-            signing_key: &K256SigningKey,
-            _nonce: [u8; 8],
-        ) -> Signature {
-            let verifying_key = signing_key.verifying_key();
-            let public_key_point = verifying_key.to_encoded_point(false);
-            let public_key_bytes = public_key_point.as_bytes();
-
-            // Derive Ethereum address
-            let pub_key_hash = keccak256(&public_key_bytes[1..]);
-            let address = format!("0x{}", hex::encode(&pub_key_hash[12..]));
-
-            // Create message
-            let message = sign_asset_message(
-                asset.author_id.as_str(),
-                &asset.content_hash.to_hex(),
-                asset.created_at,
-            );
-
-            // EIP-191 prefix
-            let eip191_prefix = format!("\x19Ethereum Signed Message:\n{}", message.len());
-            let mut prefixed = eip191_prefix.as_bytes().to_vec();
-            prefixed.extend_from_slice(message.as_bytes());
-            let message_hash = keccak256(&prefixed);
-
-            // Sign with recovery
-            let (signature_der, recovery_id) = signing_key
-                .sign_prehash_recoverable(message_hash.as_slice())
-                .unwrap();
-            let mut signature_bytes = signature_der.to_bytes().to_vec();
-            signature_bytes.push(recovery_id.to_byte());
-
-            Signature::Wallet {
-                signature: signature_bytes,
-                address,
-            }
+            signing_key.sign(message.as_bytes())
         }
 
         #[test]
-        fn test_signed_asset_verify_with_passkey() {
-            // Generate passkey and derive identity
+        fn test_signed_asset_verify_with_ed25519() {
             let nonce = rand::random::<[u8; 8]>();
-            let signing_key = test_passkey_key();
-            let public_key: [u8; 33] = signing_key
-                .verifying_key()
-                .to_encoded_point(true)
-                .as_bytes()
-                .try_into()
-                .unwrap();
+            let signing_key = Ed25519SigningKey::generate();
+            let public_key = signing_key.public_key_bytes();
             let identity_id = IdentityId::derive(&public_key, &nonce);
 
-            // Create asset
             let asset = Asset::new(
                 "test-asset".to_string(),
                 "Test Asset".to_string(),
@@ -630,59 +473,17 @@ mod tests {
             )
             .unwrap();
 
-            // Sign with passkey
-            let signature = sign_asset_with_passkey(&asset, &signing_key, nonce);
+            let signature = sign_asset_ed25519(&asset, &signing_key);
             let signed_asset = SignedAsset::new(asset, signature, nonce);
 
-            // Verification should succeed
             signed_asset.verify().unwrap();
         }
 
         #[test]
-        fn test_signed_asset_verify_with_wallet() {
-            // Generate wallet and derive identity
-            let nonce = rand::random::<[u8; 8]>();
-            let signing_key = test_wallet_key();
-            let public_key: [u8; 33] = signing_key
-                .verifying_key()
-                .to_encoded_point(true)
-                .as_bytes()
-                .try_into()
-                .unwrap();
-            let identity_id = IdentityId::derive(&public_key, &nonce);
-
-            // Create asset
-            let asset = Asset::new(
-                "test-wallet-asset".to_string(),
-                "Wallet Test Asset".to_string(),
-                identity_id,
-                ContentHash::new([0xbb; 32]),
-                2048,
-                Some("jpg".to_string()),
-                2000,
-                2000,
-            )
-            .unwrap();
-
-            // Sign with wallet
-            let signature = sign_asset_with_wallet(&asset, &signing_key, nonce);
-            let signed_asset = SignedAsset::new(asset, signature, nonce);
-
-            // Verification should succeed
-            assert!(signed_asset.verify().is_ok());
-        }
-
-        #[test]
         fn test_signed_asset_verify_wrong_nonce() {
-            // Generate identity with correct nonce
             let correct_nonce = rand::random::<[u8; 8]>();
-            let signing_key = test_passkey_key();
-            let public_key: [u8; 33] = signing_key
-                .verifying_key()
-                .to_encoded_point(true)
-                .as_bytes()
-                .try_into()
-                .unwrap();
+            let signing_key = Ed25519SigningKey::generate();
+            let public_key = signing_key.public_key_bytes();
             let identity_id = IdentityId::derive(&public_key, &correct_nonce);
 
             let asset = Asset::new(
@@ -697,8 +498,7 @@ mod tests {
             )
             .unwrap();
 
-            // Sign with correct nonce
-            let signature = sign_asset_with_passkey(&asset, &signing_key, correct_nonce);
+            let signature = sign_asset_ed25519(&asset, &signing_key);
 
             // Create SignedAsset with WRONG nonce
             let wrong_nonce = rand::random::<[u8; 8]>();
@@ -718,16 +518,10 @@ mod tests {
         #[test]
         fn test_signed_asset_verify_tampered_content() {
             let nonce = rand::random::<[u8; 8]>();
-            let signing_key = test_passkey_key();
-            let public_key: [u8; 33] = signing_key
-                .verifying_key()
-                .to_encoded_point(true)
-                .as_bytes()
-                .try_into()
-                .unwrap();
+            let signing_key = Ed25519SigningKey::generate();
+            let public_key = signing_key.public_key_bytes();
             let identity_id = IdentityId::derive(&public_key, &nonce);
 
-            // Create and sign original asset
             let asset = Asset::new(
                 "tamper-test".to_string(),
                 "Original Name".to_string(),
@@ -740,10 +534,9 @@ mod tests {
             )
             .unwrap();
 
-            let signature = sign_asset_with_passkey(&asset, &signing_key, nonce);
+            let signature = sign_asset_ed25519(&asset, &signing_key);
 
             // TAMPER: Create asset with different content_hash
-            // (Since fields are private, this demonstrates tampering protection)
             let tampered_asset = Asset::new(
                 "tamper-test".to_string(),
                 "Original Name".to_string(),
@@ -764,26 +557,17 @@ mod tests {
 
         #[test]
         fn test_signed_asset_fields_are_private() {
-            // This test verifies fields are private (compile-time check)
             let asset = super::valid_asset();
-            let signature = Signature::Passkey {
-                signature: vec![0u8; 64],
-                public_key: vec![0u8; 33],
-                authenticator_data: vec![],
-                client_data_json: vec![],
-            };
+            let signing_key = Ed25519SigningKey::generate();
+            let signature = signing_key.sign(b"dummy");
             let nonce = [1u8; 8];
 
-            let signed_asset = SignedAsset::new(asset.clone(), signature.clone(), nonce);
+            let signed_asset = SignedAsset::new(asset.clone(), signature, nonce);
 
             // Accessors work
             assert_eq!(signed_asset.asset().id, asset.id);
-            assert_eq!(signed_asset.signature().signer_type(), SignerType::Passkey);
+            assert_eq!(signed_asset.signature().public_key_bytes().len(), 32);
             assert_eq!(signed_asset.nonce(), &nonce);
-
-            // Would fail to compile (desired):
-            // signed_asset.asset = Asset { ... };
-            // signed_asset.nonce = [0u8; 8];
         }
     }
 }

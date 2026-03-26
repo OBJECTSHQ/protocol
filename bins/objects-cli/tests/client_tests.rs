@@ -57,8 +57,7 @@ async fn test_status_success() {
             "identity": {
                 "id": "obj_test123",
                 "handle": "@alice",
-                "nonce": "0102030405060708",
-                "signer_type": "passkey"
+                "nonce": "AQIDBAUGBwg=",
             },
             "relay_url": "https://relay.objects.foundation"
         })))
@@ -84,8 +83,7 @@ async fn test_get_identity_success() {
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "id": "obj_test123",
             "handle": "@alice",
-            "nonce": "0102030405060708",
-            "signer_type": "passkey"
+            "nonce": "AQIDBAUGBwg="
         })))
         .mount(&mock)
         .await;
@@ -127,8 +125,7 @@ async fn test_create_identity_success() {
         .respond_with(ResponseTemplate::new(201).set_body_json(json!({
             "id": "obj_test123",
             "handle": "@alice",
-            "nonce": "0102030405060708",
-            "signer_type": "passkey"
+            "nonce": "AQIDBAUGBwg="
         })))
         .mount(&mock)
         .await;
@@ -136,21 +133,12 @@ async fn test_create_identity_success() {
     let client = NodeClient::new(mock.uri());
     let request = objects_cli::types::CreateIdentityRequest {
         handle: "@alice".to_string(),
-        signer_type: "PASSKEY".to_string(),
-        signer_public_key: base64::engine::general_purpose::STANDARD
-            .encode(b"test_public_key_33_bytes_long_0123456"),
-        nonce: base64::engine::general_purpose::STANDARD.encode(b"testnonce"),
+        public_key: base64::engine::general_purpose::STANDARD.encode([0u8; 32]),
+        nonce: base64::engine::general_purpose::STANDARD.encode(&objects_identity::generate_nonce()),
         timestamp: 1234567890,
         signature: objects_cli::types::SignatureData {
-            signature: base64::engine::general_purpose::STANDARD.encode(b"test_signature"),
-            public_key: Some(base64::engine::general_purpose::STANDARD.encode(b"test_pk")),
-            address: None,
-            authenticator_data: Some(
-                base64::engine::general_purpose::STANDARD.encode(b"test_auth"),
-            ),
-            client_data_json: Some(
-                base64::engine::general_purpose::STANDARD.encode(b"{\"type\":\"webauthn.get\"}"),
-            ),
+            signature: base64::engine::general_purpose::STANDARD.encode([0u8; 64]),
+            public_key: base64::engine::general_purpose::STANDARD.encode([0u8; 32]),
         },
     };
 
@@ -175,21 +163,12 @@ async fn test_create_identity_conflict() {
     let client = NodeClient::new(mock.uri());
     let request = objects_cli::types::CreateIdentityRequest {
         handle: "@alice".to_string(),
-        signer_type: "PASSKEY".to_string(),
-        signer_public_key: base64::engine::general_purpose::STANDARD
-            .encode(b"test_public_key_33_bytes_long_0123456"),
-        nonce: base64::engine::general_purpose::STANDARD.encode(b"testnonce"),
+        public_key: base64::engine::general_purpose::STANDARD.encode([0u8; 32]),
+        nonce: base64::engine::general_purpose::STANDARD.encode(&objects_identity::generate_nonce()),
         timestamp: 1234567890,
         signature: objects_cli::types::SignatureData {
-            signature: base64::engine::general_purpose::STANDARD.encode(b"test_signature"),
-            public_key: Some(base64::engine::general_purpose::STANDARD.encode(b"test_pk")),
-            address: None,
-            authenticator_data: Some(
-                base64::engine::general_purpose::STANDARD.encode(b"test_auth"),
-            ),
-            client_data_json: Some(
-                base64::engine::general_purpose::STANDARD.encode(b"{\"type\":\"webauthn.get\"}"),
-            ),
+            signature: base64::engine::general_purpose::STANDARD.encode([0u8; 64]),
+            public_key: base64::engine::general_purpose::STANDARD.encode([0u8; 32]),
         },
     };
 
