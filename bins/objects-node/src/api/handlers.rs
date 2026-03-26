@@ -479,8 +479,8 @@ pub async fn get_project(
     State(state): State<AppState>,
     AxumPath(id): AxumPath<String>,
 ) -> Result<Json<ProjectResponse>, NodeError> {
-    // Validate project ID format (32 hex chars)
-    if id.len() != 32 || !id.chars().all(|c| c.is_ascii_hexdigit()) {
+    // Validate project ID format (64 hex chars = full NamespaceId)
+    if id.len() != 64 || !id.chars().all(|c| c.is_ascii_hexdigit()) {
         return Err(NodeError::BadRequest(
             "Invalid project ID format".to_string(),
         ));
@@ -536,7 +536,7 @@ async fn find_replica_for_project(
     project_id: &str,
 ) -> Result<ReplicaId, NodeError> {
     // Validate project ID format (32 hex chars)
-    if project_id.len() != 32 || !project_id.chars().all(|c| c.is_ascii_hexdigit()) {
+    if project_id.len() != 64 || !project_id.chars().all(|c| c.is_ascii_hexdigit()) {
         return Err(NodeError::BadRequest(
             "Invalid project ID format".to_string(),
         ));
