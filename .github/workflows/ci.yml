@@ -80,6 +80,9 @@ jobs:
 
   semver:
     name: Semver Check
+    # Only runs when preparing a release — not on every PR.
+    # Breaking changes during development are expected.
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
