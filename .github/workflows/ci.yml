@@ -78,6 +78,16 @@ jobs:
       - name: Build workspace
         run: cargo build --workspace
 
+  semver:
+    name: Semver Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Check semver compliance
+        uses: obi1kenobi/cargo-semver-checks-action@v2
+
   e2e:
     name: E2E Tests
     runs-on: ubuntu-latest
