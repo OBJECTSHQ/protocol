@@ -2,8 +2,7 @@
 //!
 //! Tests cryptographic and validation invariants using proptest.
 
-use objects_identity::{Handle, IdentityId};
-use objects_test_utils::crypto;
+use objects_identity::{Ed25519SigningKey, Handle, IdentityId};
 use proptest::prelude::*;
 
 proptest! {
@@ -14,14 +13,10 @@ proptest! {
     /// Property: All derived identity IDs must have "obj_" prefix
     #[test]
     fn identity_id_always_has_obj_prefix(nonce in prop::array::uniform8(any::<u8>())) {
-        let key = crypto::passkey_keypair().signing_key;
-        let public_key = key.verifying_key();
-        let public_key_point = public_key.to_encoded_point(true);
-        let public_key_bytes: [u8; 33] = public_key_point.as_bytes()
-            .try_into()
-            .expect("compressed P-256 public key is 33 bytes");
+        let key = Ed25519SigningKey::generate();
+        let public_key = key.public_key_bytes();
 
-        let id = IdentityId::derive(&public_key_bytes, &nonce);
+        let id = IdentityId::derive(&public_key, &nonce);
 
         prop_assert!(
             id.as_str().starts_with("obj_"),
@@ -33,14 +28,10 @@ proptest! {
     /// Property: Identity ID length must be within RFC-001 bounds (23-25 chars)
     #[test]
     fn identity_id_length_within_bounds(nonce in prop::array::uniform8(any::<u8>())) {
-        let key = crypto::passkey_keypair().signing_key;
-        let public_key = key.verifying_key();
-        let public_key_point = public_key.to_encoded_point(true);
-        let public_key_bytes: [u8; 33] = public_key_point.as_bytes()
-            .try_into()
-            .expect("33 bytes");
+        let key = Ed25519SigningKey::generate();
+        let public_key = key.public_key_bytes();
 
-        let id = IdentityId::derive(&public_key_bytes, &nonce);
+        let id = IdentityId::derive(&public_key, &nonce);
         let len = id.as_str().len();
 
         prop_assert!(
@@ -53,15 +44,11 @@ proptest! {
     /// Property: Identity derivation is deterministic (same inputs = same output)
     #[test]
     fn identity_id_deterministic(nonce in prop::array::uniform8(any::<u8>())) {
-        let key = crypto::passkey_keypair().signing_key;
-        let public_key = key.verifying_key();
-        let public_key_point = public_key.to_encoded_point(true);
-        let public_key_bytes: [u8; 33] = public_key_point.as_bytes()
-            .try_into()
-            .expect("33 bytes");
+        let key = Ed25519SigningKey::generate();
+        let public_key = key.public_key_bytes();
 
-        let id1 = IdentityId::derive(&public_key_bytes, &nonce);
-        let id2 = IdentityId::derive(&public_key_bytes, &nonce);
+        let id1 = IdentityId::derive(&public_key, &nonce);
+        let id2 = IdentityId::derive(&public_key, &nonce);
 
         prop_assert_eq!(id1, id2, "Identity derivation must be deterministic");
     }
@@ -69,14 +56,10 @@ proptest! {
     /// Property: Identity ID parsing is lossless (derive → to_string → parse = identity)
     #[test]
     fn identity_id_parse_roundtrip(nonce in prop::array::uniform8(any::<u8>())) {
-        let key = crypto::passkey_keypair().signing_key;
-        let public_key = key.verifying_key();
-        let public_key_point = public_key.to_encoded_point(true);
-        let public_key_bytes: [u8; 33] = public_key_point.as_bytes()
-            .try_into()
-            .expect("33 bytes");
+        let key = Ed25519SigningKey::generate();
+        let public_key = key.public_key_bytes();
 
-        let id = IdentityId::derive(&public_key_bytes, &nonce);
+        let id = IdentityId::derive(&public_key, &nonce);
         let id_str = id.as_str();
 
         let parsed = IdentityId::parse(id_str)
