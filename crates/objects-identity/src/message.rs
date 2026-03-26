@@ -23,23 +23,6 @@ pub fn create_identity_message(identity_id: &str, handle: &str, timestamp: u64) 
     )
 }
 
-/// Constructs a plain text message for linking a wallet.
-///
-/// Format (per RFC-001 Section 5.2.2):
-/// ```text
-/// OBJECTS Identity Protocol v1
-/// Action: Link Wallet
-/// Identity: {identity_id}
-/// Wallet: {wallet_address}
-/// Timestamp: {timestamp}
-/// ```
-pub fn link_wallet_message(identity_id: &str, wallet_address: &str, timestamp: u64) -> String {
-    format!(
-        "{}\nAction: Link Wallet\nIdentity: {}\nWallet: {}\nTimestamp: {}",
-        PROTOCOL_HEADER, identity_id, wallet_address, timestamp
-    )
-}
-
 /// Constructs a plain text message for signing an asset.
 ///
 /// Format (per RFC-001 Section 5.3):
@@ -109,13 +92,6 @@ mod tests {
         assert!(msg.contains("Timestamp: 1704542400"));
         // Verify no trailing newline
         assert!(!msg.ends_with('\n'));
-    }
-
-    #[test]
-    fn test_link_wallet_message() {
-        let msg = link_wallet_message("obj_2dMiYc8RhnYkorPc5pVh9", "0x5678efgh", 1704542500);
-        assert!(msg.contains("Action: Link Wallet\n"));
-        assert!(msg.contains("Wallet: 0x5678efgh\n"));
     }
 
     #[test]

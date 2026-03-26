@@ -28,7 +28,7 @@ iroh-docs = "0.95"
 iroh-gossip = "0.95"
 
 # Crypto
-ed25519-dalek = { version = "2", features = ["rand_core"] }
+ed25519-dalek = { version = "3.0.0-pre", features = ["rand_core"] }
 p256 = { version = "0.13.2", features = ["ecdsa"] }
 k256 = { version = "0.13.3", features = ["ecdsa"] }
 blake3 = "1"
