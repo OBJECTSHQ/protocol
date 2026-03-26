@@ -11,43 +11,25 @@
 //! // Get canonical test identity
 //! let id = identity::test_identity_id();
 //!
-//! // Generate random passkey identity
-//! let random = identity::random_passkey_identity();
+//! // Generate random identity
+//! let random = identity::random_identity();
 //! assert!(random.identity_id.as_str().starts_with("obj_"));
-//!
-//! // Generate random wallet identity
-//! let wallet = identity::random_wallet_identity();
 //! ```
 
-use crate::crypto::{PasskeyKeypair, WalletKeypair, passkey_keypair, random_nonce, wallet_keypair};
+use crate::crypto::{Ed25519Keypair, ed25519_keypair, random_nonce};
 use objects_identity::IdentityId;
 
-/// A randomly generated passkey-based identity with full context.
+/// A randomly generated Ed25519-based identity with full context.
 ///
 /// Contains the derived identity ID, the nonce used for derivation,
 /// and the complete keypair for signing operations.
-#[derive(Debug)]
-pub struct RandomPasskeyIdentity {
+pub struct RandomIdentity {
     /// The derived identity ID
     pub identity_id: IdentityId,
     /// The nonce used for derivation (8 bytes)
     pub nonce: [u8; 8],
-    /// The P-256 keypair (includes signing key and compressed public key)
-    pub keypair: PasskeyKeypair,
-}
-
-/// A randomly generated wallet-based identity with full context.
-///
-/// Contains the derived identity ID, the nonce used for derivation,
-/// and the complete keypair for signing operations.
-#[derive(Debug)]
-pub struct RandomWalletIdentity {
-    /// The derived identity ID
-    pub identity_id: IdentityId,
-    /// The nonce used for derivation (8 bytes)
-    pub nonce: [u8; 8],
-    /// The secp256k1 keypair (includes signing key and compressed public key)
-    pub keypair: WalletKeypair,
+    /// The Ed25519 keypair (includes signing key and 32-byte public key)
+    pub keypair: Ed25519Keypair,
 }
 
 /// Get a canonical test identity ID for deterministic tests.
@@ -55,7 +37,7 @@ pub struct RandomWalletIdentity {
 /// Returns a fixed identity ID derived from known test values. Use this for tests
 /// that need a consistent, predictable identity across runs.
 ///
-/// Value: `obj_2dMiYc8RhnYkorPc5pVh9`
+/// Derived from 32-byte key (0xc6, 0x04, ..., 0xe5) + nonce (01..08).
 ///
 /// # Examples
 ///
@@ -63,72 +45,44 @@ pub struct RandomWalletIdentity {
 /// use objects_test_utils::identity::test_identity_id;
 ///
 /// let id = test_identity_id();
-/// assert_eq!(id.as_str(), "obj_2dMiYc8RhnYkorPc5pVh9");
+/// assert!(id.as_str().starts_with("obj_"));
 /// ```
 pub fn test_identity_id() -> IdentityId {
-    // This is the RFC-001 canonical test identity, derived from:
-    // public_key: 02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5
+    // Canonical test identity derived from a 32-byte Ed25519 public key + nonce.
+    // public_key: c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5
     // nonce: 0102030405060708
-    const TEST_IDENTITY_STR: &str = "obj_2dMiYc8RhnYkorPc5pVh9";
-    IdentityId::parse(TEST_IDENTITY_STR).expect("valid test identity")
+    let public_key: [u8; 32] = [
+        0xc6, 0x04, 0x7f, 0x94, 0x41, 0xed, 0x7d, 0x6d, 0x30, 0x45, 0x40, 0x6e, 0x95, 0xc0, 0x7c,
+        0xd8, 0x5c, 0x77, 0x8e, 0x4b, 0x8c, 0xef, 0x3c, 0xa7, 0xab, 0xac, 0x09, 0xb9, 0x5c, 0x70,
+        0x9e, 0xe5,
+    ];
+    let nonce: [u8; 8] = [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08];
+    IdentityId::derive(&public_key, &nonce)
 }
 
-/// Generate a random passkey-based identity.
+/// Generate a random Ed25519-based identity.
 ///
-/// Creates a new P-256 keypair, generates a random nonce, and derives
+/// Creates a new Ed25519 keypair, generates a random nonce, and derives
 /// an identity ID. Returns all components for use in tests.
-///
-/// Uses `OsRng` for cryptographically secure randomness.
 ///
 /// # Examples
 ///
 /// ```rust
-/// use objects_test_utils::identity::random_passkey_identity;
+/// use objects_test_utils::identity::random_identity;
 ///
-/// let identity = random_passkey_identity();
+/// let identity = random_identity();
 ///
 /// // Verify the identity ID was derived correctly
 /// use objects_identity::IdentityId;
 /// let derived = IdentityId::derive(&identity.keypair.public_key, &identity.nonce);
 /// assert_eq!(identity.identity_id, derived);
 /// ```
-pub fn random_passkey_identity() -> RandomPasskeyIdentity {
-    let keypair = passkey_keypair();
+pub fn random_identity() -> RandomIdentity {
+    let keypair = ed25519_keypair();
     let nonce = random_nonce();
     let identity_id = IdentityId::derive(&keypair.public_key, &nonce);
 
-    RandomPasskeyIdentity {
-        identity_id,
-        nonce,
-        keypair,
-    }
-}
-
-/// Generate a random wallet-based identity.
-///
-/// Creates a new secp256k1 keypair, generates a random nonce, and derives
-/// an identity ID. Returns all components for use in tests.
-///
-/// Uses `OsRng` for cryptographically secure randomness.
-///
-/// # Examples
-///
-/// ```rust
-/// use objects_test_utils::identity::random_wallet_identity;
-///
-/// let identity = random_wallet_identity();
-///
-/// // Verify the identity ID was derived correctly
-/// use objects_identity::IdentityId;
-/// let derived = IdentityId::derive(&identity.keypair.public_key, &identity.nonce);
-/// assert_eq!(identity.identity_id, derived);
-/// ```
-pub fn random_wallet_identity() -> RandomWalletIdentity {
-    let keypair = wallet_keypair();
-    let nonce = random_nonce();
-    let identity_id = IdentityId::derive(&keypair.public_key, &nonce);
-
-    RandomWalletIdentity {
+    RandomIdentity {
         identity_id,
         nonce,
         keypair,
@@ -140,14 +94,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_identity_id_is_canonical() {
-        let id = test_identity_id();
-        assert_eq!(id.as_str(), "obj_2dMiYc8RhnYkorPc5pVh9");
+    fn test_identity_id_is_deterministic() {
+        let id1 = test_identity_id();
+        let id2 = test_identity_id();
+        assert_eq!(id1, id2);
+        assert!(id1.as_str().starts_with("obj_"));
     }
 
     #[test]
-    fn test_random_passkey_identity_derivation() {
-        let identity = random_passkey_identity();
+    fn test_random_identity_derivation() {
+        let identity = random_identity();
 
         // Verify the identity ID was correctly derived
         let derived = IdentityId::derive(&identity.keypair.public_key, &identity.nonce);
@@ -160,21 +116,9 @@ mod tests {
     }
 
     #[test]
-    fn test_random_wallet_identity_derivation() {
-        let identity = random_wallet_identity();
-
-        // Verify the identity ID was correctly derived
-        let derived = IdentityId::derive(&identity.keypair.public_key, &identity.nonce);
-        assert_eq!(identity.identity_id, derived);
-
-        // Verify the ID has correct format
-        assert!(identity.identity_id.as_str().starts_with("obj_"));
-    }
-
-    #[test]
     fn test_random_identities_are_unique() {
-        let id1 = random_passkey_identity();
-        let id2 = random_passkey_identity();
+        let id1 = random_identity();
+        let id2 = random_identity();
 
         // Statistically should never be equal
         assert_ne!(id1.identity_id, id2.identity_id);

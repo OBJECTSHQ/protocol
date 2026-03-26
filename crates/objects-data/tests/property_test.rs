@@ -351,7 +351,7 @@ proptest! {
     // RFC Compliance
     // ========================================================================
 
-    /// Property: Project ID matches RFC-004 spec (first 16 bytes of ReplicaId → hex)
+    /// Property: Project ID matches RFC-004 spec (first 16 bytes of ReplicaId -> hex)
     #[test]
     fn prop_project_id_rfc004_compliance(
         replica_bytes in prop::collection::vec(any::<u8>(), 32..=32),
@@ -399,14 +399,13 @@ proptest! {
     }
 
     /// Property: SignedAsset verification ensures RFC-001 identity derivation
-    /// (This property test verifies that the workflow maintains identity integrity)
     #[test]
     fn prop_signed_asset_identity_derivation(
         seed in any::<u8>(),
     ) {
         // Create a complete signed asset
         let asset_id = format!("test-{}", seed);
-        let bundle = data::signed_asset_passkey(&asset_id);
+        let bundle = data::signed_asset(&asset_id);
 
         // Verification should succeed
         prop_assert!(bundle.signed_asset.verify().is_ok());
