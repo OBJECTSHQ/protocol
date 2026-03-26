@@ -88,6 +88,7 @@ cargo machete                           # Find unused dependencies
 cargo audit                             # Security vulnerability scan
 cargo expand                            # Debug macro expansions
 cargo deny check                        # License/dependency policy
+cargo semver-checks check-release       # Verify semver compliance before release
 cargo upgrade                           # Update Cargo.toml versions (cargo-edit)
 cargo install-update -a                 # Update all cargo-installed tools
 ```
@@ -188,11 +189,11 @@ proto/
 | Purpose | Library | Notes |
 |---------|---------|-------|
 | Hex encoding | `hex` | Never roll custom hex |
-| Ethereum/EIP-191 | `alloy-primitives` | Replaces deprecated ethers-rs |
-| P-256 ECDSA (WebAuthn) | `p256` | RustCrypto, audited by zkSecurity 2025 |
-| secp256k1 | `k256` | RustCrypto, constant-time |
+| Ed25519 signing | `ed25519-dalek` | RustCrypto, v3 pre-release (matches iroh's rand_core 0.9) |
 | Random bytes | `rand` with `OsRng` | OS-provided entropy |
 | Hashing | `sha2`, `blake3` | Standard implementations |
+| AEAD encryption | `chacha20poly1305` | XChaCha20-Poly1305 for vault catalog encryption |
+| Key derivation | `hkdf` | HKDF-SHA256 for vault namespace derivation |
 | P2P networking | `iroh` | Built by n0, handles Ed25519 crypto |
 | REST API testing | `tower::ServiceExt::oneshot()` | Official Axum pattern |
 
@@ -252,9 +253,9 @@ cargo build --workspace && cargo test --workspace && cargo clippy --workspace
 - Use well-tested libraries for cryptographic operations
 
 **Ask first:**
-- Adding new signer types beyond PASSKEY/WALLET
 - Modifying wire formats (Protocol Buffers schemas)
 - Changes to network parameters (ALPN, discovery topic)
+- Changes to identity derivation or vault HKDF parameters
 
 **Never:**
 - Skip signature verification on entries or announcements
@@ -292,47 +293,32 @@ let identity_id_hex = hex::encode(&identity_id_bytes);
 
 **Good:**
 ```rust
-// objects-identity/src/signature.rs
+// objects-identity/src/signature.rs — Ed25519 signature struct
 impl Signature {
-    pub fn signature_bytes(&self) -> &[u8] { ... }
-    pub fn public_key_bytes(&self) -> Option<&[u8]> { ... }
-    pub fn authenticator_data(&self) -> Option<&[u8]> { ... }
-    pub fn client_data_json(&self) -> Option<&[u8]> { ... }
+    pub fn signature_bytes(&self) -> &[u8] { ... }  // 64 bytes
+    pub fn public_key_bytes(&self) -> &[u8] { ... }  // 32 bytes
+    pub fn verify(&self, message: &[u8]) -> Result<(), Error> { ... }
 }
 
-// Usage in CLI
+// Usage
 let sig_b64 = base64::encode(signature.signature_bytes());
-let pk_b64 = signature.public_key_bytes()
-    .map(|pk| base64::encode(pk));
-```
-
-**Bad:**
-```rust
-// Exposing internal structure via pattern matching
-match signature {
-    Signature::Passkey { signature, public_key, .. } => { ... }
-}
+let pk_b64 = base64::encode(signature.public_key_bytes());
 ```
 
 ### Type Consistency Across Layers
 
 **CLI, Node, and Registry must use identical types for API contracts.** When the registry defines a request/response type, the node and CLI must match exactly.
 
-**Example:** The `SignatureData` type must be identical in:
-- `bins/objects-cli/src/types.rs`
-- `bins/objects-node/src/api/client.rs`
-- `bins/objects-registry/src/api/rest/types.rs` (as `SignatureRequest`)
+**Example:** The node's `RegistryClient` request types must match the registry's expected format:
+- `bins/objects-node/src/api/client.rs` — `CreateIdentityRequest`, `SignatureData`
+- Registry `src/api/rest/types.rs` — `CreateIdentityRequest`, `SignatureRequest`
 
-This ensures:
-- Serialization compatibility
-- No translation errors at layer boundaries
-- Consistent field naming and encoding
+The CLI is a thin client — it sends simple requests to the node (e.g., `{ handle }` for identity creation). The node handles key generation and builds the full registry request.
 
-When updating signature formats or API contracts:
+When updating API contracts:
 1. Update registry types first (source of truth)
 2. Update node client types to match
-3. Update CLI types to match
-4. Rebuild all three layers together
+3. CLI types are minimal — only update if the node's response format changes
 
 ## Test Utilities
 
@@ -343,8 +329,8 @@ use objects_test_utils::{crypto, identity, data};
 
 #[test]
 fn my_test() {
-    let id = identity::test_identity_id();  // RFC-001 canonical vector
-    let bundle = data::signed_asset_passkey("asset-123");
+    let id = identity::test_identity_id();  // Canonical test identity
+    let bundle = data::signed_asset("asset-123");  // Ed25519 signed
     assert!(bundle.signed_asset.verify().is_ok());
 }
 ```
