@@ -5,7 +5,9 @@
 use bytes::Bytes;
 use iroh_blobs::Hash;
 use iroh_docs::{AuthorId, NamespaceId};
-use objects_data::storage::{PROJECT_KEY, asset_key};
+use objects_data::encryption::{decrypt_catalog_entry, encrypt_catalog_entry};
+use objects_data::proto::ProjectCatalogEntry;
+use objects_data::storage::{CATALOG_PREFIX, PROJECT_KEY, asset_key, catalog_key};
 use objects_data::{Asset, ContentHash, Project};
 
 use crate::{BlobClient, DocsClient, Error, Result};
@@ -229,6 +231,62 @@ impl DocsClient {
             serde_json::from_slice(&bytes).map_err(|e| Error::Iroh(anyhow::anyhow!(e)))?;
 
         Ok(Some(project))
+    }
+
+    /// Stores a catalog entry in a vault replica.
+    ///
+    /// When `encryption_key` is provided, the entry is encrypted with XChaCha20-Poly1305
+    /// before writing. When `None`, the entry is stored as protobuf (backward compat for tests).
+    ///
+    /// Uses key convention: `/catalog/{project_id}`
+    pub async fn add_catalog_entry(
+        &self,
+        replica_id: NamespaceId,
+        author: AuthorId,
+        entry: &ProjectCatalogEntry,
+        encryption_key: Option<&[u8; 32]>,
+    ) -> Result<Hash> {
+        let key = catalog_key(&entry.project_id);
+        let value = match encryption_key {
+            Some(k) => encrypt_catalog_entry(entry, k)
+                .map_err(|e| Error::CatalogEncryption(e.to_string()))?,
+            None => {
+                use prost::Message;
+                entry.encode_to_vec()
+            }
+        };
+        self.set_bytes(replica_id, author, key, value).await
+    }
+
+    /// Lists all catalog entries from a vault replica.
+    ///
+    /// When `encryption_key` is provided, entries are decrypted with XChaCha20-Poly1305
+    /// after reading. When `None`, entries are parsed as protobuf.
+    pub async fn list_catalog(
+        &self,
+        blobs: &BlobClient,
+        replica_id: NamespaceId,
+        encryption_key: Option<&[u8; 32]>,
+    ) -> Result<Vec<ProjectCatalogEntry>> {
+        let entries = self.query_prefix(replica_id, CATALOG_PREFIX).await?;
+
+        let mut catalog = Vec::new();
+        for entry in entries {
+            let content_hash = self.entry_content_hash(&entry);
+            let bytes = blobs.read_to_bytes(content_hash).await?;
+            let catalog_entry = match encryption_key {
+                Some(k) => decrypt_catalog_entry(&bytes, k)
+                    .map_err(|e| Error::CatalogEncryption(e.to_string()))?,
+                None => {
+                    use prost::Message;
+                    ProjectCatalogEntry::decode(&bytes[..])
+                        .map_err(|e| Error::Iroh(anyhow::anyhow!("protobuf decode: {}", e)))?
+                }
+            };
+            catalog.push(catalog_entry);
+        }
+
+        Ok(catalog)
     }
 
     /// Lists all assets in a project replica.
