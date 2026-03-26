@@ -7,7 +7,7 @@ use objects_node::{NodeConfig, NodeState};
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 /// Wait for shutdown signal (Ctrl+C or SIGTERM).
 async fn shutdown_signal() {
@@ -129,6 +129,82 @@ async fn main() -> Result<()> {
         sync_engine: service.sync_engine().clone(),
         endpoint: service.endpoint(),
     };
+
+    // Vault startup: open vault replica and log discovered projects.
+    // This syncs catalog metadata only — does NOT download project replicas.
+    // Users can selectively pull projects via `objects vault pull <id>`.
+    // Extract signing key before any async work to avoid holding RwLock across await.
+    let vault_signing_key = node_state_arc
+        .read()
+        .unwrap()
+        .identity()
+        .and_then(|i| i.signing_key().copied());
+
+    if let Some(signing_key_bytes) = vault_signing_key {
+        {
+            match objects_identity::vault::VaultKeys::derive_from_signing_key(&signing_key_bytes) {
+                Ok(vault_keys) => {
+                    let vault_ns = vault_keys.namespace_id();
+                    let sync_engine = service.sync_engine();
+
+                    // Open the vault replica (creates if first device, syncs if exists)
+                    match sync_engine
+                        .docs()
+                        .create_replica_with_secret(vault_keys.namespace_secret().clone())
+                        .await
+                    {
+                        Ok(_) => {
+                            info!("Vault replica opened: {}", vault_ns);
+
+                            // Read catalog entries (decrypted)
+                            match sync_engine
+                                .docs()
+                                .list_catalog(
+                                    sync_engine.blobs(),
+                                    vault_ns,
+                                    Some(&vault_keys.catalog_encryption_key),
+                                )
+                                .await
+                            {
+                                Ok(entries) if entries.is_empty() => {
+                                    info!("Vault: empty (no projects)");
+                                }
+                                Ok(entries) => {
+                                    info!("Vault: {} project(s) discovered", entries.len());
+                                    for entry in &entries {
+                                        // Check if project replica exists locally
+                                        let local = sync_engine
+                                            .docs()
+                                            .list_replicas()
+                                            .await
+                                            .unwrap_or_default()
+                                            .iter()
+                                            .any(|r| hex::encode(r.as_bytes()) == entry.project_id);
+                                        let status = if local { "local" } else { "remote" };
+                                        info!(
+                                            "  {} [{}] {}",
+                                            entry.project_name,
+                                            status,
+                                            &entry.project_id[..16]
+                                        );
+                                    }
+                                }
+                                Err(e) => {
+                                    warn!("Vault: failed to read catalog: {}", e);
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            warn!("Vault: failed to open replica: {}", e);
+                        }
+                    }
+                }
+                Err(e) => {
+                    warn!("Vault: failed to derive keys: {}", e);
+                }
+            }
+        }
+    }
 
     // Create shutdown channel for coordinating tasks
     let (shutdown_tx, _shutdown_rx) = tokio::sync::broadcast::channel::<()>(1);

@@ -14,6 +14,14 @@ pub const ASSETS_PREFIX: &str = "/assets/";
 /// Prefix for reference entries.
 pub const REFS_PREFIX: &str = "/refs/";
 
+/// Prefix for catalog entries (vault).
+pub const CATALOG_PREFIX: &str = "/catalog/";
+
+/// Returns the storage key for a catalog entry.
+pub fn catalog_key(project_id: &str) -> String {
+    format!("{}{}", CATALOG_PREFIX, project_id)
+}
+
 /// Returns the storage key for an asset.
 pub fn asset_key(id: &str) -> String {
     format!("{}{}", ASSETS_PREFIX, id)
@@ -33,6 +41,8 @@ pub enum KeyType {
     Asset(String),
     /// Reference key with ID.
     Reference(String),
+    /// Catalog entry key with project ID.
+    Catalog(String),
     /// Unknown key format.
     Unknown,
 }
@@ -45,6 +55,8 @@ pub fn parse_key(key: &str) -> KeyType {
         KeyType::Asset(id.to_string())
     } else if let Some(id) = key.strip_prefix(REFS_PREFIX) {
         KeyType::Reference(id.to_string())
+    } else if let Some(id) = key.strip_prefix(CATALOG_PREFIX) {
+        KeyType::Catalog(id.to_string())
     } else {
         KeyType::Unknown
     }

@@ -10,10 +10,10 @@ pub use client::RegistryClient;
 pub use error::NodeError;
 pub use handlers::{
     AppState, NodeInfo, create_identity, create_project, get_identity, get_project, health_check,
-    list_projects, node_status,
+    list_projects, list_vault, node_status, pull_vault_project, sync_vault,
 };
 pub use routes::create_router;
 pub use types::{
     CreateProjectRequest, HealthResponse, IdentityResponse, PeerInfo, ProjectListResponse,
-    ProjectResponse, StatusResponse,
+    ProjectResponse, StatusResponse, VaultEntry, VaultResponse,
 };

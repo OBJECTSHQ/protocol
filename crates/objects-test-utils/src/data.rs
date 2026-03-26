@@ -2,17 +2,12 @@
 //!
 //! This module provides factories for creating test instances of data types with
 //! sensible defaults. All cryptographic data uses proper encoding patterns
-//! (bytes → hex encoding) as per CLAUDE.md.
+//! (bytes -> hex encoding) as per CLAUDE.md.
 
 use crate::{crypto, identity, time};
-use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
-use k256::ecdsa::SigningKey as K256SigningKey;
-use k256::ecdsa::signature::Signer as K256Signer;
 use objects_data::{Asset, ContentHash, Project, Reference, ReferenceType, SignedAsset};
 use objects_identity::message::sign_asset_message;
-use objects_identity::{IdentityId, Signature};
-use p256::ecdsa::SigningKey as P256SigningKey;
-use sha2::{Digest, Sha256};
+use objects_identity::{Ed25519SigningKey, IdentityId};
 
 /// Create a test Asset with given ID and author.
 ///
@@ -88,9 +83,9 @@ pub fn asset_with_hash(id: &str, author_id: IdentityId, hash: ContentHash) -> As
 /// assert_eq!(project.name(), "My Project");
 /// ```
 pub fn project(name: &str, owner_id: IdentityId) -> Project {
-    // Generate random project ID with proper hex encoding
+    // Project ID = full NamespaceId hex (64 chars). No truncation.
     let random_bytes = crypto::deterministic_bytes(rand::random::<u8>());
-    let id = hex::encode(&random_bytes[..16]); // Use first 16 bytes
+    let id = hex::encode(random_bytes);
 
     Project::new(
         id,
@@ -157,29 +152,28 @@ pub fn reference(source: &str, target: &str) -> Reference {
     }
 }
 
-/// Complete bundle for a passkey-signed asset.
+/// Complete bundle for an Ed25519-signed asset.
 ///
 /// Contains all components needed for testing SignedAsset verification:
 /// - The unsigned asset
-/// - The signed asset with WebAuthn signature
+/// - The signed asset with Ed25519 signature
 /// - Identity ID derived from public key + nonce
 /// - Signing key for re-signing if needed
 /// - Nonce used for identity derivation
-pub struct SignedAssetPasskeyBundle {
+pub struct SignedAssetBundle {
     pub asset: Asset,
     pub signed_asset: SignedAsset,
     pub identity_id: IdentityId,
-    pub signing_key: P256SigningKey,
+    pub signing_key: Ed25519SigningKey,
     pub nonce: [u8; 8],
 }
 
-/// Create a complete SignedAsset workflow with Passkey signer.
+/// Create a complete SignedAsset workflow with Ed25519 signer.
 ///
-/// Follows RFC-001 Section 5.3 for WebAuthn signing:
-/// 1. Generates passkey keypair and nonce
+/// 1. Generates Ed25519 keypair and nonce
 /// 2. Derives identity_id from public_key + nonce
 /// 3. Creates asset with derived identity_id as author
-/// 4. Creates WebAuthn signature (authenticator_data + client_data_json)
+/// 4. Signs the asset message with Ed25519
 /// 5. Returns complete bundle for testing
 ///
 /// # Examples
@@ -187,13 +181,13 @@ pub struct SignedAssetPasskeyBundle {
 /// ```rust
 /// use objects_test_utils::data;
 ///
-/// let bundle = data::signed_asset_passkey("asset-789");
+/// let bundle = data::signed_asset("asset-789");
 /// assert_eq!(bundle.asset.id(), "asset-789");
 /// assert_eq!(bundle.asset.author_id(), &bundle.identity_id);
 /// assert!(bundle.signed_asset.verify().is_ok());
 /// ```
-pub fn signed_asset_passkey(asset_id: &str) -> SignedAssetPasskeyBundle {
-    let keypair = crypto::passkey_keypair();
+pub fn signed_asset(asset_id: &str) -> SignedAssetBundle {
+    let keypair = crypto::ed25519_keypair();
     let nonce = crypto::random_nonce();
 
     // Derive identity_id from public_key + nonce
@@ -212,12 +206,7 @@ pub fn signed_asset_passkey(asset_id: &str) -> SignedAssetPasskeyBundle {
         timestamp,
         timestamp,
     )
-    .unwrap_or_else(|e| {
-        panic!(
-            "signed_asset_passkey failed for asset_id='{}': {:?}",
-            asset_id, e
-        )
-    });
+    .unwrap_or_else(|e| panic!("signed_asset failed for asset_id='{}': {:?}", asset_id, e));
 
     // Create message per RFC-001 Section 5.3 (uses author_id, content_hash, created_at)
     let message = sign_asset_message(
@@ -226,139 +215,12 @@ pub fn signed_asset_passkey(asset_id: &str) -> SignedAssetPasskeyBundle {
         asset.created_at(),
     );
 
-    // Create WebAuthn authenticator_data (minimal valid format per WebAuthn Level 3 spec)
-    // Format: RP ID hash (32 bytes) + flags (1 byte) + signature counter (4 bytes) = 37 bytes
-    let rp_id_hash = Sha256::digest(b"objects.foundation");
-    let flags = 0x05u8; // UP (User Present) + UV (User Verified) flags
-    let counter = 0u32.to_be_bytes();
-    let mut authenticator_data = rp_id_hash.to_vec();
-    authenticator_data.push(flags);
-    authenticator_data.extend_from_slice(&counter);
-
-    // Create client_data_json with base64url-encoded challenge
-    let challenge_b64 = URL_SAFE_NO_PAD.encode(message.as_bytes());
-    let client_data_json = format!(
-        r#"{{"type":"webauthn.get","challenge":"{}"}}"#,
-        challenge_b64
-    )
-    .into_bytes();
-
-    // Compute what WebAuthn signs: authenticator_data || SHA256(client_data_json)
-    let client_data_hash = Sha256::digest(&client_data_json);
-    let mut signed_data = authenticator_data.clone();
-    signed_data.extend_from_slice(&client_data_hash);
-
-    // Sign with P-256
-    let p256_sig: p256::ecdsa::Signature = keypair.signing_key.sign(&signed_data);
-
-    let signature = Signature::Passkey {
-        signature: p256_sig.to_der().to_bytes().to_vec(),
-        public_key: keypair.public_key.to_vec(),
-        authenticator_data,
-        client_data_json,
-    };
+    // Sign with Ed25519
+    let signature = keypair.signing_key.sign(message.as_bytes());
 
     let signed_asset = SignedAsset::new(asset.clone(), signature, nonce);
 
-    SignedAssetPasskeyBundle {
-        asset,
-        signed_asset,
-        identity_id,
-        signing_key: keypair.signing_key,
-        nonce,
-    }
-}
-
-/// Complete bundle for a wallet-signed asset.
-///
-/// Contains all components needed for testing EIP-191 SignedAsset verification.
-pub struct SignedAssetWalletBundle {
-    pub asset: Asset,
-    pub signed_asset: SignedAsset,
-    pub identity_id: IdentityId,
-    pub signing_key: K256SigningKey,
-    pub nonce: [u8; 8],
-}
-
-/// Create a complete SignedAsset workflow with Wallet signer (EIP-191).
-///
-/// Follows RFC-001 Section 5.3 for EIP-191 wallet signing:
-/// 1. Generates secp256k1 keypair and nonce
-/// 2. Derives identity_id from public_key + nonce
-/// 3. Creates asset with derived identity_id as author
-/// 4. Creates EIP-191 signature with Keccak256 hash
-/// 5. Returns complete bundle for testing
-///
-/// # Examples
-///
-/// ```rust
-/// use objects_test_utils::data;
-///
-/// let bundle = data::signed_asset_wallet("wallet-asset");
-/// assert_eq!(bundle.asset.id(), "wallet-asset");
-/// assert!(bundle.signed_asset.verify().is_ok());
-/// ```
-pub fn signed_asset_wallet(asset_id: &str) -> SignedAssetWalletBundle {
-    let keypair = crypto::wallet_keypair();
-    let nonce = crypto::random_nonce();
-
-    // Derive identity_id from public_key + nonce
-    let identity_id = IdentityId::derive(&keypair.public_key, &nonce);
-
-    // Create asset with correct author_id
-    let content_hash = ContentHash::new(crypto::deterministic_bytes(99));
-    let timestamp = time::now();
-    let asset = Asset::new(
-        asset_id.to_string(),
-        "Wallet Test Asset".to_string(),
-        identity_id.clone(),
-        content_hash,
-        2048,
-        Some("text/plain".to_string()),
-        timestamp,
-        timestamp,
-    )
-    .expect("valid asset");
-
-    // Create message per RFC-001 Section 5.3
-    let message = sign_asset_message(
-        asset.author_id().as_str(),
-        &asset.content_hash().to_hex(),
-        asset.created_at(),
-    );
-
-    // Hash with Keccak256 for EIP-191
-    use alloy_primitives::keccak256;
-    let eip191_prefix = format!("\x19Ethereum Signed Message:\n{}", message.len());
-    let mut prefixed = eip191_prefix.as_bytes().to_vec();
-    prefixed.extend_from_slice(message.as_bytes());
-    let message_hash = keccak256(&prefixed);
-
-    // Sign with secp256k1 and get recoverable signature
-    let (signature_der, recovery_id) = keypair
-        .signing_key
-        .sign_prehash_recoverable(message_hash.as_slice())
-        .expect("signing failed");
-
-    // Get signature bytes (r || s || v format) and derive Ethereum address
-    let mut signature_bytes = signature_der.to_bytes().to_vec();
-    signature_bytes.push(recovery_id.to_byte());
-
-    // Derive Ethereum address from public key
-    let verifying_key = keypair.signing_key.verifying_key();
-    let public_key_point = verifying_key.to_encoded_point(false);
-    let public_key_bytes_uncompressed = public_key_point.as_bytes();
-    let pub_key_hash = alloy_primitives::keccak256(&public_key_bytes_uncompressed[1..]);
-    let address = format!("0x{}", hex::encode(&pub_key_hash[12..]));
-
-    let signature = Signature::Wallet {
-        signature: signature_bytes,
-        address,
-    };
-
-    let signed_asset = SignedAsset::new(asset.clone(), signature, nonce);
-
-    SignedAssetWalletBundle {
+    SignedAssetBundle {
         asset,
         signed_asset,
         identity_id,
@@ -413,51 +275,17 @@ mod tests {
     }
 
     #[test]
-    fn test_signed_asset_passkey_bundle_verifies() {
-        let bundle = signed_asset_passkey("passkey-asset");
-        assert_eq!(bundle.asset.id(), "passkey-asset");
+    fn test_signed_asset_bundle_verifies() {
+        let bundle = signed_asset("test-asset");
+        assert_eq!(bundle.asset.id(), "test-asset");
         assert_eq!(bundle.asset.author_id(), &bundle.identity_id);
         assert!(bundle.signed_asset.verify().is_ok());
     }
 
     #[test]
-    fn test_signed_asset_passkey_author_matches_derived_id() {
-        let bundle = signed_asset_passkey("test-id-match");
-        let derived_id = IdentityId::derive(
-            &bundle
-                .signing_key
-                .verifying_key()
-                .to_encoded_point(true)
-                .as_bytes()
-                .try_into()
-                .unwrap(),
-            &bundle.nonce,
-        );
-        assert_eq!(bundle.identity_id, derived_id);
-        assert_eq!(bundle.asset.author_id(), &derived_id);
-    }
-
-    #[test]
-    fn test_signed_asset_wallet_bundle_verifies() {
-        let bundle = signed_asset_wallet("wallet-asset");
-        assert_eq!(bundle.asset.id(), "wallet-asset");
-        assert_eq!(bundle.asset.author_id(), &bundle.identity_id);
-        assert!(bundle.signed_asset.verify().is_ok());
-    }
-
-    #[test]
-    fn test_signed_asset_wallet_author_matches_derived_id() {
-        let bundle = signed_asset_wallet("wallet-id-match");
-        let derived_id = IdentityId::derive(
-            &bundle
-                .signing_key
-                .verifying_key()
-                .to_encoded_point(true)
-                .as_bytes()
-                .try_into()
-                .unwrap(),
-            &bundle.nonce,
-        );
+    fn test_signed_asset_author_matches_derived_id() {
+        let bundle = signed_asset("test-id-match");
+        let derived_id = IdentityId::derive(&bundle.signing_key.public_key_bytes(), &bundle.nonce);
         assert_eq!(bundle.identity_id, derived_id);
         assert_eq!(bundle.asset.author_id(), &derived_id);
     }

@@ -10,7 +10,7 @@ use base64::Engine;
 use objects_cli::client::NodeClient;
 use objects_cli::types::{CreateIdentityRequest, SignatureData};
 use objects_identity::{
-    IdentityId, PasskeySigningKey, generate_nonce, message::create_identity_message,
+    Ed25519SigningKey, IdentityId, generate_nonce, message::create_identity_message,
 };
 use objects_transport::NodeAddr;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -112,11 +112,8 @@ impl TestHarness {
 
     /// Register a single identity on a node with a specified handle.
     async fn register_identity(&self, node_url: &str, handle: &str) -> Result<()> {
-        let signing_key = PasskeySigningKey::generate();
-        let public_key_bytes = signing_key.public_key();
-        let public_key: [u8; 33] = public_key_bytes
-            .try_into()
-            .map_err(|_| anyhow::anyhow!("Public key must be 33 bytes"))?;
+        let signing_key = Ed25519SigningKey::generate();
+        let public_key = signing_key.public_key_bytes();
 
         let nonce = generate_nonce();
         let identity_id = IdentityId::derive(&public_key, &nonce);
@@ -127,22 +124,13 @@ impl TestHarness {
         let signature_data = SignatureData {
             signature: base64::engine::general_purpose::STANDARD
                 .encode(signature.signature_bytes()),
-            public_key: signature
-                .public_key_bytes()
-                .map(|pk| base64::engine::general_purpose::STANDARD.encode(pk)),
-            address: signature.address().map(|a| a.to_string()),
-            authenticator_data: signature
-                .authenticator_data()
-                .map(|ad| base64::engine::general_purpose::STANDARD.encode(ad)),
-            client_data_json: signature
-                .client_data_json()
-                .map(|cdj| base64::engine::general_purpose::STANDARD.encode(cdj)),
+            public_key: base64::engine::general_purpose::STANDARD
+                .encode(signature.public_key_bytes()),
         };
 
         let request = CreateIdentityRequest {
             handle: handle.to_string(),
-            signer_type: "PASSKEY".to_string(),
-            signer_public_key: base64::engine::general_purpose::STANDARD.encode(public_key),
+            public_key: base64::engine::general_purpose::STANDARD.encode(public_key),
             nonce: base64::engine::general_purpose::STANDARD.encode(nonce),
             timestamp,
             signature: signature_data,

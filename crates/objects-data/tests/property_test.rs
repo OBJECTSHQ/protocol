@@ -81,10 +81,10 @@ proptest! {
         }
     }
 
-    /// Property: Project IDs must always be exactly 32 hex characters
+    /// Property: Project IDs must always be exactly 64 hex characters (full NamespaceId)
     #[test]
     fn prop_project_id_format(
-        id in "[0-9a-f]{32}",
+        id in "[0-9a-f]{64}",
     ) {
         let owner_id = identity::test_identity_id();
         let timestamp = time::now();
@@ -100,13 +100,13 @@ proptest! {
 
         prop_assert!(
             result.is_ok(),
-            "32 hex char project ID '{}' should be valid",
+            "64 hex char project ID '{}' should be valid",
             id
         );
 
         // Verify length invariant
         if let Ok(project) = result {
-            prop_assert_eq!(project.id().len(), 32);
+            prop_assert_eq!(project.id().len(), 64);
             prop_assert!(project.id().chars().all(|c| c.is_ascii_hexdigit()));
         }
     }
@@ -118,7 +118,7 @@ proptest! {
         offset in 0u64..1000u64,
     ) {
         let owner_id = identity::test_identity_id();
-        let id = "a".repeat(32);
+        let id = "a".repeat(64);
         let updated = created + offset;
 
         let result = Project::new(
@@ -205,7 +205,7 @@ proptest! {
         name in ".+",
     ) {
         let owner_id = identity::test_identity_id();
-        let id = "b".repeat(32);
+        let id = "b".repeat(64);
         let timestamp = time::now();
 
         let project = Project::new(
@@ -303,9 +303,9 @@ proptest! {
         prop_assert_eq!(&id1, &id2);
         prop_assert_eq!(&id2, &id3);
 
-        // Should be 32 hex chars (first 16 bytes of replica_id)
-        prop_assert_eq!(id1.len(), 32);
-        prop_assert_eq!(&id1, &hex::encode(&replica_id[..16]));
+        // Should be 64 hex chars (full 32 bytes of replica_id)
+        prop_assert_eq!(id1.len(), 64);
+        prop_assert_eq!(&id1, &hex::encode(replica_id));
     }
 
     /// Property: Storage keys are deterministic
@@ -351,7 +351,7 @@ proptest! {
     // RFC Compliance
     // ========================================================================
 
-    /// Property: Project ID matches RFC-004 spec (first 16 bytes of ReplicaId → hex)
+    /// Property: Project ID matches RFC-004 spec (full NamespaceId hex)
     #[test]
     fn prop_project_id_rfc004_compliance(
         replica_bytes in prop::collection::vec(any::<u8>(), 32..=32),
@@ -360,12 +360,12 @@ proptest! {
 
         let project_id = project_id_from_replica(&replica_id);
 
-        // RFC-004: Project ID is hex encoding of first 16 bytes
-        let expected = hex::encode(&replica_id[..16]);
+        // Project ID = full NamespaceId hex (64 chars). No truncation.
+        let expected = hex::encode(replica_id);
         prop_assert_eq!(&project_id, &expected);
 
-        // Must be exactly 32 hex characters
-        prop_assert_eq!(project_id.len(), 32);
+        // Must be exactly 64 hex characters
+        prop_assert_eq!(project_id.len(), 64);
         prop_assert!(project_id.chars().all(|c| c.is_ascii_hexdigit()));
     }
 
@@ -399,14 +399,13 @@ proptest! {
     }
 
     /// Property: SignedAsset verification ensures RFC-001 identity derivation
-    /// (This property test verifies that the workflow maintains identity integrity)
     #[test]
     fn prop_signed_asset_identity_derivation(
         seed in any::<u8>(),
     ) {
         // Create a complete signed asset
         let asset_id = format!("test-{}", seed);
-        let bundle = data::signed_asset_passkey(&asset_id);
+        let bundle = data::signed_asset(&asset_id);
 
         // Verification should succeed
         prop_assert!(bundle.signed_asset.verify().is_ok());

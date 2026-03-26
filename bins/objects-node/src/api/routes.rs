@@ -2,8 +2,8 @@
 
 use super::handlers::{
     AppState, add_asset, create_identity, create_project, create_ticket, get_asset_content,
-    get_identity, get_project, health_check, list_assets, list_peers, list_projects, node_status,
-    redeem_ticket,
+    get_identity, get_project, health_check, list_assets, list_peers, list_projects, list_vault,
+    node_status, pull_vault_project, redeem_ticket, sync_vault,
 };
 use axum::{Router, routing::get, routing::post};
 
@@ -24,6 +24,9 @@ use axum::{Router, routing::get, routing::post};
 /// - `GET /projects/:id/assets/:asset_id/content` - Get asset content
 /// - `POST /tickets` - Create share ticket
 /// - `POST /tickets/redeem` - Redeem share ticket
+/// - `GET /vault` - List vault catalog entries
+/// - `POST /vault/sync` - Trigger vault metadata sync
+/// - `POST /vault/sync/:project_id` - Pull a specific project from vault
 pub fn create_router(state: AppState) -> Router {
     Router::new()
         .route("/health", get(health_check))
@@ -39,6 +42,9 @@ pub fn create_router(state: AppState) -> Router {
         )
         .route("/tickets", post(create_ticket))
         .route("/tickets/redeem", post(redeem_ticket))
+        .route("/vault", get(list_vault))
+        .route("/vault/sync", post(sync_vault))
+        .route("/vault/sync/{project_id}", post(pull_vault_project))
         .with_state(state)
 }
 

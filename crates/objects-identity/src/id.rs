@@ -1,8 +1,8 @@
 //! Identity ID derivation and validation.
 //!
-//! Identity IDs are derived from a signer's public key and a random nonce:
+//! Identity IDs are derived from an Ed25519 public key and a random nonce:
 //! ```text
-//! identity_id = "obj_" || base58(truncate(sha256(signer_public_key || nonce), 15))
+//! identity_id = "obj_" || base58(truncate(sha256(public_key || nonce), 15))
 //! ```
 
 use rand::RngCore;
@@ -39,14 +39,14 @@ pub fn generate_nonce() -> [u8; NONCE_SIZE] {
 pub struct IdentityId(String);
 
 impl IdentityId {
-    /// Derives an identity ID from a signer's public key and nonce.
+    /// Derives an identity ID from an Ed25519 public key and nonce.
     ///
     /// # Arguments
-    /// * `signer_public_key` - 33-byte compressed SEC1 public key
+    /// * `public_key` - 32-byte Ed25519 public key
     /// * `nonce` - 8-byte random nonce
-    pub fn derive(signer_public_key: &[u8; 33], nonce: &[u8; 8]) -> Self {
+    pub fn derive(public_key: &[u8; 32], nonce: &[u8; 8]) -> Self {
         let mut hasher = Sha256::new();
-        hasher.update(signer_public_key);
+        hasher.update(public_key);
         hasher.update(nonce);
         let hash = hasher.finalize();
 
@@ -124,26 +124,40 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_derive_identity_id_from_rfc_vector() {
-        // Test vector from RFC-001 Appendix B
-        // SHA256(pub_key || nonce) = 3a26513646a95b6cefac3cbe0a6b8053401956aaaa4c374e1f83521be5ab0a1f
-        // Truncated 15 bytes = 3a26513646a95b6cefac3cbe0a6b80
-        // Base58 = 2dMiYc8RhnYkorPc5pVh9
-        let public_key: [u8; 33] = [
-            0x02, 0xc6, 0x04, 0x7f, 0x94, 0x41, 0xed, 0x7d, 0x6d, 0x30, 0x45, 0x40, 0x6e, 0x95,
-            0xc0, 0x7c, 0xd8, 0x5c, 0x77, 0x8e, 0x4b, 0x8c, 0xef, 0x3c, 0xa7, 0xab, 0xac, 0x09,
-            0xb9, 0x5c, 0x70, 0x9e, 0xe5,
+    fn test_derive_identity_id_deterministic() {
+        // Fixed inputs required to verify deterministic derivation
+        let public_key: [u8; 32] = [
+            0xc6, 0x04, 0x7f, 0x94, 0x41, 0xed, 0x7d, 0x6d, 0x30, 0x45, 0x40, 0x6e, 0x95, 0xc0,
+            0x7c, 0xd8, 0x5c, 0x77, 0x8e, 0x4b, 0x8c, 0xef, 0x3c, 0xa7, 0xab, 0xac, 0x09, 0xb9,
+            0x5c, 0x70, 0x9e, 0xe5,
         ];
-        let nonce: [u8; 8] = [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08];
+        let nonce = generate_nonce();
 
-        let id = IdentityId::derive(&public_key, &nonce);
-        assert_eq!(id.as_str(), "obj_2dMiYc8RhnYkorPc5pVh9");
+        let id1 = IdentityId::derive(&public_key, &nonce);
+        let id2 = IdentityId::derive(&public_key, &nonce);
+        assert_eq!(id1, id2, "Same inputs must produce same ID");
+        assert!(id1.as_str().starts_with("obj_"));
+    }
+
+    #[test]
+    fn test_derive_different_keys_different_ids() {
+        let key1 = [1u8; 32];
+        let key2 = [2u8; 32];
+        let nonce = generate_nonce();
+
+        let id1 = IdentityId::derive(&key1, &nonce);
+        let id2 = IdentityId::derive(&key2, &nonce);
+        assert_ne!(id1, id2);
     }
 
     #[test]
     fn test_parse_valid_identity_id() {
-        let id = IdentityId::parse("obj_2dMiYc8RhnYkorPc5pVh9").unwrap();
-        assert_eq!(id.as_str(), "obj_2dMiYc8RhnYkorPc5pVh9");
+        let public_key = [42u8; 32];
+        let nonce = generate_nonce();
+        let id = IdentityId::derive(&public_key, &nonce);
+
+        let parsed = IdentityId::parse(id.as_str()).unwrap();
+        assert_eq!(parsed, id);
     }
 
     #[test]

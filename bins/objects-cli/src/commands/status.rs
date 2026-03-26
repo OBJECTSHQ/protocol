@@ -24,7 +24,6 @@ pub async fn run(client: &NodeClient) -> Result<(), CliError> {
         println!("\nIdentity:");
         println!("  ID:     {}", id.id);
         println!("  Handle: {}", id.handle);
-        println!("  Signer: {}", id.signer_type);
     } else {
         println!("\nIdentity: Not registered");
     }
