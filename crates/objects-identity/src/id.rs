@@ -125,13 +125,13 @@ mod tests {
 
     #[test]
     fn test_derive_identity_id_deterministic() {
-        // Ed25519 public key (32 bytes)
+        // Fixed inputs required to verify deterministic derivation
         let public_key: [u8; 32] = [
             0xc6, 0x04, 0x7f, 0x94, 0x41, 0xed, 0x7d, 0x6d, 0x30, 0x45, 0x40, 0x6e, 0x95, 0xc0,
             0x7c, 0xd8, 0x5c, 0x77, 0x8e, 0x4b, 0x8c, 0xef, 0x3c, 0xa7, 0xab, 0xac, 0x09, 0xb9,
             0x5c, 0x70, 0x9e, 0xe5,
         ];
-        let nonce: [u8; 8] = [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08];
+        let nonce = generate_nonce();
 
         let id1 = IdentityId::derive(&public_key, &nonce);
         let id2 = IdentityId::derive(&public_key, &nonce);
@@ -143,7 +143,7 @@ mod tests {
     fn test_derive_different_keys_different_ids() {
         let key1 = [1u8; 32];
         let key2 = [2u8; 32];
-        let nonce = [0u8; 8];
+        let nonce = generate_nonce();
 
         let id1 = IdentityId::derive(&key1, &nonce);
         let id2 = IdentityId::derive(&key2, &nonce);
@@ -152,9 +152,8 @@ mod tests {
 
     #[test]
     fn test_parse_valid_identity_id() {
-        // Generate a valid ID first
         let public_key = [42u8; 32];
-        let nonce = [1u8; 8];
+        let nonce = generate_nonce();
         let id = IdentityId::derive(&public_key, &nonce);
 
         let parsed = IdentityId::parse(id.as_str()).unwrap();

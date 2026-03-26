@@ -50,7 +50,7 @@ fn test_identity_lifecycle(signing_key: Ed25519SigningKey) {
     assert_eq!(identity_id, identity_id_2);
 
     // 6. Verify uniqueness - different nonce = different ID
-    let different_nonce = [255, 254, 253, 252, 251, 250, 249, 248];
+    let different_nonce = generate_nonce();
     let identity_id_3 = IdentityId::derive(&public_key, &different_nonce);
     assert_ne!(identity_id, identity_id_3);
 }
@@ -185,7 +185,7 @@ fn test_vault_key_uniqueness() {
 #[test]
 fn test_message_format_create_identity() {
     let key = Ed25519SigningKey::generate();
-    let nonce = [1u8; 8];
+    let nonce = generate_nonce();
     let identity_id = IdentityId::derive(&key.public_key_bytes(), &nonce);
     let timestamp = 1704067200;
 
@@ -201,7 +201,7 @@ fn test_message_format_create_identity() {
 #[test]
 fn test_message_format_sign_asset() {
     let key = Ed25519SigningKey::generate();
-    let nonce = [1u8; 8];
+    let nonce = generate_nonce();
     let identity_id = IdentityId::derive(&key.public_key_bytes(), &nonce);
     let content_hash = hex::encode(crypto::deterministic_bytes(42));
     let timestamp = time::now();
@@ -231,7 +231,7 @@ fn test_message_format_authenticate() {
 #[test]
 fn test_message_format_change_handle() {
     let key = Ed25519SigningKey::generate();
-    let nonce = [1u8; 8];
+    let nonce = generate_nonce();
     let identity_id = IdentityId::derive(&key.public_key_bytes(), &nonce);
     let new_handle = "bob";
     let timestamp = time::now();
