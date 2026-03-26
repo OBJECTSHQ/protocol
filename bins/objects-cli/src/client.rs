@@ -52,7 +52,7 @@ impl NodeClient {
     }
 
     /// Create an identity. The node handles key generation — CLI just sends the handle.
-    pub async fn create_identity_simple<T: serde::Serialize>(
+    pub async fn create_identity<T: serde::Serialize>(
         &self,
         req: T,
     ) -> Result<IdentityResponse, CliError> {

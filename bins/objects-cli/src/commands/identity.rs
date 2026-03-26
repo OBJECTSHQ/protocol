@@ -19,7 +19,7 @@ pub async fn create(handle: String, client: &NodeClient) -> Result<(), CliError>
         handle: handle.to_string(),
     };
 
-    let response = client.create_identity_simple(request).await?;
+    let response = client.create_identity(request).await?;
 
     println!("Identity created");
     println!("  ID:     {}", response.id);
