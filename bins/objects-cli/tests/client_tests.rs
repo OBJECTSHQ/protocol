@@ -57,7 +57,7 @@ async fn test_status_success() {
             "identity": {
                 "id": "obj_test123",
                 "handle": "@alice",
-                "nonce": "0102030405060708",
+                "nonce": "AQIDBAUGBwg=",
             },
             "relay_url": "https://relay.objects.foundation"
         })))
@@ -83,7 +83,7 @@ async fn test_get_identity_success() {
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "id": "obj_test123",
             "handle": "@alice",
-            "nonce": "0102030405060708"
+            "nonce": "AQIDBAUGBwg="
         })))
         .mount(&mock)
         .await;
@@ -125,7 +125,7 @@ async fn test_create_identity_success() {
         .respond_with(ResponseTemplate::new(201).set_body_json(json!({
             "id": "obj_test123",
             "handle": "@alice",
-            "nonce": "0102030405060708"
+            "nonce": "AQIDBAUGBwg="
         })))
         .mount(&mock)
         .await;
@@ -134,7 +134,7 @@ async fn test_create_identity_success() {
     let request = objects_cli::types::CreateIdentityRequest {
         handle: "@alice".to_string(),
         public_key: base64::engine::general_purpose::STANDARD.encode([0u8; 32]),
-        nonce: base64::engine::general_purpose::STANDARD.encode(b"testnonce"),
+        nonce: base64::engine::general_purpose::STANDARD.encode(&objects_identity::generate_nonce()),
         timestamp: 1234567890,
         signature: objects_cli::types::SignatureData {
             signature: base64::engine::general_purpose::STANDARD.encode([0u8; 64]),
@@ -164,7 +164,7 @@ async fn test_create_identity_conflict() {
     let request = objects_cli::types::CreateIdentityRequest {
         handle: "@alice".to_string(),
         public_key: base64::engine::general_purpose::STANDARD.encode([0u8; 32]),
-        nonce: base64::engine::general_purpose::STANDARD.encode(b"testnonce"),
+        nonce: base64::engine::general_purpose::STANDARD.encode(&objects_identity::generate_nonce()),
         timestamp: 1234567890,
         signature: objects_cli::types::SignatureData {
             signature: base64::engine::general_purpose::STANDARD.encode([0u8; 64]),

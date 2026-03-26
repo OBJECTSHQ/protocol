@@ -115,7 +115,7 @@ mod tests {
         let mock_response = IdentityResponse {
             id: "obj_test123".to_string(),
             handle: "@alice".to_string(),
-            nonce: "0102030405060708".to_string(),
+            nonce: "AQIDBAUGBwg=".to_string(),
         };
 
         Mock::given(method("POST"))
@@ -131,7 +131,7 @@ mod tests {
         let request = CreateIdentityRequest {
             handle: "@alice".to_string(),
             public_key: base64::engine::general_purpose::STANDARD.encode([0u8; 32]),
-            nonce: "0102030405060708".to_string(),
+            nonce: "AQIDBAUGBwg=".to_string(),
             timestamp: 1234567890,
             signature: SignatureData {
                 signature: base64::engine::general_purpose::STANDARD.encode([0u8; 64]),
@@ -170,7 +170,7 @@ mod tests {
         let request = CreateIdentityRequest {
             handle: "@alice".to_string(),
             public_key: base64::engine::general_purpose::STANDARD.encode([0u8; 32]),
-            nonce: "0102030405060708".to_string(),
+            nonce: "AQIDBAUGBwg=".to_string(),
             timestamp: 1234567890,
             signature: SignatureData {
                 signature: base64::engine::general_purpose::STANDARD.encode([0u8; 64]),
@@ -196,7 +196,7 @@ mod tests {
         let mock_response = IdentityResponse {
             id: "obj_test123".to_string(),
             handle: "@bob".to_string(),
-            nonce: "0102030405060708".to_string(),
+            nonce: "AQIDBAUGBwg=".to_string(),
         };
 
         Mock::given(method("GET"))

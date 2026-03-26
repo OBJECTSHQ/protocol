@@ -13,7 +13,7 @@ async fn test_identity_create() {
         .respond_with(ResponseTemplate::new(201).set_body_json(json!({
             "id": "obj_test123",
             "handle": "@alice",
-            "nonce": "0102030405060708",
+            "nonce": "AQIDBAUGBwg=",
         })))
         .mount(&mock)
         .await;
@@ -32,7 +32,7 @@ async fn test_identity_create_with_at_prefix() {
         .respond_with(ResponseTemplate::new(201).set_body_json(json!({
             "id": "obj_test456",
             "handle": "@bob",
-            "nonce": "0102030405060708",
+            "nonce": "AQIDBAUGBwg=",
         })))
         .mount(&mock)
         .await;
@@ -51,7 +51,7 @@ async fn test_identity_show_found() {
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "id": "obj_test789",
             "handle": "@charlie",
-            "nonce": "0102030405060708",
+            "nonce": "AQIDBAUGBwg=",
         })))
         .mount(&mock)
         .await;
