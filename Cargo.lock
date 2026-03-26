@@ -3531,15 +3531,11 @@ dependencies = [
 name = "objects-data"
 version = "0.1.0"
 dependencies = [
- "alloy-primitives",
- "base64",
  "blake3",
  "chacha20poly1305",
  "hex",
- "k256",
  "objects-identity",
  "objects-test-utils",
- "p256",
  "proptest",
  "prost",
  "prost-build",
@@ -3548,7 +3544,6 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_test",
- "sha2 0.10.9",
  "thiserror 2.0.18",
  "tokio",
  "tokio-test",
@@ -3632,6 +3627,7 @@ dependencies = [
  "objects-identity",
  "objects-test-utils",
  "objects-transport",
+ "prost",
  "serde",
  "serde_json",
  "serial_test",
