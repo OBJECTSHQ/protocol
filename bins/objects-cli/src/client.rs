@@ -51,9 +51,10 @@ impl NodeClient {
         }
     }
 
-    pub async fn create_identity(
+    /// Create an identity. The node handles key generation — CLI just sends the handle.
+    pub async fn create_identity<T: serde::Serialize>(
         &self,
-        req: CreateIdentityRequest,
+        req: T,
     ) -> Result<IdentityResponse, CliError> {
         let url = format!("{}/identity", self.base_url);
         let response = self.client.post(&url).json(&req).send().await?;
@@ -184,6 +185,46 @@ impl NodeClient {
         let response = self.client.post(&url).json(&req).send().await?;
 
         if response.status() == StatusCode::CREATED {
+            Ok(response.json().await?)
+        } else {
+            Err(self.error_from_response(response).await)
+        }
+    }
+
+    // =========================================================================
+    // Vault Operations
+    // =========================================================================
+
+    /// List vault catalog entries.
+    pub async fn vault_list(&self) -> Result<crate::types::VaultResponse, CliError> {
+        let url = format!("{}/vault", self.base_url);
+        let response = self.client.get(&url).send().await?;
+
+        if response.status() == StatusCode::OK {
+            Ok(response.json().await?)
+        } else {
+            Err(self.error_from_response(response).await)
+        }
+    }
+
+    /// Trigger vault metadata sync.
+    pub async fn vault_sync(&self) -> Result<serde_json::Value, CliError> {
+        let url = format!("{}/vault/sync", self.base_url);
+        let response = self.client.post(&url).send().await?;
+
+        if response.status() == StatusCode::OK {
+            Ok(response.json().await?)
+        } else {
+            Err(self.error_from_response(response).await)
+        }
+    }
+
+    /// Pull a specific project from the vault.
+    pub async fn vault_pull(&self, project_id: &str) -> Result<serde_json::Value, CliError> {
+        let url = format!("{}/vault/sync/{}", self.base_url, project_id);
+        let response = self.client.post(&url).send().await?;
+
+        if response.status() == StatusCode::OK {
             Ok(response.json().await?)
         } else {
             Err(self.error_from_response(response).await)

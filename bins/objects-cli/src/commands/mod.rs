@@ -4,3 +4,4 @@ pub mod init;
 pub mod project;
 pub mod status;
 pub mod ticket;
+pub mod vault;

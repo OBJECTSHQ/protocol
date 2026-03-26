@@ -83,9 +83,9 @@ pub fn asset_with_hash(id: &str, author_id: IdentityId, hash: ContentHash) -> As
 /// assert_eq!(project.name(), "My Project");
 /// ```
 pub fn project(name: &str, owner_id: IdentityId) -> Project {
-    // Generate random project ID with proper hex encoding
+    // Project ID = full NamespaceId hex (64 chars). No truncation.
     let random_bytes = crypto::deterministic_bytes(rand::random::<u8>());
-    let id = hex::encode(&random_bytes[..16]); // Use first 16 bytes
+    let id = hex::encode(random_bytes);
 
     Project::new(
         id,

@@ -208,6 +208,30 @@ pub struct RedeemTicketRequest {
     pub ticket: String,
 }
 
+// =============================================================================
+// Vault Types
+// =============================================================================
+
+/// Response containing vault catalog entries.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VaultResponse {
+    /// List of projects in the vault catalog.
+    pub entries: Vec<VaultEntry>,
+}
+
+/// A single entry in the vault catalog.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VaultEntry {
+    /// Project ID (32 hex characters).
+    pub project_id: String,
+    /// Human-readable project name.
+    pub name: String,
+    /// Unix timestamp when project was created.
+    pub created_at: u64,
+    /// Whether the project replica exists locally on this device.
+    pub local: bool,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -317,7 +341,7 @@ mod tests {
 
         let owner_id = IdentityId::parse("obj_2dMiYc8RhnYkorPc5pVh9").unwrap();
         let project = Project::new(
-            "a".repeat(32),
+            "a".repeat(64), // Full NamespaceId hex (64 chars)
             "Test Project".to_string(),
             Some("A test project".to_string()),
             owner_id,
@@ -327,7 +351,7 @@ mod tests {
         .unwrap();
 
         let response = ProjectResponse::from(&project);
-        assert_eq!(response.id, "a".repeat(32));
+        assert_eq!(response.id, "a".repeat(64));
         assert_eq!(response.name, "Test Project");
         assert_eq!(response.description, Some("A test project".to_string()));
         assert_eq!(response.owner_id, "obj_2dMiYc8RhnYkorPc5pVh9");

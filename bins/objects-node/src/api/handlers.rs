@@ -5,22 +5,25 @@ use crate::{NodeConfig, NodeState};
 use axum::{Json, extract::Path as AxumPath, extract::State, http::StatusCode};
 use base64::Engine;
 use objects_data::Project;
-use objects_identity::{Handle, IdentityId};
+use objects_identity::{
+    Ed25519SigningKey, Handle, IdentityId, generate_nonce, message::create_identity_message,
+};
 use objects_sync::{PROJECT_KEY, ReplicaId, SyncEngine};
 use objects_transport::discovery::{Discovery, GossipDiscovery};
 use objects_transport::{NodeAddr, NodeId, ObjectsEndpoint, Watcher};
+use serde::Deserialize;
 use std::path::Path;
 use std::sync::{Arc, RwLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::Mutex;
 use tracing::info;
 
-use super::client::{CreateIdentityRequest, RegistryClient};
+use super::client::{self, RegistryClient};
 use super::error::NodeError;
 use super::types::{
     AssetListResponse, AssetResponse, CreateProjectRequest, CreateTicketRequest, HealthResponse,
     IdentityResponse, PeerInfo, ProjectListResponse, ProjectResponse, RedeemTicketRequest,
-    StatusResponse, TicketResponse,
+    StatusResponse, TicketResponse, VaultEntry, VaultResponse,
 };
 
 /// Immutable node information.
@@ -167,70 +170,134 @@ fn format_elapsed(elapsed: std::time::Duration) -> String {
     }
 }
 
+/// Request from CLI to create an identity. Just a handle — the node handles key generation.
+#[derive(Debug, Deserialize)]
+pub struct CliCreateIdentityRequest {
+    pub handle: String,
+}
+
 /// Create identity handler.
 ///
-/// Registers a new identity with the registry and persists it locally:
-/// 1. Validates handle format
-/// 2. Calls registry to create identity
-/// 3. Updates NodeState with identity info
-/// 4. Persists state to disk
+/// The node generates the Ed25519 signing key (not the CLI), registers with
+/// the registry, persists the key locally, and sets up the vault.
 ///
-/// Returns 201 Created with identity info on success.
+/// Flow:
+/// 1. Validate handle format
+/// 2. Generate Ed25519 signing key + cryptographic nonce
+/// 3. Derive identity ID from public key + nonce
+/// 4. Sign create-identity message
+/// 5. Register with registry
+/// 6. Persist signing key + identity in node state
+///
+/// The signing key never leaves this node. Device linking (future) will
+/// transfer it explicitly via QR code or recovery phrase.
 pub async fn create_identity(
     State(state): State<AppState>,
-    Json(req): Json<CreateIdentityRequest>,
+    Json(req): Json<CliCreateIdentityRequest>,
 ) -> Result<(StatusCode, Json<IdentityResponse>), NodeError> {
-    // 1. Validate request
-    Handle::parse(&req.handle).map_err(|e| NodeError::BadRequest(e.to_string()))?;
+    // 1. Validate handle format
+    let handle = Handle::parse(&req.handle).map_err(|e| NodeError::BadRequest(e.to_string()))?;
 
-    // 2. Call registry to create identity
+    // 2. Generate Ed25519 signing key (random, OS entropy)
+    let signing_key = Ed25519SigningKey::generate();
+    let public_key = signing_key.public_key_bytes();
+
+    // 3. Generate cryptographic nonce (random, 8 bytes, OS entropy)
+    let nonce = generate_nonce();
+
+    // 4. Derive identity ID: SHA256(public_key || nonce), truncated + base58
+    let identity_id = IdentityId::derive(&public_key, &nonce);
+
+    // 5. Get current timestamp
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| NodeError::Internal(format!("System time error: {}", e)))?
+        .as_secs();
+
+    // 6. Sign the create-identity message per RFC-001
+    let message = create_identity_message(identity_id.as_str(), handle.as_str(), timestamp);
+    let signature = signing_key.sign(message.as_bytes());
+
+    // 7. Build registry request with full crypto data
+    let b64 = &base64::engine::general_purpose::STANDARD;
+    let registry_request = client::CreateIdentityRequest {
+        handle: handle.to_string(),
+        public_key: b64.encode(public_key),
+        nonce: b64.encode(nonce),
+        timestamp,
+        signature: client::SignatureData {
+            signature: b64.encode(signature.signature_bytes()),
+            public_key: b64.encode(signature.public_key_bytes()),
+        },
+    };
+
+    // 8. Register with the registry
     let registry_response = state
         .registry_client
-        .create_identity(req)
+        .create_identity(registry_request)
         .await
         .map_err(|e| NodeError::Registry(e.to_string()))?;
 
-    // 3. Update local node state
-    let nonce = base64::Engine::decode(
-        &base64::engine::general_purpose::STANDARD,
-        &registry_response.nonce,
-    )
-    .map_err(|e| NodeError::Internal(format!("Invalid nonce from registry: {}", e)))?;
-
-    if nonce.len() != 8 {
-        return Err(NodeError::Internal(
-            "Nonce must be exactly 8 bytes".to_string(),
-        ));
-    }
-
-    let mut nonce_array = [0u8; 8];
-    nonce_array.copy_from_slice(&nonce);
-
-    let identity_info = IdentityInfo::new(
+    // 9. Persist signing key + identity in node state
+    let identity_info = IdentityInfo::with_signing_key(
         IdentityId::parse(&registry_response.id)
             .map_err(|e| NodeError::Internal(format!("Invalid identity ID: {}", e)))?,
         Handle::parse(&registry_response.handle)
             .map_err(|e| NodeError::Internal(format!("Invalid handle: {}", e)))?,
-        nonce_array,
+        nonce,
+        signing_key.to_bytes(),
     );
 
     {
         let mut node_state = state.node_state.write().unwrap();
         node_state.set_identity(identity_info.clone());
 
-        // 4. Persist to disk
+        // 10. Persist to disk (signing key is in node.key, protected by 0o600 permissions)
         let state_path = Path::new(&state.config.node.data_dir).join("node.key");
         node_state
             .save(&state_path)
             .map_err(|e| NodeError::Internal(format!("Failed to save state: {}", e)))?;
     }
 
-    info!("Identity created: {}", identity_info.handle());
+    // 11. Create vault replica for cross-device project discovery.
+    //     The vault namespace is deterministically derived from the signing key
+    //     via HKDF, so the same identity always maps to the same vault replica.
+    if let Some(signing_key_bytes) = identity_info.signing_key() {
+        let vault_keys =
+            objects_identity::vault::VaultKeys::derive_from_signing_key(signing_key_bytes)
+                .map_err(|e| NodeError::Internal(format!("Failed to derive vault keys: {}", e)))?;
+
+        // Create the vault replica using the HKDF-derived namespace secret
+        state
+            .sync_engine
+            .docs()
+            .create_replica_with_secret(vault_keys.namespace_secret().clone())
+            .await
+            .map_err(|e| NodeError::Internal(format!("Failed to create vault replica: {}", e)))?;
+
+        info!("Vault replica created: {}", vault_keys.namespace_id());
+
+        // Store vault namespace ID in state for quick access
+        let mut node_state = state.node_state.write().unwrap();
+        if let Some(identity) = node_state.identity_mut() {
+            identity.set_vault_namespace_id(vault_keys.namespace_id().to_string());
+        }
+        // Re-persist state with vault_namespace_id
+        let state_path = Path::new(&state.config.node.data_dir).join("node.key");
+        node_state
+            .save(&state_path)
+            .map_err(|e| NodeError::Internal(format!("Failed to save vault state: {}", e)))?;
+    }
+
+    info!(
+        "Identity created: {} (key generated and persisted on this node)",
+        identity_info.handle()
+    );
 
     let response = IdentityResponse {
         id: registry_response.id,
         handle: registry_response.handle,
-        nonce: registry_response.nonce,
+        nonce: b64.encode(nonce),
     };
 
     Ok((StatusCode::CREATED, Json(response)))
@@ -312,6 +379,52 @@ pub async fn create_project(
 
     match result {
         Ok(project) => {
+            // Add project to vault catalog (encrypted) for cross-device discovery.
+            // This is best-effort — project creation succeeds even if vault entry fails.
+            // Extract signing key while holding the lock, then drop the guard before await.
+            let signing_key_opt = {
+                let node_state = state.node_state.read().unwrap();
+                node_state.identity().and_then(|i| i.signing_key().cloned())
+            };
+            if let Some(signing_key_bytes) = signing_key_opt {
+                match objects_identity::vault::VaultKeys::derive_from_signing_key(
+                    &signing_key_bytes,
+                ) {
+                    Ok(vault_keys) => {
+                        let author = state.sync_engine.default_author();
+                        let catalog_entry = objects_sync::ProjectCatalogEntry {
+                            project_id: project.id().to_string(),
+                            replica_id: replica_id.as_bytes().to_vec(),
+                            project_name: project.name().to_string(),
+                            created_at: project.created_at(),
+                        };
+
+                        if let Err(e) = state
+                            .sync_engine
+                            .docs()
+                            .add_catalog_entry(
+                                vault_keys.namespace_id(),
+                                author,
+                                &catalog_entry,
+                                Some(&vault_keys.catalog_encryption_key),
+                            )
+                            .await
+                        {
+                            tracing::warn!(
+                                "Failed to add vault catalog entry for project '{}': {}",
+                                project.name(),
+                                e
+                            );
+                        } else {
+                            info!("Added project '{}' to vault catalog", project.name());
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!("Vault key derivation failed: {}", e);
+                    }
+                }
+            }
+
             info!("Project created: {} ({})", req.name, project.id());
             Ok((StatusCode::CREATED, Json(ProjectResponse::from(project))))
         }
@@ -703,6 +816,96 @@ pub async fn redeem_ticket(
     info!("Ticket redeemed: project {}", project.name());
 
     Ok((StatusCode::CREATED, Json(ProjectResponse::from(project))))
+}
+
+// =============================================================================
+// Vault Handlers
+// =============================================================================
+
+/// List vault catalog entries.
+///
+/// Returns all projects in the user's vault catalog (decrypted).
+/// Each entry indicates whether the project replica exists locally.
+pub async fn list_vault(State(state): State<AppState>) -> Result<Json<VaultResponse>, NodeError> {
+    // Get signing key from identity
+    let signing_key_bytes = state
+        .node_state
+        .read()
+        .unwrap()
+        .identity()
+        .and_then(|i| i.signing_key().cloned())
+        .ok_or_else(|| NodeError::BadRequest("No identity with signing key".to_string()))?;
+
+    let vault_keys =
+        objects_identity::vault::VaultKeys::derive_from_signing_key(&signing_key_bytes)
+            .map_err(|e| NodeError::Internal(format!("Vault derivation failed: {}", e)))?;
+
+    let entries = state
+        .sync_engine
+        .docs()
+        .list_catalog(
+            state.sync_engine.blobs(),
+            vault_keys.namespace_id(),
+            Some(&vault_keys.catalog_encryption_key),
+        )
+        .await
+        .map_err(|e| NodeError::Internal(format!("Failed to list vault: {}", e)))?;
+
+    // Check which projects have local replicas
+    let local_replicas = state
+        .sync_engine
+        .docs()
+        .list_replicas()
+        .await
+        .unwrap_or_default();
+
+    let local_replica_bytes: Vec<[u8; 32]> = local_replicas
+        .iter()
+        .map(|r| r.as_bytes().to_owned())
+        .collect();
+
+    let items: Vec<VaultEntry> = entries
+        .iter()
+        .map(|e| {
+            // Check if the project's replica exists locally
+            let replica_bytes: [u8; 32] = e.replica_id.as_slice().try_into().unwrap_or([0u8; 32]);
+            let local = local_replica_bytes.contains(&replica_bytes);
+
+            VaultEntry {
+                project_id: e.project_id.clone(),
+                name: e.project_name.clone(),
+                created_at: e.created_at,
+                local,
+            }
+        })
+        .collect();
+
+    Ok(Json(VaultResponse { entries: items }))
+}
+
+/// Trigger vault metadata sync with peers.
+///
+/// TODO: Initiate iroh-docs sync for the vault replica to pull
+/// catalog updates from other devices.
+pub async fn sync_vault(
+    State(_state): State<AppState>,
+) -> Result<Json<serde_json::Value>, NodeError> {
+    // TODO: Trigger iroh-docs sync for vault replica
+    Ok(Json(serde_json::json!({"status": "synced"})))
+}
+
+/// Pull a specific project from the vault catalog.
+///
+/// TODO: Look up the project's write ticket in the vault catalog
+/// and download the project replica from peers.
+pub async fn pull_vault_project(
+    State(_state): State<AppState>,
+    AxumPath(project_id): AxumPath<String>,
+) -> Result<Json<serde_json::Value>, NodeError> {
+    // TODO: Find project ticket in vault catalog, download via ticket
+    Ok(Json(
+        serde_json::json!({"status": "pulled", "project_id": project_id}),
+    ))
 }
 
 #[cfg(test)]

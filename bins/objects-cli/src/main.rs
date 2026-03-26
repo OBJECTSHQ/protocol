@@ -32,6 +32,11 @@ enum Commands {
         #[command(subcommand)]
         command: AssetCommands,
     },
+    /// Vault operations (cross-device project discovery)
+    Vault {
+        #[command(subcommand)]
+        command: VaultCommands,
+    },
     /// Sync with peers
     Sync,
     /// Ticket operations
@@ -68,7 +73,7 @@ enum ProjectCommands {
     List,
     /// Get a project by ID
     Get {
-        /// Project ID (32 hex characters)
+        /// Project ID (64 hex characters)
         id: String,
     },
 }
@@ -77,7 +82,7 @@ enum ProjectCommands {
 enum AssetCommands {
     /// Add an asset to a project
     Add {
-        /// Project ID (32 hex characters)
+        /// Project ID (64 hex characters)
         #[arg(short, long)]
         project: String,
         /// Path to the file
@@ -85,9 +90,22 @@ enum AssetCommands {
     },
     /// List assets in a project
     List {
-        /// Project ID (32 hex characters)
+        /// Project ID (64 hex characters)
         #[arg(short, long)]
         project: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum VaultCommands {
+    /// List projects in the vault
+    List,
+    /// Sync vault metadata with peers
+    Sync,
+    /// Pull a specific project from the vault
+    Pull {
+        /// Project ID (64 hex characters)
+        project_id: String,
     },
 }
 
@@ -95,7 +113,7 @@ enum AssetCommands {
 enum TicketCommands {
     /// Create a share ticket for a project
     Create {
-        /// Project ID (32 hex characters)
+        /// Project ID (64 hex characters)
         #[arg(short, long)]
         project: String,
     },
@@ -157,6 +175,21 @@ async fn main() -> anyhow::Result<()> {
                 }
                 AssetCommands::List { project } => {
                     commands::asset::list(project, &client).await?;
+                }
+            }
+        }
+        Commands::Vault { command } => {
+            let config = Config::load()?;
+            let client = NodeClient::new(config.api_url());
+            match command {
+                VaultCommands::List => {
+                    commands::vault::list(&client).await?;
+                }
+                VaultCommands::Sync => {
+                    commands::vault::sync(&client).await?;
+                }
+                VaultCommands::Pull { project_id } => {
+                    commands::vault::pull(project_id, &client).await?;
                 }
             }
         }

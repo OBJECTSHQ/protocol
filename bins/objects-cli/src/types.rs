@@ -25,23 +25,23 @@ pub struct IdentityResponse {
     pub nonce: String,
 }
 
-/// Create identity request.
-#[derive(Debug, Clone, Serialize)]
-pub struct CreateIdentityRequest {
-    pub handle: String,
-    pub public_key: String,
-    pub nonce: String,
-    pub timestamp: u64,
-    pub signature: SignatureData,
+// =============================================================================
+// Vault Types
+// =============================================================================
+
+/// Vault catalog response.
+#[derive(Debug, Clone, Deserialize)]
+pub struct VaultResponse {
+    pub entries: Vec<VaultEntry>,
 }
 
-/// Signature data for identity creation (Ed25519).
-#[derive(Debug, Clone, Serialize)]
-pub struct SignatureData {
-    /// Base64-encoded Ed25519 signature bytes (64 bytes).
-    pub signature: String,
-    /// Base64-encoded Ed25519 public key (32 bytes).
-    pub public_key: String,
+/// A project entry in the vault catalog.
+#[derive(Debug, Clone, Deserialize)]
+pub struct VaultEntry {
+    pub project_id: String,
+    pub name: String,
+    pub created_at: u64,
+    pub local: bool,
 }
 
 // =============================================================================

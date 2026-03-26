@@ -194,8 +194,8 @@ async fn test_project_creation_from_replica_id() {
 async fn test_project_id_parsing_and_validation() {
     let owner_id = identity::test_identity_id();
 
-    // Valid project ID (32 hex characters)
-    let valid_id = hex::encode(crypto::deterministic_bytes(1)[..16].to_vec());
+    // Valid project ID (64 hex characters, full NamespaceId)
+    let valid_id = hex::encode(crypto::deterministic_bytes(1));
     let project = Project::new(
         valid_id.clone(),
         "Valid Project".to_string(),
@@ -235,7 +235,7 @@ async fn test_project_id_parsing_and_validation() {
 #[tokio::test]
 async fn test_project_timestamp_validation() {
     let owner_id = identity::test_identity_id();
-    let id = "b".repeat(32);
+    let id = "b".repeat(64);
 
     // Valid: created_at <= updated_at
     let created = time::now();

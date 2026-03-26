@@ -304,6 +304,11 @@ impl NodeState {
         self.identity = Some(identity);
     }
 
+    /// Get a mutable reference to the identity info.
+    pub fn identity_mut(&mut self) -> Option<&mut IdentityInfo> {
+        self.identity.as_mut()
+    }
+
     /// Clear the identity (return to anonymous mode).
     pub fn clear_identity(&mut self) -> Option<IdentityInfo> {
         self.identity.take()
@@ -320,34 +325,49 @@ impl NodeState {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IdentityInfo {
     /// Identity ID from objects-identity.
-    ///
-    /// Format validated by `IdentityId::parse()`.
-    /// Example: `obj_2dMiYc8RhnYkorPc5pVh9`
     identity_id: IdentityId,
 
     /// Registered handle from objects-identity.
-    ///
-    /// Format validated by `Handle::parse()`. See objects-identity
-    /// for validation rules (lowercase, length limits, reserved words).
     handle: Handle,
 
     /// 8-byte nonce used for identity ID derivation.
-    ///
-    /// The identity ID is derived using `IdentityId::derive(public_key, nonce)`.
-    /// This nonce is required for verification.
     nonce: [u8; 8],
+
+    /// Ed25519 signing key (32 bytes). Used for vault HKDF derivation and signing.
+    /// This is the identity root key — protect it like a private key.
+    #[serde(default)]
+    signing_key: Option<[u8; 32]>,
+
+    /// Vault namespace ID (hex-encoded NamespaceId). Cached for quick access.
+    #[serde(default)]
+    vault_namespace_id: Option<String>,
 }
 
 impl IdentityInfo {
     /// Create a new IdentityInfo with validated fields.
-    ///
-    /// All parameters must be pre-validated. Use `IdentityId::parse()` and
-    /// `Handle::parse()` to validate strings before passing them to this constructor.
     pub fn new(identity_id: IdentityId, handle: Handle, nonce: [u8; 8]) -> Self {
         Self {
             identity_id,
             handle,
             nonce,
+            signing_key: None,
+            vault_namespace_id: None,
+        }
+    }
+
+    /// Create a new IdentityInfo with a signing key.
+    pub fn with_signing_key(
+        identity_id: IdentityId,
+        handle: Handle,
+        nonce: [u8; 8],
+        signing_key: [u8; 32],
+    ) -> Self {
+        Self {
+            identity_id,
+            handle,
+            nonce,
+            signing_key: Some(signing_key),
+            vault_namespace_id: None,
         }
     }
 
@@ -364,6 +384,21 @@ impl IdentityInfo {
     /// Get the nonce.
     pub fn nonce(&self) -> &[u8; 8] {
         &self.nonce
+    }
+
+    /// Get the signing key bytes (if available).
+    pub fn signing_key(&self) -> Option<&[u8; 32]> {
+        self.signing_key.as_ref()
+    }
+
+    /// Get the vault namespace ID (if set).
+    pub fn vault_namespace_id(&self) -> Option<&str> {
+        self.vault_namespace_id.as_deref()
+    }
+
+    /// Set the vault namespace ID.
+    pub fn set_vault_namespace_id(&mut self, id: String) {
+        self.vault_namespace_id = Some(id);
     }
 }
 

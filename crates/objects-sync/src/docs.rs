@@ -30,7 +30,7 @@
 use bytes::Bytes;
 use futures::StreamExt;
 use iroh_docs::{
-    AuthorId, DocTicket, Entry, NamespaceId,
+    AuthorId, Capability, DocTicket, Entry, NamespaceId, NamespaceSecret,
     api::protocol::{AddrInfoOptions, ShareMode},
     protocol::Docs,
 };
@@ -74,6 +74,26 @@ impl DocsClient {
     pub async fn create_replica(&self) -> Result<NamespaceId> {
         let doc = self.inner.create().await.map_err(Error::Iroh)?;
         Ok(doc.id())
+    }
+
+    /// Creates a new replica with a specific namespace secret (write capability).
+    ///
+    /// Used for vault replicas where the namespace is deterministically derived
+    /// from the identity signing key via HKDF.
+    ///
+    /// If the replica already exists, this is a no-op (idempotent).
+    pub async fn create_replica_with_secret(
+        &self,
+        namespace_secret: NamespaceSecret,
+    ) -> Result<NamespaceId> {
+        let id = namespace_secret.id();
+        let capability = Capability::Write(namespace_secret);
+        let _doc = self
+            .inner
+            .import_namespace(capability)
+            .await
+            .map_err(Error::Iroh)?;
+        Ok(id)
     }
 
     /// Creates a new author for signing entries.

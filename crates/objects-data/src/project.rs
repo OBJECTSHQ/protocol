@@ -7,9 +7,9 @@ use crate::Error;
 
 /// Derives a Project ID from a ReplicaId per RFC-004.
 ///
-/// Project ID is the hex encoding of the first 16 bytes of the ReplicaId (32 hex characters).
+/// Project ID = full NamespaceId hex (64 chars). No truncation.
 pub fn project_id_from_replica(replica_id: &[u8; 32]) -> String {
-    hex::encode(&replica_id[..16])
+    hex::encode(replica_id)
 }
 
 /// A project representing an organizational grouping of assets.
@@ -37,7 +37,7 @@ impl Project {
     /// # Errors
     ///
     /// Returns [`Error::InvalidProject`] if validation fails:
-    /// - `id`: must be 32 hex characters
+    /// - `id`: must be 64 hex characters (full NamespaceId)
     /// - `name`: must be non-empty
     /// - `created_at <= updated_at`
     pub fn new(
@@ -62,8 +62,7 @@ impl Project {
 
     /// Derives a project ID from a ReplicaId.
     ///
-    /// Per RFC-004 Section 3.2: Project ID is the first 16 bytes
-    /// of the ReplicaId, hex-encoded (32 hex characters).
+    /// Project ID = full NamespaceId hex (64 chars). No truncation.
     ///
     /// # Example
     ///
@@ -72,11 +71,11 @@ impl Project {
     ///
     /// let replica_id: [u8; 32] = [0xab; 32];
     /// let project_id = Project::project_id_from_replica(&replica_id);
-    /// assert_eq!(project_id.len(), 32); // 16 bytes = 32 hex chars
-    /// assert_eq!(project_id, "ab".repeat(16));
+    /// assert_eq!(project_id.len(), 64); // 32 bytes = 64 hex chars
+    /// assert_eq!(project_id, "ab".repeat(32));
     /// ```
     pub fn project_id_from_replica(replica_id: &[u8; 32]) -> String {
-        hex::encode(&replica_id[..16])
+        hex::encode(replica_id)
     }
 
     /// Returns the project ID.
@@ -112,17 +111,17 @@ impl Project {
     /// Validates the project according to RFC-004 rules.
     ///
     /// Checks:
-    /// - `id`: 32 hex characters (first 16 bytes of ReplicaId, hex-encoded)
+    /// - `id`: 64 hex characters (full NamespaceId, hex-encoded)
     /// - `name`: non-empty
     /// - `created_at <= updated_at`
     ///
     /// Note: This validation only checks format. It does not verify that the ID
     /// was actually derived from a valid ReplicaId - that must be checked elsewhere.
     fn validate(&self) -> Result<(), Error> {
-        // Validate id: hex-encoded first 16 bytes of ReplicaId (32 hex chars)
-        if self.id.len() != 32 {
+        // Validate id: full NamespaceId hex (64 hex chars)
+        if self.id.len() != 64 {
             return Err(Error::InvalidProject(
-                "id must be 32 hex characters (16 bytes)".to_string(),
+                "id must be 64 hex characters (32 bytes)".to_string(),
             ));
         }
         if !self.id.chars().all(|c| c.is_ascii_hexdigit()) {
@@ -157,7 +156,7 @@ mod tests {
 
     fn valid_project() -> Project {
         Project::new(
-            "a".repeat(32),
+            "a".repeat(64),
             "Test Project".to_string(),
             Some("A test project".to_string()),
             test_owner_id(),
@@ -170,7 +169,7 @@ mod tests {
     #[test]
     fn test_project_validate_valid() {
         let project = valid_project();
-        assert_eq!(project.id(), &"a".repeat(32));
+        assert_eq!(project.id(), &"a".repeat(64));
     }
 
     #[test]
@@ -189,7 +188,7 @@ mod tests {
     #[test]
     fn test_project_validate_invalid_id_length_long() {
         let result = Project::new(
-            "a".repeat(33),
+            "a".repeat(65),
             "Test Project".to_string(),
             Some("A test project".to_string()),
             test_owner_id(),
@@ -202,7 +201,7 @@ mod tests {
     #[test]
     fn test_project_validate_invalid_id_chars() {
         let result = Project::new(
-            "g".repeat(32),
+            "g".repeat(64),
             "Test Project".to_string(),
             Some("A test project".to_string()),
             test_owner_id(),
@@ -215,7 +214,7 @@ mod tests {
     #[test]
     fn test_project_validate_valid_hex_id() {
         let result = Project::new(
-            "0123456789abcdef0123456789abcdef".to_string(),
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".to_string(),
             "Test Project".to_string(),
             Some("A test project".to_string()),
             test_owner_id(),
@@ -228,7 +227,7 @@ mod tests {
     #[test]
     fn test_project_validate_empty_name() {
         let result = Project::new(
-            "a".repeat(32),
+            "a".repeat(64),
             "".to_string(),
             Some("A test project".to_string()),
             test_owner_id(),
@@ -241,7 +240,7 @@ mod tests {
     #[test]
     fn test_project_validate_timestamps() {
         let result = Project::new(
-            "a".repeat(32),
+            "a".repeat(64),
             "Test Project".to_string(),
             Some("A test project".to_string()),
             test_owner_id(),
