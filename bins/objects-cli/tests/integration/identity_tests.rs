@@ -14,7 +14,6 @@ async fn test_identity_create() {
             "id": "obj_test123",
             "handle": "@alice",
             "nonce": "0102030405060708",
-            "signer_type": "passkey"
         })))
         .mount(&mock)
         .await;
@@ -34,7 +33,6 @@ async fn test_identity_create_with_at_prefix() {
             "id": "obj_test456",
             "handle": "@bob",
             "nonce": "0102030405060708",
-            "signer_type": "wallet"
         })))
         .mount(&mock)
         .await;
@@ -54,7 +52,6 @@ async fn test_identity_show_found() {
             "id": "obj_test789",
             "handle": "@charlie",
             "nonce": "0102030405060708",
-            "signer_type": "passkey"
         })))
         .mount(&mock)
         .await;

@@ -15,31 +15,19 @@ pub struct RegistryClient {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateIdentityRequest {
     pub handle: String,
-    pub signer_type: String,
     pub signer_public_key: String,
     pub nonce: String,
     pub timestamp: u64,
     pub signature: SignatureData,
 }
 
-/// Signature data for identity creation.
-/// Matches the registry's SignatureRequest format.
+/// Signature data for identity creation (Ed25519).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SignatureData {
-    /// Base64-encoded signature bytes
+    /// Base64-encoded Ed25519 signature bytes (64 bytes).
     pub signature: String,
-    /// Base64-encoded public key (required for passkey)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub public_key: Option<String>,
-    /// Wallet address (required for wallet signatures)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub address: Option<String>,
-    /// Base64-encoded authenticator data (required for passkey)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub authenticator_data: Option<String>,
-    /// Base64-encoded client data JSON (required for passkey)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub client_data_json: Option<String>,
+    /// Base64-encoded Ed25519 public key (32 bytes).
+    pub public_key: String,
 }
 
 /// Identity response from registry.
@@ -48,7 +36,6 @@ pub struct IdentityResponse {
     pub id: String,
     pub handle: String,
     pub nonce: String,
-    pub signer_type: String,
 }
 
 /// Error response from registry.
@@ -129,7 +116,6 @@ mod tests {
             id: "obj_test123".to_string(),
             handle: "@alice".to_string(),
             nonce: "0102030405060708".to_string(),
-            signer_type: "passkey".to_string(),
         };
 
         Mock::given(method("POST"))
@@ -144,26 +130,12 @@ mod tests {
 
         let request = CreateIdentityRequest {
             handle: "@alice".to_string(),
-            signer_type: "passkey".to_string(),
-            signer_public_key: "pubkey".to_string(),
+            signer_public_key: base64::engine::general_purpose::STANDARD.encode([0u8; 32]),
             nonce: "0102030405060708".to_string(),
             timestamp: 1234567890,
             signature: SignatureData {
-                signature: base64::engine::general_purpose::STANDARD
-                    .encode(b"test_signature_bytes"),
-                public_key: Some(
-                    base64::engine::general_purpose::STANDARD
-                        .encode(b"test_public_key_33_bytes_long_0123456"),
-                ),
-                address: None,
-                authenticator_data: Some(
-                    base64::engine::general_purpose::STANDARD
-                        .encode(b"test_authenticator_data_37_bytes"),
-                ),
-                client_data_json: Some(
-                    base64::engine::general_purpose::STANDARD
-                        .encode(b"{\"type\":\"webauthn.get\",\"challenge\":\"test\"}"),
-                ),
+                signature: base64::engine::general_purpose::STANDARD.encode([0u8; 64]),
+                public_key: base64::engine::general_purpose::STANDARD.encode([0u8; 32]),
             },
         };
 
@@ -197,26 +169,12 @@ mod tests {
 
         let request = CreateIdentityRequest {
             handle: "@alice".to_string(),
-            signer_type: "passkey".to_string(),
-            signer_public_key: "pubkey".to_string(),
+            signer_public_key: base64::engine::general_purpose::STANDARD.encode([0u8; 32]),
             nonce: "0102030405060708".to_string(),
             timestamp: 1234567890,
             signature: SignatureData {
-                signature: base64::engine::general_purpose::STANDARD
-                    .encode(b"test_signature_bytes"),
-                public_key: Some(
-                    base64::engine::general_purpose::STANDARD
-                        .encode(b"test_public_key_33_bytes_long_0123456"),
-                ),
-                address: None,
-                authenticator_data: Some(
-                    base64::engine::general_purpose::STANDARD
-                        .encode(b"test_authenticator_data_37_bytes"),
-                ),
-                client_data_json: Some(
-                    base64::engine::general_purpose::STANDARD
-                        .encode(b"{\"type\":\"webauthn.get\",\"challenge\":\"test\"}"),
-                ),
+                signature: base64::engine::general_purpose::STANDARD.encode([0u8; 64]),
+                public_key: base64::engine::general_purpose::STANDARD.encode([0u8; 32]),
             },
         };
 
@@ -239,7 +197,6 @@ mod tests {
             id: "obj_test123".to_string(),
             handle: "@bob".to_string(),
             nonce: "0102030405060708".to_string(),
-            signer_type: "wallet".to_string(),
         };
 
         Mock::given(method("GET"))

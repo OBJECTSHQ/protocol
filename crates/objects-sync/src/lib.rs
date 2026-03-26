@@ -63,10 +63,12 @@ pub use iroh_docs::{Author, DocTicket, Entry, NamespaceId as ReplicaId};
 
 // Re-export OBJECTS-specific helpers
 pub use helpers::{content_hash_to_hash, hash_to_content_hash};
+// Re-export catalog entry type for convenience
+pub use objects_data::proto::ProjectCatalogEntry;
 
 // Re-export storage conventions from objects-data for convenience
 pub use objects_data::storage::{
-    ASSETS_PREFIX, PROJECT_KEY, REFS_PREFIX, asset_key, reference_key,
+    ASSETS_PREFIX, CATALOG_PREFIX, PROJECT_KEY, REFS_PREFIX, asset_key, catalog_key, reference_key,
 };
 
 /// Result type for sync operations.

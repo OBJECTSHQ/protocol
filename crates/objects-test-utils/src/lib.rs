@@ -31,16 +31,15 @@
 //! ```rust
 //! use objects_test_utils::{crypto, identity, time};
 //!
-//! // Generate a passkey for testing
-//! let keypair = crypto::passkey_keypair();
-//! assert_eq!(keypair.public_key.len(), 33);
+//! // Generate an Ed25519 keypair for testing
+//! let keypair = crypto::ed25519_keypair();
+//! assert_eq!(keypair.public_key.len(), 32);
 //!
 //! // Get canonical test identity
 //! let id = identity::test_identity_id();
-//! assert_eq!(id.as_str(), "obj_2dMiYc8RhnYkorPc5pVh9");
 //!
 //! // Generate random identity
-//! let random = identity::random_passkey_identity();
+//! let random = identity::random_identity();
 //! assert!(random.identity_id.as_str().starts_with("obj_"));
 //! ```
 
@@ -52,6 +51,6 @@ pub mod time;
 pub mod transport;
 
 // Re-export commonly used types for convenience
-pub use crypto::{PasskeyKeypair, WalletKeypair};
-pub use data::{SignedAssetPasskeyBundle, SignedAssetWalletBundle};
-pub use identity::{RandomPasskeyIdentity, RandomWalletIdentity};
+pub use crypto::Ed25519Keypair;
+pub use data::SignedAssetBundle;
+pub use identity::RandomIdentity;

@@ -5,7 +5,7 @@ use crate::{NodeConfig, NodeState};
 use axum::{Json, extract::Path as AxumPath, extract::State, http::StatusCode};
 use base64::Engine;
 use objects_data::Project;
-use objects_identity::{Handle, IdentityId, SignerType};
+use objects_identity::{Handle, IdentityId};
 use objects_sync::{PROJECT_KEY, ReplicaId, SyncEngine};
 use objects_transport::discovery::{Discovery, GossipDiscovery};
 use objects_transport::{NodeAddr, NodeId, ObjectsEndpoint, Watcher};
@@ -92,7 +92,6 @@ pub async fn node_status(State(state): State<AppState>) -> Json<StatusResponse> 
             id: info.identity_id().to_string(),
             handle: info.handle().to_string(),
             nonce: base64::engine::general_purpose::STANDARD.encode(info.nonce()),
-            signer_type: format!("{:?}", info.signer_type()).to_lowercase(),
         });
 
     Json(StatusResponse {
@@ -120,7 +119,6 @@ pub async fn get_identity(
             id: info.identity_id().to_string(),
             handle: info.handle().to_string(),
             nonce: base64::engine::general_purpose::STANDARD.encode(info.nonce()),
-            signer_type: format!("{:?}", info.signer_type()).to_lowercase(),
         });
 
     match identity {
@@ -193,16 +191,6 @@ pub async fn create_identity(
         .map_err(|e| NodeError::Registry(e.to_string()))?;
 
     // 3. Update local node state
-    let signer_type = match registry_response.signer_type.to_lowercase().as_str() {
-        "passkey" => SignerType::Passkey,
-        "wallet" => SignerType::Wallet,
-        _ => {
-            return Err(NodeError::Internal(
-                "Unknown signer type from registry".to_string(),
-            ));
-        }
-    };
-
     let nonce = base64::Engine::decode(
         &base64::engine::general_purpose::STANDARD,
         &registry_response.nonce,
@@ -224,7 +212,6 @@ pub async fn create_identity(
         Handle::parse(&registry_response.handle)
             .map_err(|e| NodeError::Internal(format!("Invalid handle: {}", e)))?,
         nonce_array,
-        signer_type,
     );
 
     {
@@ -244,7 +231,6 @@ pub async fn create_identity(
         id: registry_response.id,
         handle: registry_response.handle,
         nonce: registry_response.nonce,
-        signer_type: registry_response.signer_type,
     };
 
     Ok((StatusCode::CREATED, Json(response)))

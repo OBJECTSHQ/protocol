@@ -4,7 +4,7 @@
 //! - Node keypair for transport-level authentication
 //! - Optional OBJECTS identity information (if registered)
 
-use objects_identity::{Handle, IdentityId, SignerType};
+use objects_identity::{Handle, IdentityId};
 use objects_transport::SecretKey;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -50,7 +50,7 @@ pub type Result<T> = std::result::Result<T, StateError>;
 ///
 /// - `identity`: Optional OBJECTS identity information. `None` if the node has not
 ///   been registered with an identity yet. Once registered, this contains the
-///   identity ID, handle, nonce, and signer type.
+///   identity ID, handle, and nonce.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NodeState {
     /// Node's Ed25519 private key for transport authentication.
@@ -333,15 +333,9 @@ pub struct IdentityInfo {
 
     /// 8-byte nonce used for identity ID derivation.
     ///
-    /// The identity ID is derived using `IdentityId::derive(signer_public_key, nonce)`.
+    /// The identity ID is derived using `IdentityId::derive(public_key, nonce)`.
     /// This nonce is required for verification.
     nonce: [u8; 8],
-
-    /// Type of signer used for this identity.
-    ///
-    /// - `Passkey`: WebAuthn/FIDO2 credential (secp256r1/P-256)
-    /// - `Wallet`: Ethereum EOA (secp256k1)
-    signer_type: SignerType,
 }
 
 impl IdentityInfo {
@@ -349,17 +343,11 @@ impl IdentityInfo {
     ///
     /// All parameters must be pre-validated. Use `IdentityId::parse()` and
     /// `Handle::parse()` to validate strings before passing them to this constructor.
-    pub fn new(
-        identity_id: IdentityId,
-        handle: Handle,
-        nonce: [u8; 8],
-        signer_type: SignerType,
-    ) -> Self {
+    pub fn new(identity_id: IdentityId, handle: Handle, nonce: [u8; 8]) -> Self {
         Self {
             identity_id,
             handle,
             nonce,
-            signer_type,
         }
     }
 
@@ -376,11 +364,6 @@ impl IdentityInfo {
     /// Get the nonce.
     pub fn nonce(&self) -> &[u8; 8] {
         &self.nonce
-    }
-
-    /// Get the signer type.
-    pub fn signer_type(&self) -> SignerType {
-        self.signer_type
     }
 }
 
@@ -503,7 +486,6 @@ mod tests {
             identity_id.clone(),
             handle.clone(),
             [1, 2, 3, 4, 5, 6, 7, 8],
-            SignerType::Passkey,
         );
 
         let state = NodeState {
@@ -522,43 +504,6 @@ mod tests {
         assert_eq!(deser_identity.identity_id(), &identity_id);
         assert_eq!(deser_identity.handle(), &handle);
         assert_eq!(deser_identity.nonce(), &[1, 2, 3, 4, 5, 6, 7, 8]);
-        assert_eq!(deser_identity.signer_type(), SignerType::Passkey);
-    }
-
-    #[test]
-    fn test_identity_info_signer_types() {
-        // Use random identities with proper derivation
-        let passkey_identity = identity::random_passkey_identity();
-        let wallet_identity = identity::random_wallet_identity();
-
-        let handle_passkey = Handle::parse("passkey_user").unwrap();
-        let handle_wallet = Handle::parse("wallet_user").unwrap();
-
-        let passkey_info = IdentityInfo::new(
-            passkey_identity.identity_id.clone(),
-            handle_passkey,
-            passkey_identity.nonce,
-            SignerType::Passkey,
-        );
-
-        let wallet_info = IdentityInfo::new(
-            wallet_identity.identity_id.clone(),
-            handle_wallet,
-            wallet_identity.nonce,
-            SignerType::Wallet,
-        );
-
-        // Serialize and deserialize both
-        let passkey_json = serde_json::to_string(&passkey_info).unwrap();
-        let wallet_json = serde_json::to_string(&wallet_info).unwrap();
-
-        let passkey_deser: IdentityInfo = serde_json::from_str(&passkey_json).unwrap();
-        let wallet_deser: IdentityInfo = serde_json::from_str(&wallet_json).unwrap();
-
-        assert_eq!(passkey_deser.signer_type(), SignerType::Passkey);
-        assert_eq!(wallet_deser.signer_type(), SignerType::Wallet);
-        assert_eq!(passkey_deser.identity_id(), &passkey_identity.identity_id);
-        assert_eq!(wallet_deser.identity_id(), &wallet_identity.identity_id);
     }
 
     #[test]
@@ -600,7 +545,7 @@ mod tests {
         let identity_id = identity::test_identity_id();
         let handle = Handle::parse("test").unwrap();
 
-        let info = IdentityInfo::new(identity_id, handle, nonce, SignerType::Passkey);
+        let info = IdentityInfo::new(identity_id, handle, nonce);
 
         let json = serde_json::to_string(&info).unwrap();
         let deserialized: IdentityInfo = serde_json::from_str(&json).unwrap();
@@ -615,18 +560,12 @@ mod tests {
         let handle = Handle::parse("test_user").unwrap();
         let nonce = [1, 2, 3, 4, 5, 6, 7, 8];
 
-        let info = IdentityInfo::new(
-            identity_id.clone(),
-            handle.clone(),
-            nonce,
-            SignerType::Passkey,
-        );
+        let info = IdentityInfo::new(identity_id.clone(), handle.clone(), nonce);
 
         // Test all getters
         assert_eq!(info.identity_id(), &identity_id);
         assert_eq!(info.handle(), &handle);
         assert_eq!(info.nonce(), &nonce);
-        assert_eq!(info.signer_type(), SignerType::Passkey);
     }
 
     #[test]
@@ -640,7 +579,6 @@ mod tests {
                 identity_id,
                 handle,
                 [1, 2, 3, 4, 5, 6, 7, 8],
-                SignerType::Passkey,
             )),
         };
 
@@ -737,7 +675,6 @@ mod tests {
             identity_id.clone(),
             handle.clone(),
             [1, 2, 3, 4, 5, 6, 7, 8],
-            SignerType::Wallet,
         ));
 
         // Save
@@ -751,7 +688,6 @@ mod tests {
         assert_eq!(loaded_identity.identity_id(), &identity_id);
         assert_eq!(loaded_identity.handle(), &handle);
         assert_eq!(loaded_identity.nonce(), &[1, 2, 3, 4, 5, 6, 7, 8]);
-        assert_eq!(loaded_identity.signer_type(), SignerType::Wallet);
     }
 
     #[test]
@@ -900,12 +836,7 @@ mod tests {
         let identity_id = identity::test_identity_id();
         let handle = Handle::parse("alice").unwrap();
         let nonce = [1, 2, 3, 4, 5, 6, 7, 8];
-        let identity = IdentityInfo::new(
-            identity_id.clone(),
-            handle.clone(),
-            nonce,
-            SignerType::Wallet,
-        );
+        let identity = IdentityInfo::new(identity_id.clone(), handle.clone(), nonce);
 
         state.set_identity(identity);
         state.save(&state_path).unwrap();
