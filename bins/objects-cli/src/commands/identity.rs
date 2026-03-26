@@ -29,6 +29,21 @@ pub async fn create(handle: String, client: &NodeClient) -> Result<(), CliError>
     Ok(())
 }
 
+pub async fn rename(new_handle: String, client: &NodeClient) -> Result<(), CliError> {
+    let new_handle = new_handle.trim_start_matches('@');
+
+    println!("Renaming identity to @{}...", new_handle);
+
+    let request = serde_json::json!({ "new_handle": new_handle });
+    let response = client.rename_identity(request).await?;
+
+    println!("Identity renamed");
+    println!("  ID:     {}", response.id);
+    println!("  Handle: {}", response.handle);
+
+    Ok(())
+}
+
 pub async fn show(client: &NodeClient) -> Result<(), CliError> {
     match client.get_identity().await {
         Ok(response) => {

@@ -54,6 +54,11 @@ enum IdentityCommands {
         #[arg(long)]
         handle: String,
     },
+    /// Rename your handle
+    Rename {
+        /// New handle
+        new_handle: String,
+    },
     /// Show current identity
     Show,
 }
@@ -145,6 +150,9 @@ async fn main() -> anyhow::Result<()> {
             match command {
                 IdentityCommands::Create { handle } => {
                     commands::identity::create(handle, &client).await?;
+                }
+                IdentityCommands::Rename { new_handle } => {
+                    commands::identity::rename(new_handle, &client).await?;
                 }
                 IdentityCommands::Show => {
                     commands::identity::show(&client).await?;

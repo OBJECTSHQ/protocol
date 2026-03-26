@@ -89,6 +89,25 @@ impl RegistryClient {
         }
     }
 
+    /// Change handle in the registry.
+    pub async fn change_handle(
+        &self,
+        id: &str,
+        req: serde_json::Value,
+    ) -> Result<IdentityResponse, ClientError> {
+        let url = format!("{}/v1/identities/{}/handle", self.base_url, id);
+        let response = self.client.patch(&url).json(&req).send().await?;
+
+        match response.status() {
+            StatusCode::OK => Ok(response.json().await?),
+            StatusCode::CONFLICT => {
+                let err: ErrorResponse = response.json().await?;
+                Err(ClientError::HandleTaken(err.error.message))
+            }
+            status => Err(ClientError::Registry(status)),
+        }
+    }
+
     /// Get identity from the registry by ID.
     pub async fn get_identity(&self, id: &str) -> Result<IdentityResponse, ClientError> {
         let url = format!("{}/v1/identities/{}", self.base_url, id);

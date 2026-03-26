@@ -3,9 +3,12 @@
 use super::handlers::{
     AppState, add_asset, create_identity, create_project, create_ticket, get_asset_content,
     get_identity, get_project, health_check, list_assets, list_peers, list_projects, list_vault,
-    node_status, pull_vault_project, redeem_ticket, sync_vault,
+    node_status, pull_vault_project, redeem_ticket, rename_identity, sync_vault,
 };
-use axum::{Router, routing::get, routing::post};
+use axum::{
+    Router,
+    routing::{get, post},
+};
 
 /// Create the API router with all routes.
 ///
@@ -31,7 +34,12 @@ pub fn create_router(state: AppState) -> Router {
     Router::new()
         .route("/health", get(health_check))
         .route("/status", get(node_status))
-        .route("/identity", get(get_identity).post(create_identity))
+        .route(
+            "/identity",
+            get(get_identity)
+                .post(create_identity)
+                .patch(rename_identity),
+        )
         .route("/peers", get(list_peers))
         .route("/projects", get(list_projects).post(create_project))
         .route("/projects/{id}", get(get_project))

@@ -400,6 +400,11 @@ impl IdentityInfo {
     pub fn set_vault_namespace_id(&mut self, id: String) {
         self.vault_namespace_id = Some(id);
     }
+
+    /// Update the handle (after a successful rename on the registry).
+    pub fn set_handle(&mut self, handle: Handle) {
+        self.handle = handle;
+    }
 }
 
 /// Ensure parent directory exists (creates if needed, does not set permissions).

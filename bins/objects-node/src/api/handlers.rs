@@ -6,7 +6,8 @@ use axum::{Json, extract::Path as AxumPath, extract::State, http::StatusCode};
 use base64::Engine;
 use objects_data::Project;
 use objects_identity::{
-    Ed25519SigningKey, Handle, IdentityId, generate_nonce, message::create_identity_message,
+    Ed25519SigningKey, Handle, IdentityId, generate_nonce,
+    message::{change_handle_message, create_identity_message},
 };
 use objects_sync::{PROJECT_KEY, ReplicaId, SyncEngine};
 use objects_transport::discovery::{Discovery, GossipDiscovery};
@@ -128,6 +129,89 @@ pub async fn get_identity(
         Some(response) => Ok(Json(response)),
         None => Err(NodeError::NotFound("No identity registered".to_string())),
     }
+}
+
+/// Request from CLI to rename an identity's handle.
+#[derive(Debug, Deserialize)]
+pub struct RenameIdentityRequest {
+    pub new_handle: String,
+}
+
+/// Rename identity handler.
+///
+/// Changes the identity's handle on the registry. The node signs the
+/// change-handle message with the stored signing key — the CLI just
+/// sends the new handle.
+pub async fn rename_identity(
+    State(state): State<AppState>,
+    Json(req): Json<RenameIdentityRequest>,
+) -> Result<Json<IdentityResponse>, NodeError> {
+    // 1. Validate new handle format
+    let new_handle =
+        Handle::parse(&req.new_handle).map_err(|e| NodeError::BadRequest(e.to_string()))?;
+
+    // 2. Get current identity + signing key from state
+    let (identity_id, signing_key_bytes) = {
+        let node_state = state.node_state.read().unwrap();
+        let identity = node_state
+            .identity()
+            .ok_or_else(|| NodeError::BadRequest("No identity registered".to_string()))?;
+        let signing_key = identity
+            .signing_key()
+            .ok_or_else(|| NodeError::Internal("No signing key available".to_string()))?;
+        (identity.identity_id().clone(), *signing_key)
+    };
+    // RwLock dropped here — safe to await below
+
+    // 3. Sign the change-handle message
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| NodeError::Internal(format!("System time error: {}", e)))?
+        .as_secs();
+
+    let message = change_handle_message(identity_id.as_str(), new_handle.as_str(), timestamp);
+    let signing_key = Ed25519SigningKey::from_bytes(&signing_key_bytes);
+    let signature = signing_key.sign(message.as_bytes());
+
+    // 4. Build registry request
+    let b64 = &base64::engine::general_purpose::STANDARD;
+    let registry_request = serde_json::json!({
+        "new_handle": new_handle.as_str(),
+        "timestamp": timestamp,
+        "signature": {
+            "signature": b64.encode(signature.signature_bytes()),
+            "public_key": b64.encode(signature.public_key_bytes()),
+        }
+    });
+
+    // 5. Call registry
+    state
+        .registry_client
+        .change_handle(identity_id.as_str(), registry_request)
+        .await
+        .map_err(|e| NodeError::Registry(e.to_string()))?;
+
+    // 6. Update local state
+    {
+        let mut node_state = state.node_state.write().unwrap();
+        if let Some(identity) = node_state.identity_mut() {
+            identity.set_handle(new_handle.clone());
+        }
+        let state_path = Path::new(&state.config.node.data_dir).join("node.key");
+        node_state
+            .save(&state_path)
+            .map_err(|e| NodeError::Internal(format!("Failed to save state: {}", e)))?;
+    }
+
+    info!("Identity renamed to @{}", new_handle);
+
+    let response = IdentityResponse {
+        id: identity_id.to_string(),
+        handle: new_handle.to_string(),
+        nonce: String::new(), // Not needed for rename response
+    };
+
+    Ok(Json(response))
 }
 
 /// List peers handler.

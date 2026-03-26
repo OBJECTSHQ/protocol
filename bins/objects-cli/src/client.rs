@@ -66,6 +66,21 @@ impl NodeClient {
         }
     }
 
+    /// Rename identity handle. The node signs the request.
+    pub async fn rename_identity<T: serde::Serialize>(
+        &self,
+        req: T,
+    ) -> Result<IdentityResponse, CliError> {
+        let url = format!("{}/identity", self.base_url);
+        let response = self.client.patch(&url).json(&req).send().await?;
+
+        if response.status() == StatusCode::OK {
+            Ok(response.json().await?)
+        } else {
+            Err(self.error_from_response(response).await)
+        }
+    }
+
     // =========================================================================
     // Project Operations
     // =========================================================================
