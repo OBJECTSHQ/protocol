@@ -39,7 +39,7 @@ pub type Result<T> = std::result::Result<T, ConfigError>;
 /// # Example
 ///
 /// ```
-/// use objects_node::config::NodeConfig;
+/// use objects_core::config::NodeConfig;
 ///
 /// let config = NodeConfig::default();
 /// assert_eq!(config.node.api_port, 3420);

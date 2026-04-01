@@ -1,7 +1,7 @@
 //! CLI tool for OBJECTS Protocol.
 
 use clap::{Parser, Subcommand};
-use objects_cli::{client::NodeClient, commands, config::Config};
+use objects_cli::{commands, config::Config, connect};
 
 #[derive(Parser)]
 #[command(name = "objects")]
@@ -141,12 +141,12 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Status => {
             let config = Config::load()?;
-            let client = NodeClient::new(config.api_url());
+            let client = connect::connect_to_node(&config).await?;
             commands::status::run(&client).await?;
         }
         Commands::Identity { command } => {
             let config = Config::load()?;
-            let client = NodeClient::new(config.api_url());
+            let client = connect::connect_to_node(&config).await?;
             match command {
                 IdentityCommands::Create { handle } => {
                     commands::identity::create(handle, &client).await?;
@@ -161,7 +161,7 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Project { command } => {
             let config = Config::load()?;
-            let client = NodeClient::new(config.api_url());
+            let client = connect::connect_to_node(&config).await?;
             match command {
                 ProjectCommands::Create { name, description } => {
                     commands::project::create(name, description, &client).await?;
@@ -176,7 +176,7 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Asset { command } => {
             let config = Config::load()?;
-            let client = NodeClient::new(config.api_url());
+            let client = connect::connect_to_node(&config).await?;
             match command {
                 AssetCommands::Add { project, file } => {
                     commands::asset::add(project, file, &client).await?;
@@ -188,7 +188,7 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Vault { command } => {
             let config = Config::load()?;
-            let client = NodeClient::new(config.api_url());
+            let client = connect::connect_to_node(&config).await?;
             match command {
                 VaultCommands::List => {
                     commands::vault::list(&client).await?;
@@ -207,7 +207,7 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Ticket { command } => {
             let config = Config::load()?;
-            let client = NodeClient::new(config.api_url());
+            let client = connect::connect_to_node(&config).await?;
             match command {
                 TicketCommands::Create { project } => {
                     commands::ticket::create(project, &client).await?;
