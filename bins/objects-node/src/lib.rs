@@ -1,10 +1,5 @@
-//! OBJECTS Protocol Node Library
+//! OBJECTS Protocol Node
+//!
+//! This is the standalone daemon binary. The core engine lives in `objects-core`.
 
-pub mod api;
-pub mod config;
-pub mod defaults;
-pub mod service;
-pub mod state;
-
-pub use config::NodeConfig;
-pub use state::NodeState;
+pub use objects_core::*;

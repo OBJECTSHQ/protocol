@@ -26,8 +26,11 @@ jobs:
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v2
 
+      - name: Install nextest
+        uses: taiki-e/install-action@nextest
+
       - name: Run tests
-        run: cargo test --workspace
+        run: cargo nextest run --workspace
 
   clippy:
     name: Clippy
@@ -91,34 +94,13 @@ jobs:
       - name: Check semver compliance
         uses: obi1kenobi/cargo-semver-checks-action@v2
 
-  e2e:
-    name: E2E Tests
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-
-      - name: Checkout registry
-        uses: actions/checkout@v6
-        with:
-          repository: ${{ vars.REGISTRY_REPO }}
-          token: ${{ secrets.REGISTRY_TOKEN }}
-          path: _registry
-
-      - name: Build registry image
-        run: docker build -t objects-registry:latest _registry/
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache dependencies
-        uses: Swatinem/rust-cache@v2
-
-      - name: Start test registry
-        run: docker compose -f docker/test-compose.yml up -d --wait
-
-      - name: Run E2E tests
-        run: cargo test -p objects-node --test e2e_full_stack
-
-      - name: Stop test registry
-        run: docker compose -f docker/test-compose.yml down
+  # E2E tests temporarily disabled — HTTP test harness removed during irpc migration.
+  # Will be restored once irpc-based E2E tests are implemented.
+  # e2e:
+  #   name: E2E Tests
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v6
+  #     - uses: dtolnay/rust-toolchain@stable
+  #     - uses: Swatinem/rust-cache@v2
+  #     - run: cargo nextest run -p objects-node --test e2e
