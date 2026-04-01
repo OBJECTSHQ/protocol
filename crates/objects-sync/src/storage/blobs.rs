@@ -88,17 +88,11 @@ pub async fn check_storage_limits(
 ///
 /// Returns `Ok(true)` if the blob exists, `Ok(false)` if not found.
 pub async fn verify_blob_exists(store: &FsStore, hash: Hash) -> Result<bool> {
-    match store.blobs().get_bytes(hash).await {
-        Ok(_) => Ok(true),
-        Err(e) => {
-            let msg = e.to_string();
-            if msg.contains("not found") || msg.contains("NotFound") {
-                Ok(false)
-            } else {
-                Err(crate::Error::Storage(format!("Failed to read blob: {e}")))
-            }
-        }
-    }
+    store
+        .blobs()
+        .has(hash)
+        .await
+        .map_err(|e| crate::Error::Storage(format!("Failed to check blob existence: {e}")))
 }
 
 #[cfg(test)]
