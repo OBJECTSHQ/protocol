@@ -1,8 +1,8 @@
 //! Test node harness for spawning in-process node instances.
 
 use anyhow::Result;
-use objects_node::api::client::RegistryClient;
 use objects_node::api::handlers::{AppState, NodeInfo};
+use objects_node::api::registry::RegistryClient;
 use objects_node::api::routes::create_router;
 use objects_node::{NodeConfig, NodeState};
 use objects_sync::SyncEngine;
@@ -114,7 +114,9 @@ impl TestNode {
 
         // Create sync engine with persistent storage
         let storage_config = StorageConfig::from_base_dir(&data_dir);
-        let sync_engine = SyncEngine::with_storage(endpoint_arc.inner(), &storage_config).await?;
+        let sync_engine = SyncEngine::with_storage(endpoint_arc.inner(), &storage_config)
+            .await?
+            .spawn();
 
         // Create node info
         let node_info = Arc::new(NodeInfo {
