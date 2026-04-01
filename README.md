@@ -115,6 +115,7 @@ cargo run -p objects-cli -- asset list --project <project-id>
 
 ```
 crates/
+├── objects-core        # Embeddable node engine (config, state, API, service)
 ├── objects-identity    # Identity ID derivation, signatures, handle validation
 ├── objects-data        # Asset, Project, Reference types
 ├── objects-transport   # Iroh wrapper, ALPN config, peer discovery
@@ -123,7 +124,7 @@ crates/
 
 bins/
 ├── objects-cli         # CLI tool
-└── objects-node        # Node daemon
+└── objects-node        # Node daemon (thin wrapper around objects-core)
 
 proto/
 └── objects/            # Protobuf definitions (identity/v1, data/v1)
