@@ -13,20 +13,35 @@ use bytes::Bytes;
 use objects_test_utils::sync::{asset, project_from_replica, sync_engine_pair};
 use serial_test::serial;
 
-/// Verify the two engines can actually connect via iroh_blobs ALPN.
+/// Verify connectivity by transferring a small blob via ticket.
+///
+/// Uses the blobs protocol (via Router) rather than raw connect(),
+/// which is the idiomatic iroh test pattern — the Router handles
+/// accept() internally.
 #[tokio::test]
 #[serial]
 async fn test_engines_can_connect() {
     let (sync_a, sync_b) = sync_engine_pair().await.unwrap();
 
-    let addr_a = sync_a.endpoint().addr();
-
-    // Try to connect from B to A using iroh_blobs ALPN
-    sync_b
-        .endpoint()
-        .connect(addr_a, iroh_blobs::ALPN)
+    // Add a blob on A and create a transfer ticket
+    let data = b"connectivity check";
+    let hash = sync_a.blobs().add_bytes(&data[..]).await.unwrap();
+    let ticket = sync_a
+        .blobs()
+        .create_ticket(hash, sync_a.node_addr().clone())
         .await
-        .expect("Endpoints should be able to connect");
+        .unwrap();
+
+    // B downloads via ticket (exercises the full blobs protocol path)
+    let received_hash = sync_b
+        .blobs()
+        .download_from_ticket(ticket)
+        .await
+        .expect("Engines should be able to transfer blobs");
+
+    assert_eq!(received_hash, hash);
+    let received = sync_b.blobs().read_to_bytes(hash).await.unwrap();
+    assert_eq!(&received[..], data);
 }
 
 /// Node A adds blob → creates ticket → Node B downloads via ticket → verify content matches.

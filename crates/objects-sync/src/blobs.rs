@@ -12,7 +12,7 @@
 //! # async fn example() -> anyhow::Result<()> {
 //! let endpoint = ObjectsEndpoint::builder().bind().await?;
 //! let node_addr = endpoint.node_addr();
-//! let sync = SyncEngine::new(endpoint).await?;
+//! let sync = SyncEngine::in_memory(endpoint).await?;
 //!
 //! // Add blob and get hash
 //! let hash = sync.blobs().add_bytes(&b"Hello, OBJECTS!"[..]).await?;
@@ -72,7 +72,7 @@ impl BlobClient {
     /// # use objects_transport::ObjectsEndpoint;
     /// # async fn example() -> anyhow::Result<()> {
     /// # let endpoint = ObjectsEndpoint::builder().bind().await?;
-    /// # let sync = SyncEngine::new(endpoint).await?;
+    /// # let sync = SyncEngine::in_memory(endpoint).await?;
     /// let hash = sync.blobs().add_bytes(&b"Hello, world!"[..]).await?;
     /// println!("Stored with hash: {}", hash);
     /// # Ok(())
@@ -99,7 +99,7 @@ impl BlobClient {
     /// # use objects_transport::ObjectsEndpoint;
     /// # async fn example() -> anyhow::Result<()> {
     /// # let endpoint = ObjectsEndpoint::builder().bind().await?;
-    /// # let sync = SyncEngine::new(endpoint).await?;
+    /// # let sync = SyncEngine::in_memory(endpoint).await?;
     /// let hash = sync.blobs().add_from_path("path/to/model.step").await?;
     /// println!("Stored file with hash: {}", hash);
     /// # Ok(())
@@ -129,7 +129,7 @@ impl BlobClient {
     /// # use objects_transport::ObjectsEndpoint;
     /// # async fn example() -> anyhow::Result<()> {
     /// # let endpoint = ObjectsEndpoint::builder().bind().await?;
-    /// # let sync = SyncEngine::new(endpoint).await?;
+    /// # let sync = SyncEngine::in_memory(endpoint).await?;
     /// # let hash = sync.blobs().add_bytes(&b"test"[..]).await?;
     /// let content = sync.blobs().read_to_bytes(hash).await?;
     /// println!("Content: {:?}", content);
@@ -161,7 +161,7 @@ impl BlobClient {
     /// # use iroh_blobs::ticket::BlobTicket;
     /// # async fn example() -> anyhow::Result<()> {
     /// # let endpoint = ObjectsEndpoint::builder().bind().await?;
-    /// # let sync = SyncEngine::new(endpoint).await?;
+    /// # let sync = SyncEngine::in_memory(endpoint).await?;
     /// let ticket: BlobTicket = "blobaaaa...".parse()?;
     /// let hash = sync.blobs().download_from_ticket(ticket).await?;
     /// println!("Downloaded blob: {}", hash);
@@ -207,7 +207,7 @@ impl BlobClient {
     /// # async fn example() -> anyhow::Result<()> {
     /// # let endpoint = ObjectsEndpoint::builder().bind().await?;
     /// # let node_addr = endpoint.node_addr();
-    /// # let sync = SyncEngine::new(endpoint).await?;
+    /// # let sync = SyncEngine::in_memory(endpoint).await?;
     /// # let hash = sync.blobs().add_bytes(&b"test"[..]).await?;
     /// let ticket = sync.blobs()
     ///     .create_ticket(hash, node_addr)
@@ -237,7 +237,7 @@ impl BlobClient {
     /// # use objects_transport::ObjectsEndpoint;
     /// # async fn example() -> anyhow::Result<()> {
     /// # let endpoint = ObjectsEndpoint::builder().bind().await?;
-    /// # let sync = SyncEngine::new(endpoint).await?;
+    /// # let sync = SyncEngine::in_memory(endpoint).await?;
     /// # let hash = sync.blobs().add_bytes(&b"test"[..]).await?;
     /// if sync.blobs().has_blob(hash).await {
     ///     println!("Blob exists locally");
@@ -266,7 +266,7 @@ impl BlobClient {
     /// # use objects_transport::ObjectsEndpoint;
     /// # async fn example() -> anyhow::Result<()> {
     /// # let endpoint = ObjectsEndpoint::builder().bind().await?;
-    /// # let sync = SyncEngine::new(endpoint).await?;
+    /// # let sync = SyncEngine::in_memory(endpoint).await?;
     /// # let hash = sync.blobs().add_bytes(&b"test"[..]).await?;
     /// sync.blobs().delete_blob(hash).await?;
     /// # Ok(())
