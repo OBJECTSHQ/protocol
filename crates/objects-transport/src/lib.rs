@@ -38,8 +38,8 @@ pub use connection::Connection;
 pub use endpoint::ObjectsEndpoint;
 pub use error::{Error, Result};
 
-/// Re-export Iroh's static discovery provider for test use.
-pub use iroh::discovery::static_provider::StaticProvider;
+/// Re-export Iroh's memory-based address lookup for test use.
+pub use iroh::address_lookup::MemoryLookup;
 
 /// Re-export Iroh's relay mode for endpoint configuration.
 pub use iroh::endpoint::RelayMode;
