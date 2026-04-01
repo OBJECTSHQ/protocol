@@ -73,8 +73,8 @@ mod tests {
     use tokio::sync::Mutex;
     use tower::ServiceExt;
 
-    use super::super::client::RegistryClient;
     use super::super::handlers::NodeInfo;
+    use super::super::registry::RegistryClient;
     use super::super::types::HealthResponse;
 
     /// Create a test AppState with a real GossipDiscovery.
@@ -117,7 +117,8 @@ mod tests {
         let storage_config = StorageConfig::from_base_dir(temp.path());
         let sync_engine = SyncEngine::with_storage(endpoint_arc.inner(), &storage_config)
             .await
-            .unwrap();
+            .unwrap()
+            .spawn();
 
         let node_info = Arc::new(NodeInfo {
             node_id: endpoint_arc.node_id(),
