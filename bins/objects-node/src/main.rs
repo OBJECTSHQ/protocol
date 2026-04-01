@@ -1,9 +1,9 @@
 //! Node daemon for OBJECTS Protocol.
 
 use anyhow::Result;
-use objects_node::api::{AppState, NodeInfo, RegistryClient, create_router};
-use objects_node::service::NodeService;
-use objects_node::{NodeConfig, NodeState};
+use objects_core::api::{AppState, NodeInfo, RegistryClient, create_router};
+use objects_core::service::NodeService;
+use objects_core::{NodeConfig, NodeState};
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
