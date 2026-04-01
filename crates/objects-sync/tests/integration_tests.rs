@@ -50,7 +50,7 @@ async fn test_blob_from_file() -> objects_sync::Result<()> {
 async fn test_blob_ticket_creation() -> objects_sync::Result<()> {
     let endpoint = transport::endpoint().await;
     let node_addr = endpoint.node_addr();
-    let sync = SyncEngine::new(endpoint).await?;
+    let sync = SyncEngine::in_memory(endpoint).await?.spawn();
 
     // Add a blob
     let hash = sync.blobs().add_bytes(&b"Shared data"[..]).await?;
@@ -103,7 +103,7 @@ async fn test_replica_creation_and_entries() -> objects_sync::Result<()> {
 #[tokio::test]
 async fn test_doc_ticket_creation() -> objects_sync::Result<()> {
     let endpoint = transport::endpoint().await;
-    let sync = SyncEngine::new(endpoint).await?;
+    let sync = SyncEngine::in_memory(endpoint).await?.spawn();
 
     // Create replica
     let replica_id = sync.docs().create_replica().await?;
