@@ -11,7 +11,7 @@
 //!
 //! # async fn example() -> anyhow::Result<()> {
 //! let endpoint = ObjectsEndpoint::builder().bind().await?;
-//! let sync = SyncEngine::new(endpoint).await?;
+//! let sync = SyncEngine::in_memory(endpoint).await?;
 //!
 //! // Create replica and author
 //! let replica_id = sync.docs().create_replica().await?;
@@ -65,7 +65,7 @@ impl DocsClient {
     /// # use objects_transport::ObjectsEndpoint;
     /// # async fn example() -> anyhow::Result<()> {
     /// # let endpoint = ObjectsEndpoint::builder().bind().await?;
-    /// # let sync = SyncEngine::new(endpoint).await?;
+    /// # let sync = SyncEngine::in_memory(endpoint).await?;
     /// let replica_id = sync.docs().create_replica().await?;
     /// println!("Created replica: {}", replica_id);
     /// # Ok(())
@@ -108,7 +108,7 @@ impl DocsClient {
     /// # use objects_transport::ObjectsEndpoint;
     /// # async fn example() -> anyhow::Result<()> {
     /// # let endpoint = ObjectsEndpoint::builder().bind().await?;
-    /// # let sync = SyncEngine::new(endpoint).await?;
+    /// # let sync = SyncEngine::in_memory(endpoint).await?;
     /// let author = sync.docs().create_author().await?;
     /// println!("Created author: {}", author);
     /// # Ok(())
@@ -138,7 +138,7 @@ impl DocsClient {
     /// # use objects_transport::ObjectsEndpoint;
     /// # async fn example() -> anyhow::Result<()> {
     /// # let endpoint = ObjectsEndpoint::builder().bind().await?;
-    /// # let sync = SyncEngine::new(endpoint).await?;
+    /// # let sync = SyncEngine::in_memory(endpoint).await?;
     /// # let replica_id = sync.docs().create_replica().await?;
     /// # let author = sync.docs().create_author().await?;
     /// sync.docs()
@@ -183,7 +183,7 @@ impl DocsClient {
     /// # use objects_transport::ObjectsEndpoint;
     /// # async fn example() -> anyhow::Result<()> {
     /// # let endpoint = ObjectsEndpoint::builder().bind().await?;
-    /// # let sync = SyncEngine::new(endpoint).await?;
+    /// # let sync = SyncEngine::in_memory(endpoint).await?;
     /// # let replica_id = sync.docs().create_replica().await?;
     /// # let author = sync.docs().create_author().await?;
     /// # sync.docs().set_bytes(replica_id, author, "/project", &b"test"[..]).await?;
@@ -236,7 +236,7 @@ impl DocsClient {
     /// # use objects_transport::ObjectsEndpoint;
     /// # async fn example() -> anyhow::Result<()> {
     /// # let endpoint = ObjectsEndpoint::builder().bind().await?;
-    /// # let sync = SyncEngine::new(endpoint).await?;
+    /// # let sync = SyncEngine::in_memory(endpoint).await?;
     /// # let replica_id = sync.docs().create_replica().await?;
     /// # let author = sync.docs().create_author().await?;
     /// # sync.docs().set_bytes(replica_id, author, "/project", &b"test"[..]).await?;
@@ -262,7 +262,7 @@ impl DocsClient {
     /// # use objects_transport::ObjectsEndpoint;
     /// # async fn example() -> anyhow::Result<()> {
     /// # let endpoint = ObjectsEndpoint::builder().bind().await?;
-    /// # let sync = SyncEngine::new(endpoint).await?;
+    /// # let sync = SyncEngine::in_memory(endpoint).await?;
     /// # let replica_id = sync.docs().create_replica().await?;
     /// let entries = sync.docs().query_prefix(replica_id, "/assets/").await?;
     /// for entry in entries {
@@ -312,7 +312,7 @@ impl DocsClient {
     /// # async fn example() -> anyhow::Result<()> {
     /// # let endpoint = ObjectsEndpoint::builder().bind().await?;
     /// # let peer_addr = endpoint.node_addr(); // In reality, this would be a remote peer
-    /// # let sync = SyncEngine::new(endpoint).await?;
+    /// # let sync = SyncEngine::in_memory(endpoint).await?;
     /// # let replica_id = sync.docs().create_replica().await?;
     /// sync.docs().sync_with_peer(replica_id, peer_addr).await?;
     /// # Ok(())
@@ -349,7 +349,7 @@ impl DocsClient {
     /// # use iroh_docs::DocTicket;
     /// # async fn example() -> anyhow::Result<()> {
     /// # let endpoint = ObjectsEndpoint::builder().bind().await?;
-    /// # let sync = SyncEngine::new(endpoint).await?;
+    /// # let sync = SyncEngine::in_memory(endpoint).await?;
     /// let ticket: DocTicket = "docaaaa...".parse()?;
     /// let replica_id = sync.docs().download_from_ticket(ticket).await?;
     /// println!("Downloaded replica: {}", replica_id);
@@ -404,7 +404,7 @@ impl DocsClient {
     /// # use objects_transport::ObjectsEndpoint;
     /// # async fn example() -> anyhow::Result<()> {
     /// # let endpoint = ObjectsEndpoint::builder().bind().await?;
-    /// # let sync = SyncEngine::new(endpoint).await?;
+    /// # let sync = SyncEngine::in_memory(endpoint).await?;
     /// # let replica_id = sync.docs().create_replica().await?;
     /// let ticket = sync.docs()
     ///     .create_ticket(replica_id)
@@ -440,7 +440,7 @@ impl DocsClient {
     /// # use objects_transport::ObjectsEndpoint;
     /// # async fn example() -> anyhow::Result<()> {
     /// # let endpoint = ObjectsEndpoint::builder().bind().await?;
-    /// # let sync = SyncEngine::new(endpoint).await?;
+    /// # let sync = SyncEngine::in_memory(endpoint).await?;
     /// let replicas = sync.docs().list_replicas().await?;
     /// println!("Found {} replicas", replicas.len());
     /// # Ok(())
@@ -473,7 +473,7 @@ impl DocsClient {
     /// # use objects_transport::ObjectsEndpoint;
     /// # async fn example() -> anyhow::Result<()> {
     /// # let endpoint = ObjectsEndpoint::builder().bind().await?;
-    /// # let sync = SyncEngine::new(endpoint).await?;
+    /// # let sync = SyncEngine::in_memory(endpoint).await?;
     /// # let replica_id = sync.docs().create_replica().await?;
     /// sync.docs().delete_replica(replica_id).await?;
     /// # Ok(())
