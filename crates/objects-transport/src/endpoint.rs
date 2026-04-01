@@ -2,10 +2,8 @@
 //!
 //! Wraps Iroh's Endpoint with OBJECTS-specific configuration.
 
-use std::net::{Ipv4Addr, SocketAddrV4};
-
 use iroh::RelayMap;
-use iroh::discovery::static_provider::StaticProvider;
+use iroh::address_lookup::MemoryLookup;
 use iroh::endpoint::{Endpoint, RelayMode};
 
 use crate::{
@@ -132,7 +130,7 @@ impl ObjectsEndpoint {
 pub struct EndpointBuilder {
     config: Option<NetworkConfig>,
     secret_key: Option<SecretKey>,
-    static_discovery: Option<StaticProvider>,
+    static_discovery: Option<MemoryLookup>,
     relay_mode: Option<RelayMode>,
     bind_port: Option<u16>,
 }
@@ -173,7 +171,7 @@ impl EndpointBuilder {
     ///
     /// Useful in tests to share peer addresses between endpoints
     /// without relying on external discovery services.
-    pub fn static_discovery(mut self, provider: StaticProvider) -> Self {
+    pub fn static_discovery(mut self, provider: MemoryLookup) -> Self {
         self.static_discovery = Some(provider);
         self
     }
@@ -223,13 +221,13 @@ impl EndpointBuilder {
             RelayMode::Custom(relay_map)
         });
         let mut builder = match relay_mode {
-            RelayMode::Disabled => Endpoint::empty_builder(RelayMode::Disabled),
+            RelayMode::Disabled => Endpoint::empty_builder().relay_mode(RelayMode::Disabled),
             _ => {
                 // Keep Iroh's built-in discovery (Pkarr/DNS) active.
                 // This allows peers to find each other by NodeId, which is
                 // required for gossip bootstrap (subscribe_and_join needs to
                 // resolve bootstrap NodeIds to addresses).
-                Endpoint::builder().relay_mode(relay_mode)
+                Endpoint::builder(iroh::endpoint::presets::N0).relay_mode(relay_mode)
             }
         };
 
@@ -239,12 +237,14 @@ impl EndpointBuilder {
 
         // Set bind port if specified, otherwise OS picks a random port
         if let Some(port) = self.bind_port {
-            builder = builder.bind_addr_v4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, port));
+            builder = builder
+                .bind_addr((std::net::Ipv4Addr::UNSPECIFIED, port))
+                .map_err(|e| Error::Iroh(e.into()))?;
         }
 
         // Add static discovery if provided (used in tests)
         if let Some(discovery) = self.static_discovery {
-            builder = builder.discovery(discovery);
+            builder = builder.address_lookup(discovery);
         }
 
         let inner = builder.bind().await.map_err(|e| Error::Iroh(e.into()))?;

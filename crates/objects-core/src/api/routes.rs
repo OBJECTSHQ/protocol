@@ -73,8 +73,8 @@ mod tests {
     use tokio::sync::Mutex;
     use tower::ServiceExt;
 
-    use super::super::client::RegistryClient;
     use super::super::handlers::NodeInfo;
+    use super::super::registry::RegistryClient;
     use super::super::types::HealthResponse;
 
     /// Create a test AppState with a real GossipDiscovery.

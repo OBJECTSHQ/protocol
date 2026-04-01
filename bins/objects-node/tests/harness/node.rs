@@ -1,8 +1,8 @@
 //! Test node harness for spawning in-process node instances.
 
 use anyhow::Result;
-use objects_node::api::client::RegistryClient;
 use objects_node::api::handlers::{AppState, NodeInfo};
+use objects_node::api::registry::RegistryClient;
 use objects_node::api::routes::create_router;
 use objects_node::{NodeConfig, NodeState};
 use objects_sync::SyncEngine;
