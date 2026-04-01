@@ -38,6 +38,16 @@ pub struct IdentityResponse {
     pub nonce: String,
 }
 
+impl From<&crate::state::IdentityInfo> for IdentityResponse {
+    fn from(info: &crate::state::IdentityInfo) -> Self {
+        Self {
+            id: info.identity_id().to_string(),
+            handle: info.handle().to_string(),
+            nonce: base64::engine::general_purpose::STANDARD.encode(info.nonce()),
+        }
+    }
+}
+
 /// Peer information for listing discovered peers.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PeerInfo {
