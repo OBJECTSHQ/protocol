@@ -1,10 +1,12 @@
 //! Node daemon for OBJECTS Protocol.
 
 use anyhow::Result;
-use objects_node::api::{AppState, NodeInfo, RegistryClient, create_router};
-use objects_node::service::NodeService;
-use objects_node::{NodeConfig, NodeState};
-use std::net::SocketAddr;
+use objects_core::api::handlers::{AppState, NodeInfo};
+use objects_core::api::registry::RegistryClient;
+use objects_core::engine::NodeEngine;
+use objects_core::rpc::proto::NODE_RPC_ALPN;
+use objects_core::service::NodeService;
+use objects_core::{NodeConfig, NodeState};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 use tracing::{error, info, warn};
@@ -35,6 +37,20 @@ async fn shutdown_signal() {
         _ = terminate => {
             info!("Received SIGTERM signal");
         },
+    }
+}
+
+/// Write the node's connection info so the CLI can discover it.
+fn write_node_api_file(data_dir: &str, node_id: &str, node_addr: &objects_transport::NodeAddr) {
+    let api_path = Path::new(data_dir).join("node.api");
+    let info = serde_json::json!({
+        "node_id": node_id,
+        "node_addr": node_addr,
+    });
+    if let Err(e) = std::fs::write(&api_path, serde_json::to_string_pretty(&info).unwrap()) {
+        warn!("Failed to write node.api: {}", e);
+    } else {
+        info!("Node API info written to {}", api_path.display());
     }
 }
 
@@ -110,7 +126,7 @@ async fn main() -> Result<()> {
         }
     };
 
-    // Create shared state components for API
+    // Build shared state for the RPC engine
     let node_info = Arc::new(NodeInfo {
         node_id: service.node_id(),
         node_addr: service.node_addr(),
@@ -119,7 +135,6 @@ async fn main() -> Result<()> {
     let discovery = service.discovery.clone();
     let node_state_arc = Arc::new(RwLock::new(state));
 
-    // Create AppState for HTTP handlers
     let app_state = AppState {
         node_info: node_info.clone(),
         discovery: discovery.clone(),
@@ -131,9 +146,6 @@ async fn main() -> Result<()> {
     };
 
     // Vault startup: open vault replica and log discovered projects.
-    // This syncs catalog metadata only — does NOT download project replicas.
-    // Users can selectively pull projects via `objects vault pull <id>`.
-    // Extract signing key before any async work to avoid holding RwLock across await.
     let vault_signing_key = node_state_arc
         .read()
         .unwrap()
@@ -141,108 +153,78 @@ async fn main() -> Result<()> {
         .and_then(|i| i.signing_key().copied());
 
     if let Some(signing_key_bytes) = vault_signing_key {
-        {
-            match objects_identity::vault::VaultKeys::derive_from_signing_key(&signing_key_bytes) {
-                Ok(vault_keys) => {
-                    let vault_ns = vault_keys.namespace_id();
-                    let sync_engine = service.sync_engine();
+        match objects_identity::vault::VaultKeys::derive_from_signing_key(&signing_key_bytes) {
+            Ok(vault_keys) => {
+                let vault_ns = vault_keys.namespace_id();
+                let sync_engine = service.sync_engine();
 
-                    // Open the vault replica (creates if first device, syncs if exists)
-                    match sync_engine
-                        .docs()
-                        .create_replica_with_secret(vault_keys.namespace_secret().clone())
-                        .await
-                    {
-                        Ok(_) => {
-                            info!("Vault replica opened: {}", vault_ns);
-
-                            // Read catalog entries (decrypted)
-                            match sync_engine
-                                .docs()
-                                .list_catalog(
-                                    sync_engine.blobs(),
-                                    vault_ns,
-                                    Some(&vault_keys.catalog_encryption_key),
-                                )
-                                .await
-                            {
-                                Ok(entries) if entries.is_empty() => {
-                                    info!("Vault: empty (no projects)");
-                                }
-                                Ok(entries) => {
-                                    info!("Vault: {} project(s) discovered", entries.len());
-                                    for entry in &entries {
-                                        // Check if project replica exists locally
-                                        let local = sync_engine
-                                            .docs()
-                                            .list_replicas()
-                                            .await
-                                            .unwrap_or_default()
-                                            .iter()
-                                            .any(|r| hex::encode(r.as_bytes()) == entry.project_id);
-                                        let status = if local { "local" } else { "remote" };
-                                        info!(
-                                            "  {} [{}] {}",
-                                            entry.project_name,
-                                            status,
-                                            &entry.project_id[..16]
-                                        );
-                                    }
-                                }
-                                Err(e) => {
-                                    warn!("Vault: failed to read catalog: {}", e);
+                match sync_engine
+                    .docs()
+                    .create_replica_with_secret(vault_keys.namespace_secret().clone())
+                    .await
+                {
+                    Ok(_) => {
+                        info!("Vault replica opened: {}", vault_ns);
+                        match sync_engine
+                            .docs()
+                            .list_catalog(
+                                sync_engine.blobs(),
+                                vault_ns,
+                                Some(&vault_keys.catalog_encryption_key),
+                            )
+                            .await
+                        {
+                            Ok(entries) if entries.is_empty() => {
+                                info!("Vault: empty (no projects)");
+                            }
+                            Ok(entries) => {
+                                info!("Vault: {} project(s) discovered", entries.len());
+                                for entry in &entries {
+                                    let local = sync_engine
+                                        .docs()
+                                        .list_replicas()
+                                        .await
+                                        .unwrap_or_default()
+                                        .iter()
+                                        .any(|r| hex::encode(r.as_bytes()) == entry.project_id);
+                                    let status = if local { "local" } else { "remote" };
+                                    info!(
+                                        "  {} [{}] {}",
+                                        entry.project_name,
+                                        status,
+                                        &entry.project_id[..16]
+                                    );
                                 }
                             }
-                        }
-                        Err(e) => {
-                            warn!("Vault: failed to open replica: {}", e);
+                            Err(e) => warn!("Vault: failed to read catalog: {}", e),
                         }
                     }
-                }
-                Err(e) => {
-                    warn!("Vault: failed to derive keys: {}", e);
+                    Err(e) => warn!("Vault: failed to open replica: {}", e),
                 }
             }
+            Err(e) => warn!("Vault: failed to derive keys: {}", e),
         }
     }
 
-    // Create shutdown channel for coordinating tasks
-    let (shutdown_tx, _shutdown_rx) = tokio::sync::broadcast::channel::<()>(1);
+    // Spawn NodeEngine actor — this handles all RPC requests
+    let (_engine_handle, _node_api) = NodeEngine::spawn(app_state);
 
-    // Get shutdown trigger for network service before moving it
+    // Write node.api file for CLI discovery
+    write_node_api_file(
+        &config.node.data_dir,
+        &service.node_id().to_string(),
+        &service.node_addr(),
+    );
+
+    info!(
+        "Node RPC available via irpc (ALPN: {})",
+        String::from_utf8_lossy(NODE_RPC_ALPN)
+    );
+
+    // Get shutdown trigger for network service
     let network_shutdown = service.shutdown_trigger();
 
-    // Spawn HTTP server
-    let api_handle = {
-        let mut shutdown_rx = shutdown_tx.subscribe();
-        let config_clone = config.clone();
-        tokio::spawn(async move {
-            let app = create_router(app_state);
-            let ip: std::net::IpAddr =
-                config_clone.node.api_bind.parse().expect(
-                    "Invalid api_bind address (should have been caught by config validation)",
-                );
-            let addr = SocketAddr::from((ip, config_clone.node.api_port));
-            let listener = match tokio::net::TcpListener::bind(addr).await {
-                Ok(l) => l,
-                Err(e) => {
-                    error!("Failed to bind API server: {}", e);
-                    return Err(anyhow::anyhow!("Failed to bind: {}", e));
-                }
-            };
-
-            info!("API server listening on {}", addr);
-
-            axum::serve(listener, app)
-                .with_graceful_shutdown(async move {
-                    let _ = shutdown_rx.recv().await;
-                })
-                .await
-                .map_err(|e| anyhow::anyhow!("API server error: {}", e))
-        })
-    };
-
-    // Run network service concurrently with API and shutdown signal
+    // Run network service concurrently with shutdown signal
     tokio::select! {
         result = service.run_loop() => {
             if let Err(e) = result {
@@ -251,17 +233,7 @@ async fn main() -> Result<()> {
         }
         _ = shutdown_signal() => {
             info!("Received shutdown signal, stopping services...");
-
-            // Trigger network service shutdown via watch channel
             let _ = network_shutdown.send(true);
-
-            // Broadcast shutdown to API server
-            let _ = shutdown_tx.send(());
-
-            // Wait for API server to finish
-            if let Err(e) = api_handle.await {
-                error!("API server task error: {}", e);
-            }
         }
     }
 
