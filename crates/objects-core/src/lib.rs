@@ -7,6 +7,8 @@
 pub mod api;
 pub mod config;
 pub mod defaults;
+pub mod engine;
+pub mod node_api;
 pub mod rpc;
 pub mod service;
 pub mod state;
