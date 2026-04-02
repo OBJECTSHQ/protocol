@@ -2326,6 +2326,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "irpc-iroh"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6dd882f8cc059ac28ff54195a4933226807206c939c14680281c0ddb8434b3a8"
+dependencies = [
+ "getrandom 0.3.4",
+ "iroh",
+ "iroh-base",
+ "irpc",
+ "n0-error",
+ "n0-future",
+ "postcard",
+ "serde",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "is_terminal_polyfill"
 version = "1.70.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3038,6 +3056,7 @@ dependencies = [
  "iroh",
  "iroh-gossip",
  "irpc",
+ "irpc-iroh",
  "objects-data",
  "objects-identity",
  "objects-sync",
@@ -3110,21 +3129,16 @@ name = "objects-node"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "axum",
  "dirs 5.0.1",
  "hex",
- "iroh",
- "iroh-gossip",
  "objects-cli",
  "objects-core",
- "objects-data",
  "objects-identity",
  "objects-sync",
  "objects-test-utils",
  "objects-transport",
  "rand",
  "reqwest 0.13.1",
- "serde",
  "serde_json",
  "temp-env",
  "tempfile",

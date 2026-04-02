@@ -9,7 +9,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use base64::Engine as _;
 use tracing::info;
 
-use crate::api::handlers::AppState;
+use crate::api::handlers::{AppState, format_elapsed};
 use crate::api::registry;
 use crate::api::types::{
     AssetListResponse, AssetResponse, CreateProjectRequest, HealthResponse, IdentityResponse,
@@ -203,30 +203,21 @@ impl NodeEngine {
         &self,
         req: CreateIdentityRpcRequest,
     ) -> Result<IdentityResponse, RpcError> {
-        // 1. Validate handle format
         let handle = Handle::parse(&req.handle).map_err(|e| RpcError::BadRequest(e.to_string()))?;
 
-        // 2. Generate Ed25519 signing key (random, OS entropy)
         let signing_key = Ed25519SigningKey::generate();
         let public_key = signing_key.public_key_bytes();
-
-        // 3. Generate cryptographic nonce (8 bytes, OS entropy)
         let nonce = generate_nonce();
-
-        // 4. Derive identity ID: SHA256(public_key || nonce)
         let identity_id = IdentityId::derive(&public_key, &nonce);
 
-        // 5. Timestamp
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_err(|e| RpcError::Internal(format!("System time error: {e}")))?
             .as_secs();
 
-        // 6. Sign create-identity message per RFC-001
         let message = create_identity_message(identity_id.as_str(), handle.as_str(), timestamp);
         let signature = signing_key.sign(message.as_bytes());
 
-        // 7. Build registry request
         let b64 = &base64::engine::general_purpose::STANDARD;
         let registry_request = registry::CreateIdentityRequest {
             handle: handle.to_string(),
@@ -239,7 +230,6 @@ impl NodeEngine {
             },
         };
 
-        // 8. Register with the registry
         let registry_response = self
             .state
             .registry_client
@@ -247,7 +237,6 @@ impl NodeEngine {
             .await
             .map_err(|e| RpcError::Registry(e.to_string()))?;
 
-        // 9. Persist signing key + identity in node state
         let identity_info = IdentityInfo::with_signing_key(
             IdentityId::parse(&registry_response.id)
                 .map_err(|e| RpcError::Internal(format!("Invalid identity ID: {e}")))?,
@@ -259,9 +248,8 @@ impl NodeEngine {
 
         // Create vault replica before persisting so we can save once
         let vault_namespace_id = if let Some(sk_bytes) = identity_info.signing_key() {
-            let vault_keys =
-                objects_identity::vault::VaultKeys::derive_from_signing_key(sk_bytes)
-                    .map_err(|e| RpcError::Internal(format!("Failed to derive vault keys: {e}")))?;
+            let vault_keys = objects_identity::vault::VaultKeys::derive_from_signing_key(sk_bytes)
+                .map_err(|e| RpcError::Internal(format!("Failed to derive vault keys: {e}")))?;
 
             self.state
                 .sync_engine
@@ -280,10 +268,10 @@ impl NodeEngine {
         {
             let mut node_state = self.state.node_state.write().unwrap();
             node_state.set_identity(identity_info.clone());
-            if let Some(ns_id) = vault_namespace_id {
-                if let Some(identity) = node_state.identity_mut() {
-                    identity.set_vault_namespace_id(ns_id);
-                }
+            if let Some(ns_id) = vault_namespace_id
+                && let Some(identity) = node_state.identity_mut()
+            {
+                identity.set_vault_namespace_id(ns_id);
             }
             self.save_state(&node_state)?;
         }
@@ -301,11 +289,9 @@ impl NodeEngine {
         &self,
         req: RenameIdentityRpcRequest,
     ) -> Result<IdentityResponse, RpcError> {
-        // 1. Validate new handle
         let new_handle =
             Handle::parse(&req.new_handle).map_err(|e| RpcError::BadRequest(e.to_string()))?;
 
-        // 2. Get current identity + signing key
         let (identity_id, signing_key_bytes) = {
             let node_state = self.state.node_state.read().unwrap();
             let identity = node_state
@@ -317,7 +303,6 @@ impl NodeEngine {
             (identity.identity_id().clone(), *signing_key)
         };
 
-        // 3. Sign the change-handle message
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_err(|e| RpcError::Internal(format!("System time error: {e}")))?
@@ -327,7 +312,6 @@ impl NodeEngine {
         let signing_key = Ed25519SigningKey::from_bytes(&signing_key_bytes);
         let signature = signing_key.sign(message.as_bytes());
 
-        // 4. Build registry request
         let b64 = &base64::engine::general_purpose::STANDARD;
         let registry_request = serde_json::json!({
             "new_handle": new_handle.as_str(),
@@ -338,7 +322,6 @@ impl NodeEngine {
             }
         });
 
-        // 5. Call registry
         self.state
             .registry_client
             .change_handle(identity_id.as_str(), registry_request)
@@ -943,18 +926,5 @@ impl NodeEngine {
         }
 
         ListPeersResponse { peers }
-    }
-}
-
-fn format_elapsed(elapsed: std::time::Duration) -> String {
-    let secs = elapsed.as_secs();
-    if secs < 60 {
-        format!("{}s ago", secs)
-    } else if secs < 3600 {
-        format!("{}m ago", secs / 60)
-    } else if secs < 86400 {
-        format!("{}h ago", secs / 3600)
-    } else {
-        format!("{}d ago", secs / 86400)
     }
 }

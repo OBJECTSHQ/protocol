@@ -9,27 +9,18 @@ description = "Node daemon for OBJECTS Protocol"
 [dependencies]
 objects-core.workspace = true
 objects-identity.workspace = true
-objects-data.workspace = true
 objects-transport.workspace = true
 objects-sync.workspace = true
 
 # Async
 tokio.workspace = true
 
-# P2P
-iroh.workspace = true
-iroh-gossip.workspace = true
-
 # Serialization
-serde.workspace = true
 serde_json.workspace = true
+hex.workspace = true
 
 # Error handling
 anyhow.workspace = true
-
-# HTTP API (used in main.rs for server startup — will be removed in PR 6)
-axum.workspace = true
-hex.workspace = true
 
 # Logging
 tracing.workspace = true

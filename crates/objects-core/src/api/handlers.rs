@@ -92,11 +92,7 @@ pub async fn node_status(State(state): State<AppState>) -> Json<StatusResponse> 
         .read()
         .expect("node_state lock poisoned")
         .identity()
-        .map(|info| IdentityResponse {
-            id: info.identity_id().to_string(),
-            handle: info.handle().to_string(),
-            nonce: base64::engine::general_purpose::STANDARD.encode(info.nonce()),
-        });
+        .map(IdentityResponse::from);
 
     Json(StatusResponse {
         node_id: state.node_info.node_id.to_string(),
@@ -119,11 +115,7 @@ pub async fn get_identity(
         .read()
         .unwrap()
         .identity()
-        .map(|info| IdentityResponse {
-            id: info.identity_id().to_string(),
-            handle: info.handle().to_string(),
-            nonce: base64::engine::general_purpose::STANDARD.encode(info.nonce()),
-        });
+        .map(IdentityResponse::from);
 
     match identity {
         Some(response) => Ok(Json(response)),
@@ -248,7 +240,7 @@ pub async fn list_peers(State(state): State<AppState>) -> Json<serde_json::Value
     Json(serde_json::json!({ "peers": peers }))
 }
 
-fn format_elapsed(elapsed: std::time::Duration) -> String {
+pub(crate) fn format_elapsed(elapsed: std::time::Duration) -> String {
     let secs = elapsed.as_secs();
     if secs < 60 {
         format!("{}s ago", secs)
