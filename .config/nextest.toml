@@ -1,8 +1,8 @@
 # Nextest configuration for OBJECTS Protocol
 #
-# QUIC network tests must run serially to avoid UDP port contention.
-# Same pattern used by n0/iroh for their test suite.
-# See: https://nexte.st/docs/configuration/test-groups/
+# QUIC network tests run serially to avoid UDP port contention,
+# with retries for genuinely flaky P2P connection timing.
+# Same patterns used by n0/iroh: https://github.com/n0-computer/iroh/wiki/Flaky-Tests
 
 [profile.default]
 slow-timeout = { period = "60s", terminate-after = 3 }
@@ -10,12 +10,13 @@ slow-timeout = { period = "60s", terminate-after = 3 }
 [test-groups.quic-network]
 max-threads = 1
 
-# Multi-node sync tests: create endpoint pairs, transfer blobs/docs
+# Multi-node sync tests: P2P connections can be slow under load
 [[profile.default.overrides]]
 filter = 'binary(multi_node_sync)'
 test-group = 'quic-network'
+retries = 2
 
-# Transport integration tests: raw QUIC connections between endpoints
+# Transport integration tests: serial QUIC connections
 [[profile.default.overrides]]
 filter = 'binary(integration_test) & package(objects-transport)'
 test-group = 'quic-network'

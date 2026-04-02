@@ -281,9 +281,3 @@ impl BlobClient {
         ))
     }
 }
-
-#[cfg(test)]
-mod tests {
-    // Note: Full integration tests are in tests/integration_tests.rs
-    // These are basic unit tests for the API surface
-}

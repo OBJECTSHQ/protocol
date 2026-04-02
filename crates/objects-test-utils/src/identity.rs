@@ -89,39 +89,4 @@ pub fn random_identity() -> RandomIdentity {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_identity_id_is_deterministic() {
-        let id1 = test_identity_id();
-        let id2 = test_identity_id();
-        assert_eq!(id1, id2);
-        assert!(id1.as_str().starts_with("obj_"));
-    }
-
-    #[test]
-    fn test_random_identity_derivation() {
-        let identity = random_identity();
-
-        // Verify the identity ID was correctly derived
-        let derived = IdentityId::derive(&identity.keypair.public_key, &identity.nonce);
-        assert_eq!(identity.identity_id, derived);
-
-        // Verify the ID has correct format
-        assert!(identity.identity_id.as_str().starts_with("obj_"));
-        assert!(identity.identity_id.as_str().len() >= 23);
-        assert!(identity.identity_id.as_str().len() <= 25);
-    }
-
-    #[test]
-    fn test_random_identities_are_unique() {
-        let id1 = random_identity();
-        let id2 = random_identity();
-
-        // Statistically should never be equal
-        assert_ne!(id1.identity_id, id2.identity_id);
-        assert_ne!(id1.nonce, id2.nonce);
-    }
-}
+// Unit tests live in tests/self_test.rs to avoid duplication.

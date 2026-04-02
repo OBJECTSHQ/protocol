@@ -3076,13 +3076,9 @@ dependencies = [
  "prost",
  "prost-build",
  "rand",
- "rstest",
  "serde",
  "serde_json",
- "serde_test",
  "thiserror 2.0.18",
- "tokio",
- "tokio-test",
 ]
 
 [[package]]
@@ -3105,8 +3101,6 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "thiserror 2.0.18",
- "tokio",
- "tokio-test",
 ]
 
 [[package]]
@@ -3136,7 +3130,6 @@ dependencies = [
  "blake3",
  "bytes",
  "futures",
- "hex",
  "iroh",
  "iroh-blobs",
  "iroh-docs",
@@ -3152,7 +3145,6 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
- "tokio-test",
  "tracing",
  "walkdir",
 ]
@@ -3182,18 +3174,15 @@ dependencies = [
  "bytes",
  "ed25519-dalek",
  "futures",
- "hex",
  "hickory-resolver",
  "iroh",
  "iroh-gossip",
  "objects-test-utils",
  "proptest",
  "rand",
- "rstest",
  "serial_test",
  "thiserror 2.0.18",
  "tokio",
- "tokio-test",
  "tracing",
  "url",
 ]
@@ -4373,15 +4362,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "serde_test"
-version = "1.0.177"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7f901ee573cab6b3060453d2d5f0bae4e6d628c23c0a962ff9b5f1d7c8d4f1ed"
-dependencies = [
- "serde",
-]
-
-[[package]]
 name = "serde_urlencoded"
 version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4889,17 +4869,6 @@ dependencies = [
  "pin-project-lite",
  "tokio",
  "tokio-util",
-]
-
-[[package]]
-name = "tokio-test"
-version = "0.4.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3f6d24790a10a7af737693a3e8f1d03faef7e6ca0cc99aae5066f533766de545"
-dependencies = [
- "futures-core",
- "tokio",
- "tokio-stream",
 ]
 
 [[package]]
