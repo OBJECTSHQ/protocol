@@ -1,25 +1,13 @@
-use crate::client::NodeClient;
 use crate::error::CliError;
-use serde::Serialize;
+use objects_core::node_api::NodeApi;
 
-/// Request sent from CLI to node. Just a handle — the node generates the key.
-#[derive(Debug, Serialize)]
-struct CreateIdentityRequest {
-    handle: String,
-}
-
-pub async fn create(handle: String, client: &NodeClient) -> Result<(), CliError> {
-    // Remove @ prefix if user provided it
+pub async fn create(handle: String, client: &NodeApi) -> Result<(), CliError> {
     let handle = handle.trim_start_matches('@');
 
     println!("Creating identity @{}...", handle);
     println!("  Key generation happens on the node (key never leaves the device)");
 
-    let request = CreateIdentityRequest {
-        handle: handle.to_string(),
-    };
-
-    let response = client.create_identity(request).await?;
+    let response = CliError::from_rpc(client.create_identity(handle).await)?;
 
     println!("Identity created");
     println!("  ID:     {}", response.id);
@@ -29,13 +17,12 @@ pub async fn create(handle: String, client: &NodeClient) -> Result<(), CliError>
     Ok(())
 }
 
-pub async fn rename(new_handle: String, client: &NodeClient) -> Result<(), CliError> {
+pub async fn rename(new_handle: String, client: &NodeApi) -> Result<(), CliError> {
     let new_handle = new_handle.trim_start_matches('@');
 
     println!("Renaming identity to @{}...", new_handle);
 
-    let request = serde_json::json!({ "new_handle": new_handle });
-    let response = client.rename_identity(request).await?;
+    let response = CliError::from_rpc(client.rename_identity(new_handle).await)?;
 
     println!("Identity renamed");
     println!("  ID:     {}", response.id);
@@ -44,8 +31,8 @@ pub async fn rename(new_handle: String, client: &NodeClient) -> Result<(), CliEr
     Ok(())
 }
 
-pub async fn show(client: &NodeClient) -> Result<(), CliError> {
-    match client.get_identity().await {
+pub async fn show(client: &NodeApi) -> Result<(), CliError> {
+    match CliError::from_rpc(client.get_identity().await) {
         Ok(response) => {
             println!("Identity:");
             println!("  ID:     {}", response.id);
