@@ -19,6 +19,7 @@ objects-transport = { path = "crates/objects-transport" }
 objects-sync = { path = "crates/objects-sync" }
 objects-data = { path = "crates/objects-data" }
 objects-common = { path = "crates/objects-common" }
+objects-core = { path = "crates/objects-core" }
 objects-test-utils = { path = "crates/objects-test-utils" }
 
 # Iroh

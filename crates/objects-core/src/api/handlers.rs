@@ -19,8 +19,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::Mutex;
 use tracing::info;
 
-use super::client::{self, RegistryClient};
 use super::error::NodeError;
+use super::registry::{self, RegistryClient};
 use super::types::{
     AssetListResponse, AssetResponse, CreateProjectRequest, CreateTicketRequest, HealthResponse,
     IdentityResponse, PeerInfo, ProjectListResponse, ProjectResponse, RedeemTicketRequest,
@@ -311,12 +311,12 @@ pub async fn create_identity(
 
     // 7. Build registry request with full crypto data
     let b64 = &base64::engine::general_purpose::STANDARD;
-    let registry_request = client::CreateIdentityRequest {
+    let registry_request = registry::CreateIdentityRequest {
         handle: handle.to_string(),
         public_key: b64.encode(public_key),
         nonce: b64.encode(nonce),
         timestamp,
-        signature: client::SignatureData {
+        signature: registry::SignatureData {
             signature: b64.encode(signature.signature_bytes()),
             public_key: b64.encode(signature.public_key_bytes()),
         },

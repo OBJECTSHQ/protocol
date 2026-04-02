@@ -3023,6 +3023,42 @@ dependencies = [
 ]
 
 [[package]]
+name = "objects-core"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "axum-extra",
+ "base64",
+ "bytes",
+ "dirs 5.0.1",
+ "futures",
+ "hex",
+ "http-body-util",
+ "iroh",
+ "iroh-gossip",
+ "objects-data",
+ "objects-identity",
+ "objects-sync",
+ "objects-test-utils",
+ "objects-transport",
+ "rand",
+ "reqwest 0.13.1",
+ "serde",
+ "serde_json",
+ "temp-env",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "toml",
+ "tower",
+ "tracing",
+ "tracing-subscriber",
+ "url",
+ "wiremock",
+]
+
+[[package]]
 name = "objects-data"
 version = "0.1.0"
 dependencies = [
@@ -3074,16 +3110,12 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "axum",
- "axum-extra",
- "base64",
- "bytes",
  "dirs 5.0.1",
- "futures",
  "hex",
- "http-body-util",
  "iroh",
  "iroh-gossip",
  "objects-cli",
+ "objects-core",
  "objects-data",
  "objects-identity",
  "objects-sync",
@@ -3095,13 +3127,9 @@ dependencies = [
  "serde_json",
  "temp-env",
  "tempfile",
- "thiserror 2.0.18",
  "tokio",
- "toml",
- "tower",
  "tracing",
  "tracing-subscriber",
- "url",
  "wiremock",
 ]
 
