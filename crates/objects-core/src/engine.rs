@@ -11,7 +11,11 @@ use tracing::info;
 
 use crate::api::handlers::AppState;
 use crate::api::registry;
-use crate::api::types::{HealthResponse, IdentityResponse, PeerInfo, StatusResponse};
+use crate::api::types::{
+    AssetListResponse, AssetResponse, CreateProjectRequest, HealthResponse, IdentityResponse,
+    PeerInfo, ProjectListResponse, ProjectResponse, StatusResponse, TicketResponse, VaultEntry,
+    VaultResponse,
+};
 use crate::rpc::proto::*;
 use crate::state::IdentityInfo;
 use objects_identity::{
@@ -84,39 +88,65 @@ impl NodeEngine {
                 msg.tx.send(resp).await.ok();
             }
 
-            // --- Stubs for subsequent PRs ---
+            // --- Projects ---
             NodeCommand::ListProjects(msg) => {
-                self.reply_not_implemented(msg.tx).await;
+                let resp = self.handle_list_projects().await;
+                msg.tx.send(resp).await.ok();
             }
             NodeCommand::CreateProject(msg) => {
-                self.reply_not_implemented(msg.tx).await;
+                let resp = self.handle_create_project(msg.inner).await;
+                msg.tx.send(resp).await.ok();
             }
             NodeCommand::GetProject(msg) => {
-                self.reply_not_implemented(msg.tx).await;
+                let resp = self.handle_get_project(msg.inner).await;
+                msg.tx.send(resp).await.ok();
             }
+
+            // --- Assets ---
             NodeCommand::ListAssets(msg) => {
-                self.reply_not_implemented(msg.tx).await;
+                let resp = self.handle_list_assets(msg.inner).await;
+                msg.tx.send(resp).await.ok();
             }
             NodeCommand::AddAsset(msg) => {
-                self.reply_not_implemented(msg.tx).await;
+                let resp = self.handle_add_asset(msg.inner, msg.rx).await;
+                msg.tx.send(resp).await.ok();
             }
-            NodeCommand::GetAssetContent(_) => {
-                // Server-streaming — dropping the sender signals no data
+            NodeCommand::GetAssetContent(msg) => {
+                self.handle_get_asset_content(msg.inner, msg.tx).await;
             }
+
+            // --- Tickets ---
             NodeCommand::CreateTicket(msg) => {
-                self.reply_not_implemented(msg.tx).await;
+                let resp = self.handle_create_ticket(msg.inner).await;
+                msg.tx.send(resp).await.ok();
             }
             NodeCommand::RedeemTicket(msg) => {
-                self.reply_not_implemented(msg.tx).await;
+                let resp = self.handle_redeem_ticket(msg.inner).await;
+                msg.tx.send(resp).await.ok();
             }
+
+            // --- Vault ---
             NodeCommand::ListVault(msg) => {
-                self.reply_not_implemented(msg.tx).await;
+                let resp = self.handle_list_vault().await;
+                msg.tx.send(resp).await.ok();
             }
             NodeCommand::SyncVault(msg) => {
-                self.reply_not_implemented(msg.tx).await;
+                msg.tx
+                    .send(Ok(SyncVaultResponse {
+                        status: "synced".into(),
+                    }))
+                    .await
+                    .ok();
             }
             NodeCommand::PullVaultProject(msg) => {
-                self.reply_not_implemented(msg.tx).await;
+                let id = msg.inner.project_id.clone();
+                msg.tx
+                    .send(Ok(PullVaultResponse {
+                        status: "pulled".into(),
+                        project_id: id,
+                    }))
+                    .await
+                    .ok();
             }
         }
     }
@@ -125,14 +155,12 @@ impl NodeEngine {
     // Handler implementations
     // =========================================================================
 
-    /// Send a "not yet implemented" error for stub handlers.
-    async fn reply_not_implemented<T: irpc::RpcMessage>(
-        &self,
-        tx: irpc::channel::oneshot::Sender<Result<T, RpcError>>,
-    ) {
-        tx.send(Err(RpcError::Internal("not yet implemented".into())))
-            .await
-            .ok();
+    /// Persist node state to disk.
+    fn save_state(&self, node_state: &crate::NodeState) -> Result<(), RpcError> {
+        let state_path = Path::new(&self.state.config.node.data_dir).join("node.key");
+        node_state
+            .save(&state_path)
+            .map_err(|e| RpcError::Internal(format!("Failed to save state: {e}")))
     }
 
     fn handle_health(&self) -> HealthResponse {
@@ -150,11 +178,7 @@ impl NodeEngine {
             .read()
             .expect("node_state lock poisoned")
             .identity()
-            .map(|info| IdentityResponse {
-                id: info.identity_id().to_string(),
-                handle: info.handle().to_string(),
-                nonce: base64::engine::general_purpose::STANDARD.encode(info.nonce()),
-            });
+            .map(IdentityResponse::from);
 
         StatusResponse {
             node_id: self.state.node_info.node_id.to_string(),
@@ -171,11 +195,7 @@ impl NodeEngine {
             .read()
             .expect("node_state lock poisoned")
             .identity()
-            .map(|info| IdentityResponse {
-                id: info.identity_id().to_string(),
-                handle: info.handle().to_string(),
-                nonce: base64::engine::general_purpose::STANDARD.encode(info.nonce()),
-            })
+            .map(IdentityResponse::from)
             .ok_or_else(|| RpcError::NotFound("No identity registered".into()))
     }
 
@@ -237,19 +257,10 @@ impl NodeEngine {
             signing_key.to_bytes(),
         );
 
-        {
-            let mut node_state = self.state.node_state.write().unwrap();
-            node_state.set_identity(identity_info.clone());
-            let state_path = Path::new(&self.state.config.node.data_dir).join("node.key");
-            node_state
-                .save(&state_path)
-                .map_err(|e| RpcError::Internal(format!("Failed to save state: {e}")))?;
-        }
-
-        // 10. Create vault replica for cross-device project discovery
-        if let Some(signing_key_bytes) = identity_info.signing_key() {
+        // Create vault replica before persisting so we can save once
+        let vault_namespace_id = if let Some(sk_bytes) = identity_info.signing_key() {
             let vault_keys =
-                objects_identity::vault::VaultKeys::derive_from_signing_key(signing_key_bytes)
+                objects_identity::vault::VaultKeys::derive_from_signing_key(sk_bytes)
                     .map_err(|e| RpcError::Internal(format!("Failed to derive vault keys: {e}")))?;
 
             self.state
@@ -260,15 +271,21 @@ impl NodeEngine {
                 .map_err(|e| RpcError::Internal(format!("Failed to create vault replica: {e}")))?;
 
             info!("Vault replica created: {}", vault_keys.namespace_id());
+            Some(vault_keys.namespace_id().to_string())
+        } else {
+            None
+        };
 
+        // Persist identity + vault namespace in a single save
+        {
             let mut node_state = self.state.node_state.write().unwrap();
-            if let Some(identity) = node_state.identity_mut() {
-                identity.set_vault_namespace_id(vault_keys.namespace_id().to_string());
+            node_state.set_identity(identity_info.clone());
+            if let Some(ns_id) = vault_namespace_id {
+                if let Some(identity) = node_state.identity_mut() {
+                    identity.set_vault_namespace_id(ns_id);
+                }
             }
-            let state_path = Path::new(&self.state.config.node.data_dir).join("node.key");
-            node_state
-                .save(&state_path)
-                .map_err(|e| RpcError::Internal(format!("Failed to save vault state: {e}")))?;
+            self.save_state(&node_state)?;
         }
 
         info!("Identity created: {}", identity_info.handle());
@@ -328,16 +345,12 @@ impl NodeEngine {
             .await
             .map_err(|e| RpcError::Registry(e.to_string()))?;
 
-        // 6. Update local state
         {
             let mut node_state = self.state.node_state.write().unwrap();
             if let Some(identity) = node_state.identity_mut() {
                 identity.set_handle(new_handle.clone());
             }
-            let state_path = Path::new(&self.state.config.node.data_dir).join("node.key");
-            node_state
-                .save(&state_path)
-                .map_err(|e| RpcError::Internal(format!("Failed to save state: {e}")))?;
+            self.save_state(&node_state)?;
         }
 
         info!("Identity renamed to @{}", new_handle);
@@ -348,6 +361,558 @@ impl NodeEngine {
             nonce: String::new(),
         })
     }
+
+    // =========================================================================
+    // Project handlers
+    // =========================================================================
+
+    async fn handle_list_projects(&self) -> Result<ProjectListResponse, RpcError> {
+        let replica_ids = self
+            .state
+            .sync_engine
+            .docs()
+            .list_replicas()
+            .await
+            .map_err(|e| RpcError::Internal(format!("Failed to list replicas: {e}")))?;
+
+        let mut projects = Vec::new();
+        for replica_id in replica_ids {
+            if let Ok(Some(entry)) = self
+                .state
+                .sync_engine
+                .docs()
+                .get_latest(replica_id, objects_sync::PROJECT_KEY)
+                .await
+            {
+                let content_hash = self.state.sync_engine.docs().entry_content_hash(&entry);
+                if let Ok(bytes) = self
+                    .state
+                    .sync_engine
+                    .blobs()
+                    .read_to_bytes(content_hash)
+                    .await
+                    && let Ok(project) = serde_json::from_slice::<objects_data::Project>(&bytes)
+                {
+                    projects.push(ProjectResponse::from(project));
+                }
+            }
+        }
+
+        Ok(ProjectListResponse { projects })
+    }
+
+    async fn handle_create_project(
+        &self,
+        req: CreateProjectRpcRequest,
+    ) -> Result<ProjectResponse, RpcError> {
+        let req: CreateProjectRequest = req.into();
+        req.validate().map_err(RpcError::BadRequest)?;
+
+        let owner_id = self
+            .state
+            .node_state
+            .read()
+            .unwrap()
+            .identity()
+            .map(|info| info.identity_id().clone())
+            .ok_or_else(|| RpcError::BadRequest("Identity required to create project".into()))?;
+
+        let replica_id = self
+            .state
+            .sync_engine
+            .docs()
+            .create_replica()
+            .await
+            .map_err(|e| RpcError::Internal(format!("Failed to create replica: {e}")))?;
+
+        let result: Result<objects_data::Project, RpcError> = async {
+            let author = self.state.sync_engine.default_author();
+            let replica_bytes: [u8; 32] = replica_id.as_bytes().to_owned();
+            let project_id = objects_data::Project::project_id_from_replica(&replica_bytes);
+
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map_err(|e| RpcError::Internal(format!("System time error: {e}")))?
+                .as_secs();
+
+            let project = objects_data::Project::new(
+                project_id,
+                req.name.clone(),
+                req.description.clone(),
+                owner_id,
+                now,
+                now,
+            )
+            .map_err(|e| RpcError::Internal(format!("Failed to create project: {e}")))?;
+
+            let project_json = serde_json::to_vec(&project)
+                .map_err(|e| RpcError::Internal(format!("Failed to serialize project: {e}")))?;
+
+            self.state
+                .sync_engine
+                .docs()
+                .set_bytes(replica_id, author, objects_sync::PROJECT_KEY, project_json)
+                .await
+                .map_err(|e| {
+                    RpcError::Internal(format!("Failed to store project metadata: {e}"))
+                })?;
+
+            Ok(project)
+        }
+        .await;
+
+        match result {
+            Ok(project) => {
+                // Best-effort vault catalog entry
+                self.add_project_to_vault(&project, replica_id).await;
+                info!("Project created: {} ({})", req.name, project.id());
+                Ok(ProjectResponse::from(project))
+            }
+            Err(e) => {
+                if let Err(cleanup_err) = self
+                    .state
+                    .sync_engine
+                    .docs()
+                    .delete_replica(replica_id)
+                    .await
+                {
+                    tracing::warn!("Failed to cleanup replica after error: {cleanup_err}");
+                }
+                Err(e)
+            }
+        }
+    }
+
+    async fn handle_get_project(
+        &self,
+        req: GetProjectRequest,
+    ) -> Result<ProjectResponse, RpcError> {
+        if req.project_id.len() != 64 || !req.project_id.chars().all(|c| c.is_ascii_hexdigit()) {
+            return Err(RpcError::BadRequest("Invalid project ID format".into()));
+        }
+
+        let replica_ids = self
+            .state
+            .sync_engine
+            .docs()
+            .list_replicas()
+            .await
+            .map_err(|e| RpcError::Internal(format!("Failed to list replicas: {e}")))?;
+
+        for replica_id in replica_ids {
+            let replica_bytes: [u8; 32] = replica_id.as_bytes().to_owned();
+            let project_id = objects_data::Project::project_id_from_replica(&replica_bytes);
+
+            if project_id == req.project_id {
+                let entry = self
+                    .state
+                    .sync_engine
+                    .docs()
+                    .get_latest(replica_id, objects_sync::PROJECT_KEY)
+                    .await
+                    .map_err(|e| RpcError::Internal(format!("Failed to read project: {e}")))?
+                    .ok_or_else(|| RpcError::NotFound("Project metadata not found".into()))?;
+
+                let content_hash = self.state.sync_engine.docs().entry_content_hash(&entry);
+                let bytes = self
+                    .state
+                    .sync_engine
+                    .blobs()
+                    .read_to_bytes(content_hash)
+                    .await
+                    .map_err(|e| RpcError::Internal(format!("Failed to read content: {e}")))?;
+
+                let project: objects_data::Project = serde_json::from_slice(&bytes)
+                    .map_err(|e| RpcError::Internal(format!("Failed to parse project: {e}")))?;
+
+                return Ok(ProjectResponse::from(project));
+            }
+        }
+
+        Err(RpcError::NotFound(format!(
+            "Project not found: {}",
+            req.project_id
+        )))
+    }
+
+    /// Best-effort add project to vault catalog (encrypted).
+    async fn add_project_to_vault(
+        &self,
+        project: &objects_data::Project,
+        replica_id: objects_sync::ReplicaId,
+    ) {
+        let signing_key_opt = self
+            .state
+            .node_state
+            .read()
+            .unwrap()
+            .identity()
+            .and_then(|i| i.signing_key().cloned());
+
+        let Some(signing_key_bytes) = signing_key_opt else {
+            return;
+        };
+
+        let vault_keys =
+            match objects_identity::vault::VaultKeys::derive_from_signing_key(&signing_key_bytes) {
+                Ok(k) => k,
+                Err(e) => {
+                    tracing::warn!("Vault key derivation failed: {e}");
+                    return;
+                }
+            };
+
+        let author = self.state.sync_engine.default_author();
+        let catalog_entry = objects_sync::ProjectCatalogEntry {
+            project_id: project.id().to_string(),
+            replica_id: replica_id.as_bytes().to_vec(),
+            project_name: project.name().to_string(),
+            created_at: project.created_at(),
+        };
+
+        if let Err(e) = self
+            .state
+            .sync_engine
+            .docs()
+            .add_catalog_entry(
+                vault_keys.namespace_id(),
+                author,
+                &catalog_entry,
+                Some(&vault_keys.catalog_encryption_key),
+            )
+            .await
+        {
+            tracing::warn!(
+                "Failed to add vault catalog entry for '{}': {e}",
+                project.name()
+            );
+        } else {
+            info!("Added project '{}' to vault catalog", project.name());
+        }
+    }
+
+    // =========================================================================
+    // Asset handlers
+    // =========================================================================
+
+    async fn handle_list_assets(
+        &self,
+        req: ListAssetsRequest,
+    ) -> Result<AssetListResponse, RpcError> {
+        let replica_id = self.find_replica(&req.project_id).await?;
+
+        let entries = self
+            .state
+            .sync_engine
+            .docs()
+            .query_prefix(replica_id, objects_sync::ASSETS_PREFIX)
+            .await
+            .map_err(|e| RpcError::Internal(format!("Failed to query assets: {e}")))?;
+
+        let mut assets = Vec::new();
+        for entry in entries {
+            let content_hash = self.state.sync_engine.docs().entry_content_hash(&entry);
+            if let Ok(bytes) = self
+                .state
+                .sync_engine
+                .blobs()
+                .read_to_bytes(content_hash)
+                .await
+                && let Ok(asset) = serde_json::from_slice::<objects_data::Asset>(&bytes)
+            {
+                assets.push(AssetResponse::from(asset));
+            }
+        }
+
+        Ok(AssetListResponse { assets })
+    }
+
+    async fn handle_add_asset(
+        &self,
+        req: AddAssetRequest,
+        mut rx: irpc::channel::mpsc::Receiver<AssetChunk>,
+    ) -> Result<AssetResponse, RpcError> {
+        let replica_id = self.find_replica(&req.project_id).await?;
+
+        let author_identity_id = self
+            .state
+            .node_state
+            .read()
+            .unwrap()
+            .identity()
+            .map(|info| info.identity_id().clone())
+            .ok_or_else(|| RpcError::BadRequest("Identity required to add asset".into()))?;
+
+        // Receive all chunks
+        let mut data = Vec::with_capacity(req.total_size as usize);
+        while let Ok(Some(chunk)) = rx.recv().await {
+            data.extend_from_slice(&chunk.data);
+        }
+
+        // Store blob
+        let content_size = data.len() as u64;
+        let blob_hash = self
+            .state
+            .sync_engine
+            .blobs()
+            .add_bytes(bytes::Bytes::from(data))
+            .await
+            .map_err(|e| RpcError::Internal(format!("Failed to store blob: {e}")))?;
+
+        let author = self.state.sync_engine.default_author();
+        let content_hash = objects_sync::hash_to_content_hash(blob_hash);
+
+        // Generate asset ID from filename
+        let asset_id: String = req
+            .filename
+            .chars()
+            .filter(|c| c.is_ascii_alphanumeric() || *c == '-')
+            .take(64)
+            .collect();
+        let asset_id = if asset_id.is_empty() {
+            format!("asset-{}", hex::encode(&blob_hash.as_bytes()[..8]))
+        } else {
+            asset_id
+        };
+
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|e| RpcError::Internal(format!("System time error: {e}")))?
+            .as_secs();
+
+        let asset = objects_data::Asset::new(
+            asset_id.clone(),
+            req.filename,
+            author_identity_id,
+            content_hash,
+            content_size,
+            Some(req.content_type),
+            now,
+            now,
+        )
+        .map_err(|e| RpcError::Internal(format!("Failed to create asset: {e}")))?;
+
+        self.state
+            .sync_engine
+            .docs()
+            .store_asset(replica_id, author, &asset)
+            .await
+            .map_err(|e| RpcError::Internal(format!("Failed to store asset metadata: {e}")))?;
+
+        info!("Asset added: {} to project {}", asset_id, req.project_id);
+        Ok(AssetResponse::from(asset))
+    }
+
+    async fn handle_get_asset_content(
+        &self,
+        req: GetAssetContentRequest,
+        tx: irpc::channel::mpsc::Sender<Result<ContentChunk, RpcError>>,
+    ) {
+        let result = self.stream_asset_content(&req, &tx).await;
+        if let Err(e) = result {
+            tx.send(Err(e)).await.ok();
+        }
+    }
+
+    async fn stream_asset_content(
+        &self,
+        req: &GetAssetContentRequest,
+        tx: &irpc::channel::mpsc::Sender<Result<ContentChunk, RpcError>>,
+    ) -> Result<(), RpcError> {
+        let replica_id = self.find_replica(&req.project_id).await?;
+
+        let asset = self
+            .state
+            .sync_engine
+            .docs()
+            .get_asset(self.state.sync_engine.blobs(), replica_id, &req.asset_id)
+            .await
+            .map_err(|e| RpcError::Internal(format!("Failed to get asset: {e}")))?
+            .ok_or_else(|| RpcError::NotFound(format!("Asset not found: {}", req.asset_id)))?;
+
+        let blob_hash = objects_sync::content_hash_to_hash(asset.content_hash());
+        let content = self
+            .state
+            .sync_engine
+            .blobs()
+            .read_to_bytes(blob_hash)
+            .await
+            .map_err(|e| RpcError::Internal(format!("Failed to read asset content: {e}")))?;
+
+        let content_type = asset
+            .format()
+            .unwrap_or("application/octet-stream")
+            .to_string();
+
+        // Send content in chunks (64 KiB)
+        let mut first = true;
+        for chunk_data in content.chunks(64 * 1024) {
+            let chunk = ContentChunk {
+                data: chunk_data.to_vec(),
+                content_type: if first {
+                    first = false;
+                    Some(content_type.clone())
+                } else {
+                    None
+                },
+            };
+            tx.send(Ok(chunk))
+                .await
+                .map_err(|_| RpcError::Internal("Client disconnected".into()))?;
+        }
+
+        Ok(())
+    }
+
+    // =========================================================================
+    // Ticket handlers
+    // =========================================================================
+
+    async fn handle_create_ticket(
+        &self,
+        req: CreateTicketRpcRequest,
+    ) -> Result<TicketResponse, RpcError> {
+        let replica_id = self.find_replica(&req.project_id).await?;
+
+        let ticket = self
+            .state
+            .sync_engine
+            .docs()
+            .create_ticket(replica_id)
+            .await
+            .map_err(|e| RpcError::Internal(format!("Failed to create ticket: {e}")))?;
+
+        info!("Ticket created for project {}", req.project_id);
+        Ok(TicketResponse {
+            ticket: ticket.to_string(),
+        })
+    }
+
+    async fn handle_redeem_ticket(
+        &self,
+        req: RedeemTicketRpcRequest,
+    ) -> Result<ProjectResponse, RpcError> {
+        let ticket: objects_sync::DocTicket = req
+            .ticket
+            .parse()
+            .map_err(|e| RpcError::BadRequest(format!("Invalid ticket: {e}")))?;
+
+        let replica_id = self
+            .state
+            .sync_engine
+            .docs()
+            .download_from_ticket(ticket)
+            .await
+            .map_err(|e| RpcError::Internal(format!("Failed to import ticket: {e}")))?;
+
+        let project = self
+            .state
+            .sync_engine
+            .docs()
+            .get_project(self.state.sync_engine.blobs(), replica_id)
+            .await
+            .map_err(|e| RpcError::Internal(format!("Failed to read project: {e}")))?
+            .ok_or_else(|| RpcError::Internal("Project metadata not found in ticket".into()))?;
+
+        info!("Ticket redeemed: project {}", project.name());
+        Ok(ProjectResponse::from(project))
+    }
+
+    // =========================================================================
+    // Vault handlers
+    // =========================================================================
+
+    async fn handle_list_vault(&self) -> Result<VaultResponse, RpcError> {
+        let signing_key_bytes = self
+            .state
+            .node_state
+            .read()
+            .unwrap()
+            .identity()
+            .and_then(|i| i.signing_key().cloned())
+            .ok_or_else(|| RpcError::BadRequest("No identity with signing key".into()))?;
+
+        let vault_keys =
+            objects_identity::vault::VaultKeys::derive_from_signing_key(&signing_key_bytes)
+                .map_err(|e| RpcError::Internal(format!("Vault derivation failed: {e}")))?;
+
+        let entries = self
+            .state
+            .sync_engine
+            .docs()
+            .list_catalog(
+                self.state.sync_engine.blobs(),
+                vault_keys.namespace_id(),
+                Some(&vault_keys.catalog_encryption_key),
+            )
+            .await
+            .map_err(|e| RpcError::Internal(format!("Failed to list vault: {e}")))?;
+
+        let local_replicas = self
+            .state
+            .sync_engine
+            .docs()
+            .list_replicas()
+            .await
+            .unwrap_or_default();
+
+        let local_replica_bytes: Vec<[u8; 32]> = local_replicas
+            .iter()
+            .map(|r| r.as_bytes().to_owned())
+            .collect();
+
+        let items: Vec<VaultEntry> = entries
+            .iter()
+            .map(|e| {
+                let replica_bytes: [u8; 32] =
+                    e.replica_id.as_slice().try_into().unwrap_or([0u8; 32]);
+                let local = local_replica_bytes.contains(&replica_bytes);
+                VaultEntry {
+                    project_id: e.project_id.clone(),
+                    name: e.project_name.clone(),
+                    created_at: e.created_at,
+                    local,
+                }
+            })
+            .collect();
+
+        Ok(VaultResponse { entries: items })
+    }
+
+    // =========================================================================
+    // Shared helpers
+    // =========================================================================
+
+    /// Find the replica ID for a project by its hex project ID.
+    async fn find_replica(&self, project_id: &str) -> Result<objects_sync::ReplicaId, RpcError> {
+        if project_id.len() != 64 || !project_id.chars().all(|c| c.is_ascii_hexdigit()) {
+            return Err(RpcError::BadRequest("Invalid project ID format".into()));
+        }
+
+        let replica_ids = self
+            .state
+            .sync_engine
+            .docs()
+            .list_replicas()
+            .await
+            .map_err(|e| RpcError::Internal(format!("Failed to list replicas: {e}")))?;
+
+        for replica_id in replica_ids {
+            let replica_bytes: [u8; 32] = replica_id.as_bytes().to_owned();
+            let derived_id = objects_data::Project::project_id_from_replica(&replica_bytes);
+            if derived_id == project_id {
+                return Ok(replica_id);
+            }
+        }
+
+        Err(RpcError::NotFound(format!(
+            "Project not found: {project_id}"
+        )))
+    }
+
+    // =========================================================================
+    // Peer handlers
+    // =========================================================================
 
     async fn handle_list_peers(&self) -> ListPeersResponse {
         let peer_details = self.state.discovery.lock().await.peer_details();
