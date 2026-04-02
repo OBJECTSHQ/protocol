@@ -6,7 +6,7 @@ Instructions for AI coding agents working on the OBJECTS Protocol.
 
 OBJECTS Protocol is a decentralized identity and data sync system for design engineering. Rust monorepo using Cargo workspaces, built on Iroh for P2P networking.
 
-**Stack:** Rust 2024 edition, Iroh 0.95, Protocol Buffers (prost), Tokio async runtime
+**Stack:** Rust 2024 edition, Iroh 0.97, irpc 0.13, Protocol Buffers (prost), Tokio async runtime
 
 **Registry:** The identity registry is a separate service (SQLite, deployed on GCE VM `objects-registry` in `us-central1-a` at `registry.objects.foundation`).
 
@@ -62,7 +62,7 @@ cargo test --workspace -- --ignored
 
 # 3. E2E tests (require Docker with objects-registry:latest image)
 docker compose -f docker/test-compose.yml up -d
-cargo test -p objects-node --test e2e_full_stack
+cargo nextest run -p objects-core --test engine_identity_e2e
 docker compose -f docker/test-compose.yml down
 
 # Multi-endpoint tests (sync, transport) use #[serial] to avoid
@@ -165,20 +165,21 @@ cargo fmt --all -- --check               # Verify (must pass clean, matches CI)
 
 ```
 crates/
+├── objects-core/        # Embeddable node engine (irpc service, NodeApi client)
 ├── objects-identity/    # Identity ID derivation, signatures, handle validation
 ├── objects-transport/   # Iroh wrapper, ALPN config, peer discovery
 ├── objects-sync/        # Blob + metadata sync (wraps iroh-blobs, iroh-docs)
 └── objects-data/        # Asset, Project, Reference types, SignedAsset
 
 bins/
-├── objects-cli/         # CLI tool for all operations
-└── objects-node/        # Node daemon (transport + sync)
+├── objects-cli/         # CLI tool (connects to node via irpc)
+└── objects-node/        # Node daemon (thin wrapper around objects-core)
 
 proto/
 └── objects/             # Protobuf definitions (identity/v1, data/v1)
 ```
 
-**Dependency order:** identity → data → transport → sync → node/cli
+**Dependency order:** identity → data → transport → sync → core → node/cli
 
 ## Dependencies
 
@@ -195,7 +196,7 @@ proto/
 | AEAD encryption | `chacha20poly1305` | XChaCha20-Poly1305 for vault catalog encryption |
 | Key derivation | `hkdf` | HKDF-SHA256 for vault namespace derivation |
 | P2P networking | `iroh` | Built by n0, handles Ed25519 crypto |
-| REST API testing | `tower::ServiceExt::oneshot()` | Official Axum pattern |
+| Node RPC | `irpc`, `irpc-iroh` | n0's RPC framework for iroh protocols |
 
 ### Finding Battle-Tested Solutions
 
@@ -206,7 +207,7 @@ When adding new functionality or facing implementation choices:
    - Example: "Latest alloy.rs EIP-191 signature verification"
 
 2. **Prefer official recommendations:** Follow patterns from official docs and examples
-   - Axum testing → Use `tower::ServiceExt::oneshot()`
+   - irpc → Use `Client::rpc()`, `client_streaming()`, `server_streaming()` for RPC
    - Iroh networking → Use their crypto primitives, don't wrap them
 
 3. **Verify with ecosystem:** Check if a library is:
@@ -310,7 +311,7 @@ let pk_b64 = base64::encode(signature.public_key_bytes());
 **CLI, Node, and Registry must use identical types for API contracts.** When the registry defines a request/response type, the node and CLI must match exactly.
 
 **Example:** The node's `RegistryClient` request types must match the registry's expected format:
-- `bins/objects-node/src/api/client.rs` — `CreateIdentityRequest`, `SignatureData`
+- `crates/objects-core/src/api/registry.rs` — `CreateIdentityRequest`, `SignatureData`
 - Registry `src/api/rest/types.rs` — `CreateIdentityRequest`, `SignatureRequest`
 
 The CLI is a thin client — it sends simple requests to the node (e.g., `{ handle }` for identity creation). The node handles key generation and builds the full registry request.
