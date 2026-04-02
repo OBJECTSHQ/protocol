@@ -114,7 +114,9 @@ impl TestNode {
 
         // Create sync engine with persistent storage
         let storage_config = StorageConfig::from_base_dir(&data_dir);
-        let sync_engine = SyncEngine::with_storage(endpoint_arc.inner(), &storage_config).await?;
+        let sync_engine = SyncEngine::with_storage(endpoint_arc.inner(), &storage_config)
+            .await?
+            .spawn();
 
         // Create node info
         let node_info = Arc::new(NodeInfo {

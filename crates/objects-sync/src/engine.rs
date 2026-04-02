@@ -2,7 +2,7 @@
 //!
 //! The [`SyncEngine`] is the main entry point for all sync operations in the OBJECTS Protocol.
 
-use iroh::protocol::Router;
+use iroh::protocol::{Router, RouterBuilder};
 use iroh_blobs::BlobsProtocol;
 use iroh_blobs::store::mem::MemStore;
 use iroh_docs::protocol::Docs;
@@ -27,12 +27,94 @@ pub struct SyncEngine {
     _router: Router,
 }
 
-impl SyncEngine {
-    /// Creates a new sync engine with persistent storage.
+/// Pre-spawn state of a sync engine.
+///
+/// Returned by [`SyncEngine::with_storage`] and [`SyncEngine::in_memory`].
+///
+/// - Call [`.spawn()`](Self::spawn) when no extra protocols are needed.
+/// - Call [`.into_router_builder()`](Self::into_router_builder) to register
+///   additional protocols (e.g. irpc) before spawning, then pass the Router
+///   back via [`SyncEngine::from_router`].
+pub struct SyncEngineBuilder {
+    blobs: BlobClient,
+    docs: DocsClient,
+    default_author: iroh_docs::AuthorId,
+    node_addr: NodeAddr,
+    router_builder: RouterBuilder,
+}
+
+impl SyncEngineBuilder {
+    /// Spawn the Router and finalize the SyncEngine.
     ///
-    /// Uses FsStore for content-addressed blob storage and persistent Docs
-    /// backend for metadata synchronization. Registers protocols on an iroh
-    /// Router so this node can serve blob and doc requests from peers.
+    /// Use this when no additional protocols need to be registered.
+    pub fn spawn(self) -> SyncEngine {
+        let router = self.router_builder.spawn();
+        SyncEngine {
+            blobs: self.blobs,
+            docs: self.docs,
+            default_author: self.default_author,
+            node_addr: self.node_addr,
+            _router: router,
+        }
+    }
+
+    /// Consume the builder, returning the `RouterBuilder` and a finalizer.
+    ///
+    /// Add extra protocols to the `RouterBuilder`, spawn it, then pass
+    /// the `Router` to the returned [`SyncEngineFinalizer::finalize`].
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let (finalizer, router_builder) = SyncEngine::with_storage(ep, &cfg)
+    ///     .await?
+    ///     .into_router_builder();
+    /// let router = router_builder
+    ///     .accept(MY_ALPN, my_handler)
+    ///     .spawn();
+    /// let engine = finalizer.finalize(router);
+    /// ```
+    pub fn into_router_builder(self) -> (SyncEngineFinalizer, RouterBuilder) {
+        (
+            SyncEngineFinalizer {
+                blobs: self.blobs,
+                docs: self.docs,
+                default_author: self.default_author,
+                node_addr: self.node_addr,
+            },
+            self.router_builder,
+        )
+    }
+}
+
+/// Holds sync engine state while the caller builds and spawns the Router.
+///
+/// Obtained from [`SyncEngineBuilder::into_router_builder`].
+pub struct SyncEngineFinalizer {
+    blobs: BlobClient,
+    docs: DocsClient,
+    default_author: iroh_docs::AuthorId,
+    node_addr: NodeAddr,
+}
+
+impl SyncEngineFinalizer {
+    /// Finalize the SyncEngine with a spawned Router.
+    pub fn finalize(self, router: Router) -> SyncEngine {
+        SyncEngine {
+            blobs: self.blobs,
+            docs: self.docs,
+            default_author: self.default_author,
+            node_addr: self.node_addr,
+            _router: router,
+        }
+    }
+}
+
+impl SyncEngine {
+    /// Creates a new sync engine builder with persistent storage.
+    ///
+    /// Returns a [`SyncEngineBuilder`] with blobs and docs protocols
+    /// pre-registered on the Router.
     ///
     /// # Errors
     ///
@@ -40,7 +122,7 @@ impl SyncEngine {
     pub async fn with_storage(
         iroh_endpoint: &iroh::Endpoint,
         storage_config: &StorageConfig,
-    ) -> Result<Self> {
+    ) -> Result<SyncEngineBuilder> {
         // Ensure directories exist
         storage_config.ensure_directories()?;
 
@@ -69,33 +151,32 @@ impl SyncEngine {
         )
         .await?;
 
-        // Register protocols on router for incoming connections
-        let router = Router::builder(iroh_endpoint.clone())
+        // Build router with blobs + docs (caller may add more before spawning)
+        let router_builder = Router::builder(iroh_endpoint.clone())
             .accept(iroh_blobs::ALPN, blobs_protocol)
-            .accept(iroh_docs::ALPN, docs_protocol.clone())
-            .spawn();
+            .accept(iroh_docs::ALPN, docs_protocol.clone());
 
         let docs = DocsClient::new(docs_protocol);
         let default_author = docs.create_author().await?;
 
-        Ok(Self {
-            blobs: BlobClient::new(blobs_client, store_api, router.endpoint().clone()),
+        Ok(SyncEngineBuilder {
+            blobs: BlobClient::new(blobs_client, store_api, iroh_endpoint.clone()),
             docs,
             default_author,
             node_addr,
-            _router: router,
+            router_builder,
         })
     }
 
-    /// Creates a new sync engine with in-memory storage.
+    /// Creates a new sync engine builder with in-memory storage.
     ///
-    /// Registers protocols on an iroh Router so this node can serve
-    /// blob and doc requests from peers.
+    /// Returns a [`SyncEngineBuilder`] with blobs and docs protocols
+    /// pre-registered on the Router.
     ///
     /// # Errors
     ///
     /// Returns error if initialization fails.
-    pub async fn new(endpoint: ObjectsEndpoint) -> Result<Self> {
+    pub async fn in_memory(endpoint: ObjectsEndpoint) -> Result<SyncEngineBuilder> {
         // Create in-memory blob store for v0.1
         let store = MemStore::new();
 
@@ -121,21 +202,20 @@ impl SyncEngine {
             .await
             .map_err(crate::Error::Iroh)?;
 
-        // Register protocols on router for incoming connections
-        let router = Router::builder(iroh_endpoint)
+        // Build router with blobs + docs (caller may add more before spawning)
+        let router_builder = Router::builder(iroh_endpoint.clone())
             .accept(iroh_blobs::ALPN, blobs_protocol)
-            .accept(iroh_docs::ALPN, docs_protocol.clone())
-            .spawn();
+            .accept(iroh_docs::ALPN, docs_protocol.clone());
 
         let docs = DocsClient::new(docs_protocol);
         let default_author = docs.create_author().await?;
 
-        Ok(Self {
-            blobs: BlobClient::new(blobs_client, store_api, router.endpoint().clone()),
+        Ok(SyncEngineBuilder {
+            blobs: BlobClient::new(blobs_client, store_api, iroh_endpoint),
             docs,
             default_author,
             node_addr,
-            _router: router,
+            router_builder,
         })
     }
 
@@ -145,8 +225,6 @@ impl SyncEngine {
     }
 
     /// Returns the underlying iroh endpoint (via the Router).
-    ///
-    /// Useful for registering peer addresses for discovery.
     pub fn endpoint(&self) -> &iroh::Endpoint {
         self._router.endpoint()
     }
@@ -162,22 +240,16 @@ impl SyncEngine {
     }
 
     /// Returns the default author for this node.
-    ///
-    /// One `AuthorId` per node — created at startup and reused for all write operations.
     pub fn default_author(&self) -> iroh_docs::AuthorId {
         self.default_author
     }
 
     /// Gracefully shutdown the sync engine.
     pub async fn shutdown(self) -> Result<()> {
-        // Shutdown the router. This calls ProtocolHandler::shutdown() on all
-        // registered protocols (including BlobsProtocol, which shuts down the
-        // store) and closes the endpoint.
         self._router
             .shutdown()
             .await
             .map_err(|e| crate::Error::SyncFailed(format!("Router shutdown failed: {}", e)))?;
-
         Ok(())
     }
 }
@@ -195,16 +267,13 @@ mod tests {
         let config = StorageConfig::from_base_dir(tmp.path());
         let endpoint = transport::endpoint().await;
 
-        // Should create engine with persistent storage
         let engine = SyncEngine::with_storage(endpoint.inner(), &config)
             .await
-            .unwrap();
+            .unwrap()
+            .spawn();
 
-        // Should be able to access clients
         let _blobs = engine.blobs();
         let _docs = engine.docs();
-
-        // Cleanup
         engine.shutdown().await.unwrap();
     }
 
@@ -215,35 +284,31 @@ mod tests {
 
         let hash;
 
-        // Session 1: Create and add blob
         {
             let endpoint = transport::endpoint().await;
             let engine = SyncEngine::with_storage(endpoint.inner(), &config)
                 .await
-                .unwrap();
+                .unwrap()
+                .spawn();
 
-            // Add blob
             hash = engine
                 .blobs()
                 .add_bytes(&b"persistent test"[..])
                 .await
                 .unwrap();
 
-            // Shutdown gracefully
             engine.shutdown().await.unwrap();
         }
 
-        // Session 2: Reload and verify blob exists
         {
             let endpoint2 = transport::endpoint().await;
             let engine2 = SyncEngine::with_storage(endpoint2.inner(), &config)
                 .await
-                .unwrap();
+                .unwrap()
+                .spawn();
 
-            // Verify blob still exists
             let bytes = engine2.blobs().read_to_bytes(hash).await.unwrap();
             assert_eq!(&bytes[..], b"persistent test");
-
             engine2.shutdown().await.unwrap();
         }
     }

@@ -26,9 +26,10 @@ use objects_sync::{ReplicaId, SyncEngine};
 #[allow(deprecated)] // Test utilities intentionally use in-memory storage for speed and isolation
 pub async fn sync_engine() -> anyhow::Result<SyncEngine> {
     let endpoint = transport::endpoint().await;
-    SyncEngine::new(endpoint)
+    Ok(SyncEngine::in_memory(endpoint)
         .await
-        .map_err(|e| anyhow::anyhow!("Failed to create sync engine: {}", e))
+        .map_err(|e| anyhow::anyhow!("Failed to create sync engine: {}", e))?
+        .spawn())
 }
 
 /// Creates a test project derived from a replica using RFC-004 derivation.
@@ -133,12 +134,14 @@ pub async fn sync_engine_pair() -> anyhow::Result<(SyncEngine, SyncEngine)> {
         .await
         .expect("failed to create endpoint 2");
 
-    let sync1 = SyncEngine::new(ep1)
+    let sync1 = SyncEngine::in_memory(ep1)
         .await
-        .map_err(|e| anyhow::anyhow!("sync engine 1: {}", e))?;
-    let sync2 = SyncEngine::new(ep2)
+        .map_err(|e| anyhow::anyhow!("sync engine 1: {}", e))?
+        .spawn();
+    let sync2 = SyncEngine::in_memory(ep2)
         .await
-        .map_err(|e| anyhow::anyhow!("sync engine 2: {}", e))?;
+        .map_err(|e| anyhow::anyhow!("sync engine 2: {}", e))?
+        .spawn();
 
     // Cross-register addresses AFTER Routers are spawned (iroh canonical pattern).
     sp1.add_endpoint_info(sync2.endpoint().addr());
@@ -174,12 +177,14 @@ pub async fn sync_engine_pair_with_relay() -> anyhow::Result<(SyncEngine, SyncEn
         .await
         .expect("failed to create relay endpoint 2");
 
-    let sync1 = SyncEngine::new(ep1)
+    let sync1 = SyncEngine::in_memory(ep1)
         .await
-        .map_err(|e| anyhow::anyhow!("sync engine 1: {}", e))?;
-    let sync2 = SyncEngine::new(ep2)
+        .map_err(|e| anyhow::anyhow!("sync engine 1: {}", e))?
+        .spawn();
+    let sync2 = SyncEngine::in_memory(ep2)
         .await
-        .map_err(|e| anyhow::anyhow!("sync engine 2: {}", e))?;
+        .map_err(|e| anyhow::anyhow!("sync engine 2: {}", e))?
+        .spawn();
 
     sp1.add_endpoint_info(sync2.endpoint().addr());
     sp2.add_endpoint_info(sync1.endpoint().addr());

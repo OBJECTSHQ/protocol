@@ -127,7 +127,9 @@ impl NodeService {
         let storage_config = StorageConfig::from_base_dir(&storage_base);
 
         // Create sync engine with persistent storage
-        let sync_engine = SyncEngine::with_storage(endpoint_arc.inner(), &storage_config).await?;
+        let sync_engine = SyncEngine::with_storage(endpoint_arc.inner(), &storage_config)
+            .await?
+            .spawn();
 
         info!("Sync engine initialized with persistent storage");
 
