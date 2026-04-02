@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/*",
     "bins/objects-cli",
+    "bins/objects-health",
     "bins/objects-node",
 ]
 

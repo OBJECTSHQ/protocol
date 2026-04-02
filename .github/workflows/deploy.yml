@@ -122,7 +122,6 @@ jobs:
               docker run -d \
                 --name objects-node \
                 --restart unless-stopped \
-                -p 3420:3420 \
                 -p 7824:7824/udp \
                 -v objects-data:/data \
                 -e OBJECTS_QUIC_PORT=7824 \

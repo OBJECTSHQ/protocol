@@ -12,27 +12,29 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /src
 COPY . .
 
-RUN cargo build --release -p objects-node \
-    && strip target/release/objects-node
+RUN cargo build --release -p objects-node -p objects-health \
+    && strip target/release/objects-node \
+    && strip target/release/objects-health
 
 # --- Runtime stage ---
 FROM debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates libssl3 curl \
+    ca-certificates libssl3 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /src/target/release/objects-node /usr/local/bin/objects-node
+COPY --from=builder /src/target/release/objects-health /usr/local/bin/objects-health
 
-ENV OBJECTS_API_BIND=0.0.0.0
 ENV OBJECTS_DATA_DIR=/data
 
 VOLUME /data
 
-# 3420 = HTTP API, 7824/udp = QUIC transport
-EXPOSE 3420 7824/udp
+# 7824/udp = QUIC transport (irpc + sync)
+EXPOSE 7824/udp
 
-HEALTHCHECK --interval=5s --timeout=3s --start-period=90s --retries=3 \
-  CMD curl -sf http://localhost:3420/health || exit 1
+# Health check via irpc probe (same pattern as grpc-health-probe)
+HEALTHCHECK --interval=10s --timeout=5s --start-period=90s --retries=3 \
+  CMD objects-health || exit 1
 
 ENTRYPOINT ["objects-node"]
