@@ -94,7 +94,7 @@ pub fn asset(id: impl Into<String>, content_hash: ContentHash) -> anyhow::Result
 
 /// Creates two sync engines that can communicate with each other.
 ///
-/// Each engine has its own `StaticProvider` for discovery. After both
+/// Each engine has its own `MemoryLookup` for discovery. After both
 /// engines (and their iroh Routers) are created, the endpoints cross-register
 /// each other's addresses. This follows the iroh canonical test pattern.
 ///
@@ -110,10 +110,10 @@ pub fn asset(id: impl Into<String>, content_hash: ContentHash) -> anyhow::Result
 /// }
 /// ```
 pub async fn sync_engine_pair() -> anyhow::Result<(SyncEngine, SyncEngine)> {
-    use objects_transport::{RelayMode, StaticProvider};
+    use objects_transport::{MemoryLookup, RelayMode};
 
-    let sp1 = StaticProvider::new();
-    let sp2 = StaticProvider::new();
+    let sp1 = MemoryLookup::new();
+    let sp2 = MemoryLookup::new();
 
     // Use RelayMode::Disabled for fast, deterministic local connections.
     // Matches transport::endpoint_pair() pattern.
@@ -153,10 +153,10 @@ pub async fn sync_engine_pair() -> anyhow::Result<(SyncEngine, SyncEngine)> {
 /// real production relay path. Slower than `sync_engine_pair()` and
 /// requires internet. Use in `#[ignore]` integration tests.
 pub async fn sync_engine_pair_with_relay() -> anyhow::Result<(SyncEngine, SyncEngine)> {
-    use objects_transport::StaticProvider;
+    use objects_transport::MemoryLookup;
 
-    let sp1 = StaticProvider::new();
-    let sp2 = StaticProvider::new();
+    let sp1 = MemoryLookup::new();
+    let sp2 = MemoryLookup::new();
 
     let relay_config = transport::network_config_with_relay("https://relay.objects.foundation");
 

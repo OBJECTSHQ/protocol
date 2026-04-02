@@ -11,7 +11,7 @@ use objects_identity::{
 };
 use objects_sync::{PROJECT_KEY, ReplicaId, SyncEngine};
 use objects_transport::discovery::{Discovery, GossipDiscovery};
-use objects_transport::{NodeAddr, NodeId, ObjectsEndpoint, Watcher};
+use objects_transport::{NodeAddr, NodeId, ObjectsEndpoint};
 use serde::Deserialize;
 use std::path::Path;
 use std::sync::{Arc, RwLock};
@@ -220,24 +220,31 @@ pub async fn rename_identity(
 /// and time since last seen.
 pub async fn list_peers(State(state): State<AppState>) -> Json<serde_json::Value> {
     let peer_details = state.discovery.lock().await.peer_details();
-    let peers: Vec<PeerInfo> = peer_details
-        .into_iter()
-        .map(|(addr, elapsed)| {
-            let connection_type = state
-                .endpoint
-                .inner()
-                .conn_type(addr.id)
-                .map(|mut watcher| format!("{}", watcher.get()))
-                .unwrap_or_else(|| "none".to_string());
-
-            PeerInfo {
-                node_id: addr.id.to_string(),
-                relay_url: addr.relay_urls().next().map(|u| u.to_string()),
-                last_seen_ago: format_elapsed(elapsed),
-                connection_type,
+    let mut peers = Vec::with_capacity(peer_details.len());
+    for (addr, elapsed) in peer_details {
+        // Use Endpoint::remote_info() to get path-level connection details
+        let connection_type = match state.endpoint.inner().remote_info(addr.id).await {
+            Some(info) => {
+                let has_relay = info.addrs().any(|a| a.addr().is_relay());
+                let has_direct = info.addrs().any(|a| !a.addr().is_relay());
+                match (has_direct, has_relay) {
+                    (true, true) => "mixed",
+                    (true, false) => "direct",
+                    (false, true) => "relay",
+                    (false, false) => "none",
+                }
             }
-        })
-        .collect();
+            None => "none",
+        }
+        .to_string();
+
+        peers.push(PeerInfo {
+            node_id: addr.id.to_string(),
+            relay_url: addr.relay_urls().next().map(|u| u.to_string()),
+            last_seen_ago: format_elapsed(elapsed),
+            connection_type,
+        });
+    }
     Json(serde_json::json!({ "peers": peers }))
 }
 
