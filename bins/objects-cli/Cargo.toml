@@ -50,3 +50,4 @@ tracing-subscriber.workspace = true
 [dev-dependencies]
 tempfile.workspace = true
 temp-env.workspace = true
+serial_test.workspace = true

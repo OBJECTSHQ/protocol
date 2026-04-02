@@ -59,5 +59,4 @@ tempfile.workspace = true
 temp-env = "0.3"
 wiremock.workspace = true
 objects-test-utils.workspace = true
-http-body-util = "0.1"
 tracing-subscriber.workspace = true
