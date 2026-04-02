@@ -27,6 +27,7 @@ iroh = "0.97"
 iroh-blobs = "0.99"
 iroh-docs = "0.97"
 iroh-gossip = "0.97"
+irpc = "0.13"
 
 # Crypto
 ed25519-dalek = { version = "3.0.0-pre", features = ["rand_core"] }
