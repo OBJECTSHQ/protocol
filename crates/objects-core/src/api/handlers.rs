@@ -11,7 +11,7 @@ use objects_identity::{
 };
 use objects_sync::{PROJECT_KEY, ReplicaId, SyncEngine};
 use objects_transport::discovery::{Discovery, GossipDiscovery};
-use objects_transport::{NodeAddr, NodeId, ObjectsEndpoint, Watcher};
+use objects_transport::{NodeAddr, NodeId, ObjectsEndpoint};
 use serde::Deserialize;
 use std::path::Path;
 use std::sync::{Arc, RwLock};
@@ -19,8 +19,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::Mutex;
 use tracing::info;
 
-use super::client::{self, RegistryClient};
 use super::error::NodeError;
+use super::registry::{self, RegistryClient};
 use super::types::{
     AssetListResponse, AssetResponse, CreateProjectRequest, CreateTicketRequest, HealthResponse,
     IdentityResponse, PeerInfo, ProjectListResponse, ProjectResponse, RedeemTicketRequest,
@@ -92,11 +92,7 @@ pub async fn node_status(State(state): State<AppState>) -> Json<StatusResponse> 
         .read()
         .expect("node_state lock poisoned")
         .identity()
-        .map(|info| IdentityResponse {
-            id: info.identity_id().to_string(),
-            handle: info.handle().to_string(),
-            nonce: base64::engine::general_purpose::STANDARD.encode(info.nonce()),
-        });
+        .map(IdentityResponse::from);
 
     Json(StatusResponse {
         node_id: state.node_info.node_id.to_string(),
@@ -119,11 +115,7 @@ pub async fn get_identity(
         .read()
         .unwrap()
         .identity()
-        .map(|info| IdentityResponse {
-            id: info.identity_id().to_string(),
-            handle: info.handle().to_string(),
-            nonce: base64::engine::general_purpose::STANDARD.encode(info.nonce()),
-        });
+        .map(IdentityResponse::from);
 
     match identity {
         Some(response) => Ok(Json(response)),
@@ -220,28 +212,35 @@ pub async fn rename_identity(
 /// and time since last seen.
 pub async fn list_peers(State(state): State<AppState>) -> Json<serde_json::Value> {
     let peer_details = state.discovery.lock().await.peer_details();
-    let peers: Vec<PeerInfo> = peer_details
-        .into_iter()
-        .map(|(addr, elapsed)| {
-            let connection_type = state
-                .endpoint
-                .inner()
-                .conn_type(addr.id)
-                .map(|mut watcher| format!("{}", watcher.get()))
-                .unwrap_or_else(|| "none".to_string());
-
-            PeerInfo {
-                node_id: addr.id.to_string(),
-                relay_url: addr.relay_urls().next().map(|u| u.to_string()),
-                last_seen_ago: format_elapsed(elapsed),
-                connection_type,
+    let mut peers = Vec::with_capacity(peer_details.len());
+    for (addr, elapsed) in peer_details {
+        // Use Endpoint::remote_info() to get path-level connection details
+        let connection_type = match state.endpoint.inner().remote_info(addr.id).await {
+            Some(info) => {
+                let has_relay = info.addrs().any(|a| a.addr().is_relay());
+                let has_direct = info.addrs().any(|a| !a.addr().is_relay());
+                match (has_direct, has_relay) {
+                    (true, true) => "mixed",
+                    (true, false) => "direct",
+                    (false, true) => "relay",
+                    (false, false) => "none",
+                }
             }
-        })
-        .collect();
+            None => "none",
+        }
+        .to_string();
+
+        peers.push(PeerInfo {
+            node_id: addr.id.to_string(),
+            relay_url: addr.relay_urls().next().map(|u| u.to_string()),
+            last_seen_ago: format_elapsed(elapsed),
+            connection_type,
+        });
+    }
     Json(serde_json::json!({ "peers": peers }))
 }
 
-fn format_elapsed(elapsed: std::time::Duration) -> String {
+pub(crate) fn format_elapsed(elapsed: std::time::Duration) -> String {
     let secs = elapsed.as_secs();
     if secs < 60 {
         format!("{}s ago", secs)
@@ -304,12 +303,12 @@ pub async fn create_identity(
 
     // 7. Build registry request with full crypto data
     let b64 = &base64::engine::general_purpose::STANDARD;
-    let registry_request = client::CreateIdentityRequest {
+    let registry_request = registry::CreateIdentityRequest {
         handle: handle.to_string(),
         public_key: b64.encode(public_key),
         nonce: b64.encode(nonce),
         timestamp,
-        signature: client::SignatureData {
+        signature: registry::SignatureData {
             signature: b64.encode(signature.signature_bytes()),
             public_key: b64.encode(signature.public_key_bytes()),
         },
