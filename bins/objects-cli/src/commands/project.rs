@@ -8,7 +8,7 @@ pub async fn create(
 ) -> Result<(), CliError> {
     println!("Creating project '{}'...", name);
 
-    let response = CliError::from_rpc(client.create_project(&name, description).await)?;
+    let response = client.create_project(&name, description.as_deref()).await?;
 
     println!("Project created");
     println!("  ID:          {}", response.id);
@@ -22,7 +22,7 @@ pub async fn create(
 }
 
 pub async fn list(client: &NodeApi) -> Result<(), CliError> {
-    let response = CliError::from_rpc(client.list_projects().await)?;
+    let response = client.list_projects().await?;
 
     if response.projects.is_empty() {
         println!("No projects found.");
@@ -39,7 +39,7 @@ pub async fn list(client: &NodeApi) -> Result<(), CliError> {
 }
 
 pub async fn get(id: String, client: &NodeApi) -> Result<(), CliError> {
-    let response = CliError::from_rpc(client.get_project(&id).await)?;
+    let response = client.get_project(&id).await?;
 
     println!("Project: {}", response.name);
     println!("  ID:          {}", response.id);

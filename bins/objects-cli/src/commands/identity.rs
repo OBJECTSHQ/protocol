@@ -7,7 +7,7 @@ pub async fn create(handle: String, client: &NodeApi) -> Result<(), CliError> {
     println!("Creating identity @{}...", handle);
     println!("  Key generation happens on the node (key never leaves the device)");
 
-    let response = CliError::from_rpc(client.create_identity(handle).await)?;
+    let response = client.create_identity(handle).await?;
 
     println!("Identity created");
     println!("  ID:     {}", response.id);
@@ -22,7 +22,7 @@ pub async fn rename(new_handle: String, client: &NodeApi) -> Result<(), CliError
 
     println!("Renaming identity to @{}...", new_handle);
 
-    let response = CliError::from_rpc(client.rename_identity(new_handle).await)?;
+    let response = client.rename_identity(new_handle).await?;
 
     println!("Identity renamed");
     println!("  ID:     {}", response.id);
@@ -32,18 +32,18 @@ pub async fn rename(new_handle: String, client: &NodeApi) -> Result<(), CliError
 }
 
 pub async fn show(client: &NodeApi) -> Result<(), CliError> {
-    match CliError::from_rpc(client.get_identity().await) {
+    match client.get_identity().await {
         Ok(response) => {
             println!("Identity:");
             println!("  ID:     {}", response.id);
             println!("  Handle: {}", response.handle);
             println!("  Nonce:  {}", response.nonce);
         }
-        Err(CliError::NotFound(_)) => {
+        Err(e) if e.to_string().contains("not found") => {
             println!("No identity registered.");
             println!("Run 'objects identity create --handle <name>' to create one.");
         }
-        Err(e) => return Err(e),
+        Err(e) => return Err(e.into()),
     }
 
     Ok(())

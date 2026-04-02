@@ -1,13 +1,11 @@
+use objects_core::node_api::NodeApiError;
 use objects_core::rpc::proto::RpcError;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum CliError {
-    #[error("RPC error: {0}")]
-    Rpc(#[from] RpcError),
-
-    #[error("Connection error: {0}")]
-    Connection(#[from] irpc::Error),
+    #[error("{0}")]
+    Api(#[from] NodeApiError),
 
     #[error("Config error: {0}")]
     Config(String),
@@ -22,16 +20,11 @@ pub enum CliError {
     Serde(#[from] serde_json::Error),
 }
 
-impl CliError {
-    /// Convert a double-Result from NodeApi into a flat CliError.
-    pub fn from_rpc<T>(result: Result<Result<T, RpcError>, irpc::Error>) -> Result<T, CliError> {
-        match result {
-            Ok(Ok(val)) => Ok(val),
-            Ok(Err(rpc_err)) => match rpc_err {
-                RpcError::NotFound(msg) => Err(CliError::NotFound(msg)),
-                other => Err(CliError::Rpc(other)),
-            },
-            Err(irpc_err) => Err(CliError::Connection(irpc_err)),
+impl From<RpcError> for CliError {
+    fn from(e: RpcError) -> Self {
+        match e {
+            RpcError::NotFound(msg) => CliError::NotFound(msg),
+            other => CliError::Api(NodeApiError::Rpc(other)),
         }
     }
 }

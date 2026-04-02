@@ -35,6 +35,9 @@ dirs = "6"
 # Async
 tokio.workspace = true
 
+# File detection
+new_mime_guess.workspace = true
+
 # Serialization
 serde.workspace = true
 serde_json.workspace = true
