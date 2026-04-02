@@ -65,7 +65,7 @@ impl BlobClient {
     /// # use objects_data::Asset;
     /// # async fn example(asset: Asset) -> anyhow::Result<()> {
     /// # let endpoint = ObjectsEndpoint::builder().bind().await?;
-    /// # let sync = SyncEngine::new(endpoint).await?;
+    /// # let sync = SyncEngine::in_memory(endpoint).await?;
     /// let content = std::fs::read("model.step")?;
     /// let hash = sync.blobs().store_asset_content(&asset, content).await?;
     /// println!("Stored with hash: {}", hash);
@@ -107,7 +107,7 @@ impl DocsClient {
     /// # use iroh_docs::NamespaceId;
     /// # async fn example(replica_id: NamespaceId, asset: Asset) -> anyhow::Result<()> {
     /// # let endpoint = ObjectsEndpoint::builder().bind().await?;
-    /// # let sync = SyncEngine::new(endpoint).await?;
+    /// # let sync = SyncEngine::in_memory(endpoint).await?;
     /// # let author = sync.docs().create_author().await?;
     /// let hash = sync.docs().store_asset(replica_id, author, &asset).await?;
     /// println!("Stored asset with entry hash: {}", hash);
@@ -138,7 +138,7 @@ impl DocsClient {
     /// # use iroh_docs::NamespaceId;
     /// # async fn example(replica_id: NamespaceId) -> anyhow::Result<()> {
     /// # let endpoint = ObjectsEndpoint::builder().bind().await?;
-    /// # let sync = SyncEngine::new(endpoint).await?;
+    /// # let sync = SyncEngine::in_memory(endpoint).await?;
     /// if let Some(asset) = sync.docs().get_asset(sync.blobs(), replica_id, "motor-mount").await? {
     ///     println!("Found asset: {}", asset.name());
     /// }
@@ -177,7 +177,7 @@ impl DocsClient {
     /// # use iroh_docs::NamespaceId;
     /// # async fn example(replica_id: NamespaceId, project: Project) -> anyhow::Result<()> {
     /// # let endpoint = ObjectsEndpoint::builder().bind().await?;
-    /// # let sync = SyncEngine::new(endpoint).await?;
+    /// # let sync = SyncEngine::in_memory(endpoint).await?;
     /// # let author = sync.docs().create_author().await?;
     /// let hash = sync.docs().store_project(replica_id, author, &project).await?;
     /// println!("Stored project with entry hash: {}", hash);
@@ -209,7 +209,7 @@ impl DocsClient {
     /// # use iroh_docs::NamespaceId;
     /// # async fn example(replica_id: NamespaceId) -> anyhow::Result<()> {
     /// # let endpoint = ObjectsEndpoint::builder().bind().await?;
-    /// # let sync = SyncEngine::new(endpoint).await?;
+    /// # let sync = SyncEngine::in_memory(endpoint).await?;
     /// if let Some(project) = sync.docs().get_project(sync.blobs(), replica_id).await? {
     ///     println!("Found project: {}", project.name());
     /// }
@@ -301,7 +301,7 @@ impl DocsClient {
     /// # use iroh_docs::NamespaceId;
     /// # async fn example(replica_id: NamespaceId) -> anyhow::Result<()> {
     /// # let endpoint = ObjectsEndpoint::builder().bind().await?;
-    /// # let sync = SyncEngine::new(endpoint).await?;
+    /// # let sync = SyncEngine::in_memory(endpoint).await?;
     /// let assets = sync.docs().list_assets(sync.blobs(), replica_id).await?;
     /// for asset in assets {
     ///     println!("Found asset: {}", asset.name());

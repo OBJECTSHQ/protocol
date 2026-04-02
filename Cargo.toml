@@ -19,13 +19,16 @@ objects-transport = { path = "crates/objects-transport" }
 objects-sync = { path = "crates/objects-sync" }
 objects-data = { path = "crates/objects-data" }
 objects-common = { path = "crates/objects-common" }
+objects-core = { path = "crates/objects-core" }
 objects-test-utils = { path = "crates/objects-test-utils" }
 
 # Iroh
-iroh = "0.95.1"
-iroh-blobs = "0.97"
-iroh-docs = "0.95"
-iroh-gossip = "0.95"
+iroh = "0.97"
+iroh-blobs = "0.99"
+iroh-docs = "0.97"
+iroh-gossip = "0.97"
+irpc = "0.13"
+irpc-iroh = "0.13"
 
 # Crypto
 ed25519-dalek = { version = "3.0.0-pre", features = ["rand_core"] }
