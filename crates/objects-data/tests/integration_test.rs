@@ -13,56 +13,36 @@ use objects_data::{
     parse_key, project_id_from_replica, storage,
 };
 use objects_test_utils::{crypto, data, identity, time};
-use rstest::*;
 
 // ============================================================================
 // SignedAsset Workflows
 // ============================================================================
 
-#[rstest]
-#[tokio::test]
-async fn test_signed_asset_full_lifecycle() {
-    // Create a complete signed asset with Ed25519
+#[test]
+fn test_signed_asset_full_lifecycle() {
     let bundle = data::signed_asset("test-asset-1");
 
-    // Verify the asset has correct author_id
     assert_eq!(bundle.asset.author_id(), &bundle.identity_id);
-
-    // Verify the signature
-    assert!(
-        bundle.signed_asset.verify().is_ok(),
-        "Ed25519 signature verification should succeed"
-    );
-
-    // Verify nonce matches
+    assert!(bundle.signed_asset.verify().is_ok());
     assert_eq!(bundle.signed_asset.nonce(), &bundle.nonce);
 }
 
-#[rstest]
-#[tokio::test]
-async fn test_signed_asset_wrong_nonce_fails() {
-    // Create signed asset
+#[test]
+fn test_signed_asset_wrong_nonce_fails() {
     let bundle = data::signed_asset("test-asset-3");
 
-    // Replace with wrong nonce
-    let wrong_nonce = [255, 254, 253, 252, 251, 250, 249, 248];
     let wrong_signed = SignedAsset::new(
         bundle.signed_asset.asset().clone(),
         bundle.signed_asset.signature().clone(),
-        wrong_nonce,
+        [255, 254, 253, 252, 251, 250, 249, 248],
     );
-
-    // Verification should fail - derived ID won't match author_id
     assert!(wrong_signed.verify().is_err());
 }
 
-#[rstest]
-#[tokio::test]
-async fn test_signed_asset_tampered_content_fails() {
-    // Create signed asset
+#[test]
+fn test_signed_asset_tampered_content_fails() {
     let bundle = data::signed_asset("test-asset-4");
 
-    // Tamper with content hash
     let tampered_hash = ContentHash::new(crypto::deterministic_bytes(99));
     let tampered_asset = Asset::new(
         bundle.asset.id().to_string(),
@@ -81,21 +61,14 @@ async fn test_signed_asset_tampered_content_fails() {
         bundle.signed_asset.signature().clone(),
         bundle.nonce,
     );
-
-    // Verification should fail - signature won't match
     assert!(tampered_signed.verify().is_err());
 }
 
-#[rstest]
-#[tokio::test]
-async fn test_signed_asset_signature_replay_attack_fails() {
-    // Create first signed asset
+#[test]
+fn test_signed_asset_signature_replay_attack_fails() {
     let bundle1 = data::signed_asset("asset-original");
-
-    // Verify first asset signature is valid
     assert!(bundle1.signed_asset.verify().is_ok());
 
-    // Create a different asset with same author (different content)
     let different_hash = ContentHash::new(crypto::deterministic_bytes(255));
     let asset2 = Asset::new(
         "asset-different".to_string(),
@@ -109,65 +82,34 @@ async fn test_signed_asset_signature_replay_attack_fails() {
     )
     .expect("valid asset");
 
-    // Attempt to replay the signature from asset1 onto asset2
     let replayed_signed = SignedAsset::new(
         asset2,
         bundle1.signed_asset.signature().clone(),
         bundle1.nonce,
     );
 
-    // Verification should fail - signature replay attack detected
-    assert!(
-        replayed_signed.verify().is_err(),
-        "signature replay attack should fail: cannot reuse signature for different asset"
-    );
+    assert!(replayed_signed.verify().is_err());
 }
 
-#[rstest]
-#[tokio::test]
-async fn test_multiple_assets_same_identity() {
-    // Create first signed asset
+#[test]
+fn test_multiple_assets_same_identity() {
     let bundle1 = data::signed_asset("asset-1");
-
-    // Create second signed asset with same identity setup
     let bundle2 = data::signed_asset("asset-2");
 
-    // Both should verify independently
     assert!(bundle1.signed_asset.verify().is_ok());
     assert!(bundle2.signed_asset.verify().is_ok());
-
-    // Different identities (because different keypairs)
+    // Different keypairs produce different identities
     assert_ne!(bundle1.identity_id, bundle2.identity_id);
 }
 
-#[rstest]
-#[tokio::test]
-async fn test_signed_asset_deterministic_verification() {
-    // Create signed asset
-    let bundle = data::signed_asset("test-asset-5");
-
-    // Verify multiple times - should be deterministic
-    assert!(bundle.signed_asset.verify().is_ok());
-    assert!(bundle.signed_asset.verify().is_ok());
-    assert!(bundle.signed_asset.verify().is_ok());
-}
-
-#[rstest]
-#[tokio::test]
-async fn test_signed_asset_serialization_roundtrip() {
-    // Verifies that SignedAssets can be safely persisted and restored from storage.
+#[test]
+fn test_signed_asset_serialization_roundtrip() {
     let bundle = data::signed_asset("test-asset-6");
 
-    // Serialize to JSON
     let json = serde_json::to_string(&bundle.signed_asset).expect("serialize");
-
-    // Deserialize back
     let deserialized: SignedAsset = serde_json::from_str(&json).expect("deserialize");
 
-    // Verify deserialized signature still works
     assert!(deserialized.verify().is_ok());
-
-    // Verify content matches
     assert_eq!(deserialized.asset().id(), bundle.asset.id());
     assert_eq!(deserialized.nonce(), &bundle.nonce);
 }
@@ -176,9 +118,8 @@ async fn test_signed_asset_serialization_roundtrip() {
 // Project Workflows
 // ============================================================================
 
-#[rstest]
-#[tokio::test]
-async fn test_project_creation_from_replica_id() {
+#[test]
+fn test_project_creation_from_replica_id() {
     let replica_id = crypto::deterministic_bytes(42);
 
     let expected_id = project_id_from_replica(&replica_id);
@@ -189,75 +130,65 @@ async fn test_project_creation_from_replica_id() {
     assert_eq!(project.name(), "Test Project");
 }
 
-#[rstest]
-#[tokio::test]
-async fn test_project_id_parsing_and_validation() {
+#[test]
+fn test_project_id_parsing_and_validation() {
     let owner_id = identity::test_identity_id();
+    let now = time::now();
 
-    // Valid project ID (64 hex characters, full NamespaceId)
+    // Valid: 64 hex characters
     let valid_id = hex::encode(crypto::deterministic_bytes(1));
-    let project = Project::new(
-        valid_id.clone(),
-        "Valid Project".to_string(),
-        None,
-        owner_id.clone(),
-        time::now(),
-        time::now(),
+    assert!(
+        Project::new(
+            valid_id,
+            "Valid Project".into(),
+            None,
+            owner_id.clone(),
+            now,
+            now
+        )
+        .is_ok()
     );
-    assert!(project.is_ok());
 
     // Invalid: too short
-    let short_id = "abc123";
-    let result = Project::new(
-        short_id.to_string(),
-        "Invalid".to_string(),
-        None,
-        owner_id.clone(),
-        time::now(),
-        time::now(),
+    assert!(
+        Project::new(
+            "abc123".into(),
+            "Invalid".into(),
+            None,
+            owner_id.clone(),
+            now,
+            now
+        )
+        .is_err()
     );
-    assert!(result.is_err());
 
     // Invalid: too long
-    let long_id = "a".repeat(100);
-    let result = Project::new(
-        long_id,
-        "Invalid".to_string(),
-        None,
-        owner_id,
-        time::now(),
-        time::now(),
-    );
-    assert!(result.is_err());
+    assert!(Project::new("a".repeat(100), "Invalid".into(), None, owner_id, now, now).is_err());
 }
 
-#[rstest]
-#[tokio::test]
-async fn test_project_timestamp_validation() {
+#[test]
+fn test_project_timestamp_validation() {
     let owner_id = identity::test_identity_id();
     let id = "b".repeat(64);
-
-    // Valid: created_at <= updated_at
     let created = time::now();
     let updated = time::future_timestamp(100);
-    let result = Project::new(
-        id.clone(),
-        "Valid".to_string(),
-        None,
-        owner_id.clone(),
-        created,
-        updated,
-    );
-    assert!(result.is_ok());
 
-    // Invalid: created_at > updated_at
-    let result = Project::new(id, "Invalid".to_string(), None, owner_id, updated, created);
-    assert!(result.is_err());
+    assert!(
+        Project::new(
+            id.clone(),
+            "Valid".into(),
+            None,
+            owner_id.clone(),
+            created,
+            updated
+        )
+        .is_ok()
+    );
+    assert!(Project::new(id, "Invalid".into(), None, owner_id, updated, created).is_err());
 }
 
-#[rstest]
-#[tokio::test]
-async fn test_project_with_owner_identity() {
+#[test]
+fn test_project_with_owner_identity() {
     let owner_id = identity::test_identity_id();
     let project = data::project("My Project", owner_id.clone());
 
@@ -265,9 +196,8 @@ async fn test_project_with_owner_identity() {
     assert_eq!(project.owner_id(), &owner_id);
 }
 
-#[rstest]
-#[tokio::test]
-async fn test_project_serialization_roundtrip() {
+#[test]
+fn test_project_serialization_roundtrip() {
     let owner_id = identity::test_identity_id();
     let project = data::project("Test Project", owner_id);
 
@@ -280,9 +210,8 @@ async fn test_project_serialization_roundtrip() {
     assert_eq!(deserialized.owner_id(), project.owner_id());
 }
 
-#[rstest]
-#[tokio::test]
-async fn test_project_id_from_different_replicas() {
+#[test]
+fn test_project_id_from_different_replicas() {
     let replica1 = crypto::deterministic_bytes(10);
     let replica2 = crypto::deterministic_bytes(20);
 
@@ -299,9 +228,8 @@ async fn test_project_id_from_different_replicas() {
 // Reference Workflows
 // ============================================================================
 
-#[rstest]
-#[tokio::test]
-async fn test_reference_linking_two_assets() {
+#[test]
+fn test_reference_linking_two_assets() {
     let source_id = "asset-source";
     let target_id = "asset-target";
 
@@ -312,9 +240,8 @@ async fn test_reference_linking_two_assets() {
     assert_eq!(reference.reference_type, ReferenceType::References);
 }
 
-#[rstest]
-#[tokio::test]
-async fn test_reference_with_content_hash() {
+#[test]
+fn test_reference_with_content_hash() {
     let source_id = "source";
     let target_id = "target";
     let content_hash = ContentHash::new(crypto::deterministic_bytes(42));
@@ -325,28 +252,22 @@ async fn test_reference_with_content_hash() {
     assert_eq!(reference.target_content_hash, Some(content_hash));
 }
 
-#[rstest]
-#[tokio::test]
-async fn test_reference_type_variations() {
-    let source = "source";
-    let target = "target";
-
-    let mut ref_references = data::reference(source, target);
-    ref_references.reference_type = ReferenceType::References;
-    assert_eq!(ref_references.reference_type, ReferenceType::References);
-
-    let mut ref_derived = data::reference(source, target);
-    ref_derived.reference_type = ReferenceType::DerivedFrom;
-    assert_eq!(ref_derived.reference_type, ReferenceType::DerivedFrom);
-
-    let mut ref_contains = data::reference(source, target);
-    ref_contains.reference_type = ReferenceType::Contains;
-    assert_eq!(ref_contains.reference_type, ReferenceType::Contains);
+#[test]
+fn test_reference_type_variations() {
+    for ref_type in [
+        ReferenceType::References,
+        ReferenceType::DerivedFrom,
+        ReferenceType::Contains,
+        ReferenceType::DependsOn,
+    ] {
+        let mut reference = data::reference("source", "target");
+        reference.reference_type = ref_type;
+        assert_eq!(reference.reference_type, ref_type);
+    }
 }
 
-#[rstest]
-#[tokio::test]
-async fn test_reference_validation_requirements() {
+#[test]
+fn test_reference_serialization_roundtrip() {
     let valid_ref = Reference {
         id: "ref-1".to_string(),
         source_asset_id: "source".to_string(),
@@ -357,12 +278,13 @@ async fn test_reference_validation_requirements() {
     };
 
     let json = serde_json::to_string(&valid_ref).expect("serialize");
-    let _deserialized: Reference = serde_json::from_str(&json).expect("deserialize");
+    let deserialized: Reference = serde_json::from_str(&json).expect("deserialize");
+    assert_eq!(deserialized.source_asset_id, valid_ref.source_asset_id);
+    assert_eq!(deserialized.target_asset_id, valid_ref.target_asset_id);
 }
 
-#[rstest]
-#[tokio::test]
-async fn test_cross_project_reference_workflow() {
+#[test]
+fn test_cross_project_reference_workflow() {
     let author_id = identity::test_identity_id();
 
     let replica1 = crypto::deterministic_bytes(1);
@@ -384,9 +306,8 @@ async fn test_cross_project_reference_workflow() {
 // Storage Key Generation
 // ============================================================================
 
-#[rstest]
-#[tokio::test]
-async fn test_storage_key_generation_for_assets() {
+#[test]
+fn test_storage_key_generation_for_assets() {
     let asset_id = "test-asset";
     let key = storage::asset_key(asset_id);
 
@@ -394,9 +315,8 @@ async fn test_storage_key_generation_for_assets() {
     assert!(key.contains(asset_id));
 }
 
-#[rstest]
-#[tokio::test]
-async fn test_storage_key_generation_for_references() {
+#[test]
+fn test_storage_key_generation_for_references() {
     let ref_id = "test-ref";
     let key = storage::reference_key(ref_id);
 
@@ -404,9 +324,8 @@ async fn test_storage_key_generation_for_references() {
     assert!(key.contains(ref_id));
 }
 
-#[rstest]
-#[tokio::test]
-async fn test_storage_key_parsing_roundtrip() {
+#[test]
+fn test_storage_key_parsing_roundtrip() {
     let asset_id = "asset-123";
     let asset_key = storage::asset_key(asset_id);
 
@@ -424,18 +343,16 @@ async fn test_storage_key_parsing_roundtrip() {
     }
 }
 
-#[rstest]
-#[tokio::test]
-async fn test_project_key_constant() {
+#[test]
+fn test_project_key_constant() {
     let key = storage::PROJECT_KEY;
     assert_eq!(key, "/project");
 
     assert!(matches!(parse_key(key), KeyType::Project));
 }
 
-#[rstest]
-#[tokio::test]
-async fn test_storage_key_unknown_format() {
+#[test]
+fn test_storage_key_unknown_format() {
     let invalid_key = "/unknown/key";
 
     assert!(matches!(parse_key(invalid_key), KeyType::Unknown));
@@ -445,9 +362,8 @@ async fn test_storage_key_unknown_format() {
 // Encryption Workflows
 // ============================================================================
 
-#[rstest]
-#[tokio::test]
-async fn test_catalog_entry_encryption_roundtrip() {
+#[test]
+fn test_catalog_entry_encryption_roundtrip() {
     use objects_data::proto::ProjectCatalogEntry;
 
     let replica_id = crypto::deterministic_bytes(42);
@@ -470,9 +386,8 @@ async fn test_catalog_entry_encryption_roundtrip() {
     assert_eq!(decrypted, entry);
 }
 
-#[rstest]
-#[tokio::test]
-async fn test_catalog_entry_wrong_key_detection() {
+#[test]
+fn test_catalog_entry_wrong_key_detection() {
     use objects_data::proto::ProjectCatalogEntry;
 
     let replica_id = crypto::deterministic_bytes(99);
@@ -492,9 +407,8 @@ async fn test_catalog_entry_wrong_key_detection() {
     assert!(result.is_err());
 }
 
-#[rstest]
-#[tokio::test]
-async fn test_catalog_entry_tampered_ciphertext() {
+#[test]
+fn test_catalog_entry_tampered_ciphertext() {
     use objects_data::proto::ProjectCatalogEntry;
 
     let replica_id = crypto::deterministic_bytes(77);
@@ -516,9 +430,8 @@ async fn test_catalog_entry_tampered_ciphertext() {
     assert!(result.is_err());
 }
 
-#[rstest]
-#[tokio::test]
-async fn test_catalog_entry_nonce_uniqueness() {
+#[test]
+fn test_catalog_entry_nonce_uniqueness() {
     use objects_data::proto::ProjectCatalogEntry;
 
     let replica_id = crypto::deterministic_bytes(55);
@@ -541,9 +454,8 @@ async fn test_catalog_entry_nonce_uniqueness() {
     assert_eq!(decrypted1, decrypted2);
 }
 
-#[rstest]
-#[tokio::test]
-async fn test_catalog_entry_too_short_data() {
+#[test]
+fn test_catalog_entry_too_short_data() {
     let key = crypto::encryption_key();
 
     let too_short = vec![1, 2, 3];
@@ -556,42 +468,22 @@ async fn test_catalog_entry_too_short_data() {
 // Integration Scenarios
 // ============================================================================
 
-#[rstest]
-#[tokio::test]
-async fn test_asset_with_identity_verification() {
-    let bundle = data::signed_asset("integrated-asset");
-
-    assert_eq!(bundle.asset.author_id(), &bundle.identity_id);
-
-    assert!(bundle.signed_asset.verify().is_ok());
-
-    let key = storage::asset_key(bundle.asset.id());
-    assert!(key.contains(bundle.asset.id()));
-}
-
-#[rstest]
-#[tokio::test]
-async fn test_project_asset_storage_workflow() {
+#[test]
+fn test_project_asset_storage_workflow() {
     let owner_id = identity::test_identity_id();
-
-    let replica_id = crypto::deterministic_bytes(42);
-    let _project = data::project_from_replica(&replica_id);
 
     let asset1 = data::asset("asset-1", owner_id.clone());
     let asset2 = data::asset("asset-2", owner_id);
 
     let key1 = storage::asset_key(asset1.id());
     let key2 = storage::asset_key(asset2.id());
-
     assert_ne!(key1, key2);
-
     assert!(matches!(parse_key(&key1), KeyType::Asset(_)));
     assert!(matches!(parse_key(&key2), KeyType::Asset(_)));
 }
 
-#[rstest]
-#[tokio::test]
-async fn test_reference_with_asset_content_hashes() {
+#[test]
+fn test_reference_with_asset_content_hashes() {
     let author_id = identity::test_identity_id();
 
     let hash1 = ContentHash::new(crypto::deterministic_bytes(10));
@@ -607,9 +499,8 @@ async fn test_reference_with_asset_content_hashes() {
     assert_eq!(asset2.content_hash(), &hash2);
 }
 
-#[rstest]
-#[tokio::test]
-async fn test_full_project_graph() {
+#[test]
+fn test_full_project_graph() {
     let owner_id = identity::test_identity_id();
     let replica_id = crypto::deterministic_bytes(42);
     let project = data::project_from_replica(&replica_id);
@@ -626,9 +517,8 @@ async fn test_full_project_graph() {
     assert_eq!(ref2.source_asset_id, asset3.id());
 }
 
-#[rstest]
-#[tokio::test]
-async fn test_signed_assets_in_project_context() {
+#[test]
+fn test_signed_assets_in_project_context() {
     let bundle1 = data::signed_asset("proj-asset-1");
     let bundle2 = data::signed_asset("proj-asset-2");
 
@@ -639,26 +529,4 @@ async fn test_signed_assets_in_project_context() {
     assert_eq!(reference.source_asset_id, bundle1.asset.id());
 }
 
-#[rstest]
-#[tokio::test]
-async fn test_catalog_entry_for_active_project() {
-    use objects_data::proto::ProjectCatalogEntry;
-
-    let replica_id = crypto::deterministic_bytes(42);
-    let project_id = project_id_from_replica(&replica_id);
-
-    let entry = ProjectCatalogEntry {
-        project_id: project_id.clone(),
-        replica_id: replica_id.to_vec(),
-        project_name: "Active Project".to_string(),
-        created_at: time::now(),
-    };
-
-    let key = crypto::encryption_key();
-    let encrypted = encryption::encrypt_catalog_entry(&entry, &key).expect("encrypt");
-
-    let decrypted = encryption::decrypt_catalog_entry(&encrypted, &key).expect("decrypt");
-
-    assert_eq!(decrypted.project_id, project_id);
-    assert_eq!(decrypted.project_name, "Active Project");
-}
+// test_catalog_entry_encryption_roundtrip already covers encrypt/decrypt verification.

@@ -123,40 +123,4 @@ pub fn deterministic_bytes(seed: u8) -> [u8; 32] {
     bytes
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_ed25519_keypair_includes_correct_public_key() {
-        let keypair = ed25519_keypair();
-        let derived_public = keypair.signing_key.public_key_bytes();
-        assert_eq!(derived_public, keypair.public_key);
-    }
-
-    #[test]
-    fn test_random_nonces_are_unique() {
-        let nonce1 = random_nonce();
-        let nonce2 = random_nonce();
-        // Statistically should never be equal
-        assert_ne!(nonce1, nonce2);
-    }
-
-    #[test]
-    fn test_encryption_keys_are_unique() {
-        let key1 = encryption_key();
-        let key2 = encryption_key();
-        // Statistically should never be equal
-        assert_ne!(key1, key2);
-    }
-
-    #[test]
-    fn test_deterministic_bytes_is_deterministic() {
-        let bytes1 = deterministic_bytes(42);
-        let bytes2 = deterministic_bytes(42);
-        assert_eq!(bytes1, bytes2);
-
-        let bytes3 = deterministic_bytes(99);
-        assert_ne!(bytes1, bytes3);
-    }
-}
+// Unit tests live in tests/self_test.rs to avoid duplication.

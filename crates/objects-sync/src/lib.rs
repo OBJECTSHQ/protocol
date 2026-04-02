@@ -21,7 +21,7 @@
 //! let node_addr = endpoint.node_addr();
 //!
 //! // Create sync engine
-//! let sync = SyncEngine::new(endpoint).await?;
+//! let sync = SyncEngine::in_memory(endpoint).await?;
 //!
 //! // Add blob
 //! let hash = sync.blobs().add_bytes(&b"Hello, OBJECTS!"[..]).await?;
@@ -53,7 +53,7 @@ mod error;
 // Re-export main types
 pub use blobs::BlobClient;
 pub use docs::DocsClient;
-pub use engine::SyncEngine;
+pub use engine::{SyncEngine, SyncEngineBuilder, SyncEngineFinalizer};
 pub use error::Error;
 
 // Re-export key Iroh types for convenience

@@ -26,8 +26,11 @@ jobs:
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v2
 
+      - name: Install nextest
+        uses: taiki-e/install-action@nextest
+
       - name: Run tests
-        run: cargo test --workspace
+        run: cargo nextest run --workspace
 
   clippy:
     name: Clippy
@@ -101,12 +104,15 @@ jobs:
       - name: Checkout registry
         uses: actions/checkout@v6
         with:
-          repository: ${{ vars.REGISTRY_REPO }}
+          repository: ${{ secrets.REGISTRY_REPO }}
           token: ${{ secrets.REGISTRY_TOKEN }}
           path: _registry
 
       - name: Build registry image
-        run: docker build -t objects-registry:latest _registry/
+        run: docker build -t objects-registry:latest _registry
+
+      - name: Start registry
+        run: docker compose -f docker/test-compose.yml up -d --wait
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -114,11 +120,12 @@ jobs:
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v2
 
-      - name: Start test registry
-        run: docker compose -f docker/test-compose.yml up -d --wait
+      - name: Install nextest
+        uses: taiki-e/install-action@nextest
 
       - name: Run E2E tests
-        run: cargo test -p objects-node --test e2e_full_stack
+        run: cargo nextest run -p objects-core --test engine_identity_e2e
 
-      - name: Stop test registry
+      - name: Teardown registry
+        if: always()
         run: docker compose -f docker/test-compose.yml down

@@ -28,28 +28,23 @@ fn test_identity_lifecycle(signing_key: Ed25519SigningKey) {
     let nonce = crypto::random_nonce();
     let public_key = signing_key.public_key_bytes();
 
-    // 1. Derive identity ID
     let identity_id = IdentityId::derive(&public_key, &nonce);
 
-    // 2. Verify ID format
     assert!(identity_id.as_str().starts_with("obj_"));
     assert!(identity_id.as_str().len() >= 23);
     assert!(identity_id.as_str().len() <= 25);
 
-    // 3. Create and validate handle
     let handle = Handle::parse("alice_test").expect("valid handle");
     assert_eq!(handle.as_str(), "alice_test");
 
-    // 4. Test ID parsing round-trip
-    let id_str = identity_id.as_str();
-    let parsed_id = IdentityId::parse(id_str).expect("parse identity ID");
+    let parsed_id = IdentityId::parse(identity_id.as_str()).expect("parse identity ID");
     assert_eq!(parsed_id, identity_id);
 
-    // 5. Verify determinism - same key + nonce = same ID
+    // Determinism: same key + nonce = same ID
     let identity_id_2 = IdentityId::derive(&public_key, &nonce);
     assert_eq!(identity_id, identity_id_2);
 
-    // 6. Verify uniqueness - different nonce = different ID
+    // Uniqueness: different nonce = different ID
     let different_nonce = generate_nonce();
     let identity_id_3 = IdentityId::derive(&public_key, &different_nonce);
     assert_ne!(identity_id, identity_id_3);
@@ -70,36 +65,19 @@ fn test_generate_nonce_produces_unique_values() {
 fn test_ed25519_signature_verification_full_lifecycle(signing_key: Ed25519SigningKey) {
     let nonce = crypto::random_nonce();
     let public_key = signing_key.public_key_bytes();
-
-    // 1. Derive identity ID
     let identity_id = IdentityId::derive(&public_key, &nonce);
 
-    // 2. Create a message to sign (RFC-001 format)
     let message_text = message::create_identity_message(identity_id.as_str(), "alice", time::now());
     let message_bytes = message_text.as_bytes();
-
-    // 3. Sign with Ed25519
     let signature = signing_key.sign(message_bytes);
 
-    // 4. Verify signature
-    assert!(
-        signature.verify(message_bytes).is_ok(),
-        "signature verification should succeed"
-    );
-
-    // 5. Verify wrong message fails
-    assert!(
-        signature.verify(b"wrong message").is_err(),
-        "wrong message should fail verification"
-    );
+    assert!(signature.verify(message_bytes).is_ok());
+    assert!(signature.verify(b"wrong message").is_err());
 }
 
 #[rstest]
-fn test_signature_from_different_key_fails(signing_key: Ed25519SigningKey) {
-    let message = b"test message";
-    let signature = signing_key.sign(message);
-
-    // Signature should not verify with a different message
+fn test_signature_wrong_message_fails(signing_key: Ed25519SigningKey) {
+    let signature = signing_key.sign(b"test message");
     assert!(signature.verify(b"different message").is_err());
 }
 
@@ -142,19 +120,11 @@ fn test_handle_validation_invalid(#[case] handle: String) {
 fn test_vault_key_derivation(signing_key: Ed25519SigningKey) {
     let secret_bytes = signing_key.to_bytes();
 
-    // 1. Derive vault keys
     let vault_keys =
         VaultKeys::derive_from_signing_key(&secret_bytes).expect("vault derivation succeeds");
+    assert_eq!(vault_keys.namespace_id().as_bytes().len(), 32);
 
-    // 2. Verify namespace ID is derived
-    let namespace_id = vault_keys.namespace_id();
-    assert_eq!(
-        namespace_id.as_bytes().len(),
-        32,
-        "namespace ID should be 32 bytes"
-    );
-
-    // 3. Verify determinism - same key = same vault
+    // Determinism: same key = same vault
     let vault_keys_2 =
         VaultKeys::derive_from_signing_key(&secret_bytes).expect("vault derivation succeeds");
     assert_eq!(vault_keys.namespace_id(), vault_keys_2.namespace_id());

@@ -62,45 +62,4 @@ pub fn future_timestamp(offset_secs: u64) -> u64 {
         .expect("timestamp overflow: offset too large")
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_now_returns_reasonable_timestamp() {
-        let timestamp = now();
-
-        // Should be after 2024-01-01 (1704067200)
-        assert!(
-            timestamp > 1704067200,
-            "timestamp should be after 2024-01-01"
-        );
-
-        // Should be before 2030-01-01 (1893456000)
-        assert!(
-            timestamp < 1893456000,
-            "timestamp should be before 2030-01-01"
-        );
-    }
-
-    #[test]
-    fn test_future_timestamp_adds_offset() {
-        let current = now();
-        let future = future_timestamp(100);
-
-        assert!(
-            future >= current + 100,
-            "future timestamp should be at least offset seconds ahead"
-        );
-        assert!(
-            future <= current + 101,
-            "future timestamp should not exceed offset + 1 second (for test execution time)"
-        );
-    }
-
-    #[test]
-    fn test_timestamp_constant_is_correct() {
-        // 2024-01-06 12:00:00 UTC
-        assert_eq!(TEST_TIMESTAMP, 1704542400);
-    }
-}
+// Unit tests live in tests/self_test.rs to avoid duplication.

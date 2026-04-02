@@ -1,26 +1,28 @@
 //! Ticket commands.
 
-use crate::client::NodeClient;
+use objects_core::node_api::NodeApi;
 
-/// Create a share ticket for a project.
-pub async fn create(project_id: String, client: &NodeClient) -> anyhow::Result<()> {
-    let response = client.create_ticket(&project_id).await?;
+pub async fn create(project_id: String, client: &NodeApi) -> anyhow::Result<()> {
+    let response = client
+        .create_ticket(&project_id)
+        .await?
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
 
     println!("Ticket created:");
     println!("{}", response.ticket);
+
     Ok(())
 }
 
-/// Redeem a share ticket.
-pub async fn redeem(ticket: String, client: &NodeClient) -> anyhow::Result<()> {
-    let project = client.redeem_ticket(&ticket).await?;
+pub async fn redeem(ticket: String, client: &NodeApi) -> anyhow::Result<()> {
+    let response = client
+        .redeem_ticket(&ticket)
+        .await?
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
 
-    println!("Project synced:");
-    println!("  ID: {}", project.id);
-    println!("  Name: {}", project.name);
-    if let Some(desc) = project.description {
-        println!("  Description: {}", desc);
-    }
-    println!("  Owner: {}", project.owner_id);
+    println!("Ticket redeemed — project imported:");
+    println!("  ID:   {}", response.id);
+    println!("  Name: {}", response.name);
+
     Ok(())
 }

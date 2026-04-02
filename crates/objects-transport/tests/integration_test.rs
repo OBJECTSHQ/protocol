@@ -75,8 +75,8 @@ async fn test_endpoint_node_addr_is_retrievable() {
 // NetworkConfig Tests
 // ============================================================================
 
-#[tokio::test]
-async fn test_network_config_defaults() {
+#[test]
+fn test_network_config_defaults() {
     let config = NetworkConfig::devnet();
 
     assert_eq!(config.discovery_topic, DISCOVERY_TOPIC_DEVNET);
@@ -87,8 +87,8 @@ async fn test_network_config_defaults() {
     assert_eq!(config.connect_timeout, Duration::from_secs(30));
 }
 
-#[tokio::test]
-async fn test_network_config_builder() {
+#[test]
+fn test_network_config_builder() {
     let relay_url: objects_transport::RelayUrl =
         "https://custom-relay.example.com".parse().unwrap();
     let bootstrap_node = NodeAddr::new(transport::secret_key().public());
@@ -113,20 +113,21 @@ async fn test_network_config_builder() {
 #[serial]
 async fn test_two_endpoints_can_connect() {
     let (endpoint1, endpoint2) = transport::endpoint_pair().await;
+    let endpoint2 = Arc::new(endpoint2);
 
     let addr2 = endpoint2.node_addr();
     let ep2_node_id = endpoint2.node_id();
 
-    // Spawn accept on endpoint2 so the QUIC handshake can complete
-    let accept_handle = tokio::spawn(async move { endpoint2.accept().await });
+    // Clone Arc so endpoint stays alive after spawn completes (iroh 0.97
+    // immediately cleans up resources when an endpoint is dropped).
+    let ep2 = endpoint2.clone();
+    let accept_handle = tokio::spawn(async move { ep2.accept().await });
 
-    // Connect endpoint1 to endpoint2
     let conn = endpoint1
         .connect(addr2)
         .await
         .expect("should connect successfully");
 
-    // Verify connection properties
     assert_node_ids_match(&ep2_node_id, &conn.remote_node_id());
 
     let _ = accept_handle.await.expect("accept task panicked");
@@ -136,19 +137,18 @@ async fn test_two_endpoints_can_connect() {
 #[serial]
 async fn test_endpoint_can_accept_connection() {
     let (endpoint1, endpoint2) = transport::endpoint_pair().await;
+    let endpoint1 = Arc::new(endpoint1);
 
     let addr1 = endpoint1.node_addr();
 
-    // Spawn a task to accept on endpoint1
-    let accept_handle = tokio::spawn(async move { endpoint1.accept().await });
+    let ep1 = endpoint1.clone();
+    let accept_handle = tokio::spawn(async move { ep1.accept().await });
 
-    // Connect from endpoint2
     let _conn = endpoint2
         .connect(addr1)
         .await
         .expect("should connect successfully");
 
-    // Verify endpoint1 accepted the connection
     let accepted_conn = accept_handle
         .await
         .expect("accept task should complete")
@@ -165,11 +165,12 @@ async fn test_endpoint_can_accept_connection() {
 #[serial]
 async fn test_bidirectional_stream_communication() {
     let (endpoint1, endpoint2) = transport::endpoint_pair().await;
+    let endpoint2 = Arc::new(endpoint2);
 
     let addr2 = endpoint2.node_addr();
 
-    // Spawn accept before connect so the QUIC handshake can complete
-    let accept_handle = tokio::spawn(async move { endpoint2.accept().await });
+    let ep2 = endpoint2.clone();
+    let accept_handle = tokio::spawn(async move { ep2.accept().await });
 
     // Connect
     let conn1 = endpoint1.connect(addr2).await.expect("should connect");
@@ -224,11 +225,12 @@ async fn test_bidirectional_stream_communication() {
 #[serial]
 async fn test_unidirectional_stream_communication() {
     let (endpoint1, endpoint2) = transport::endpoint_pair().await;
+    let endpoint2 = Arc::new(endpoint2);
 
     let addr2 = endpoint2.node_addr();
 
-    // Spawn accept before connect so the QUIC handshake can complete
-    let accept_handle = tokio::spawn(async move { endpoint2.accept().await });
+    let ep2 = endpoint2.clone();
+    let accept_handle = tokio::spawn(async move { ep2.accept().await });
 
     // Connect
     let conn1 = endpoint1.connect(addr2).await.expect("should connect");
@@ -267,11 +269,12 @@ async fn test_unidirectional_stream_communication() {
 #[serial]
 async fn test_multiple_streams_on_same_connection() {
     let (endpoint1, endpoint2) = transport::endpoint_pair().await;
+    let endpoint2 = Arc::new(endpoint2);
 
     let addr2 = endpoint2.node_addr();
 
-    // Spawn accept before connect so the QUIC handshake can complete
-    let accept_handle = tokio::spawn(async move { endpoint2.accept().await });
+    let ep2 = endpoint2.clone();
+    let accept_handle = tokio::spawn(async move { ep2.accept().await });
 
     // Connect
     let conn1 = Arc::new(endpoint1.connect(addr2).await.expect("should connect"));
@@ -343,11 +346,12 @@ async fn test_multiple_streams_on_same_connection() {
 #[serial]
 async fn test_connection_close() {
     let (endpoint1, endpoint2) = transport::endpoint_pair().await;
+    let endpoint2 = Arc::new(endpoint2);
 
     let addr2 = endpoint2.node_addr();
 
-    // Spawn accept so the QUIC handshake can complete
-    let accept_handle = tokio::spawn(async move { endpoint2.accept().await });
+    let ep2 = endpoint2.clone();
+    let accept_handle = tokio::spawn(async move { ep2.accept().await });
 
     let conn1 = endpoint1.connect(addr2).await.expect("should connect");
 
@@ -388,24 +392,24 @@ async fn test_connect_to_invalid_address_fails() {
 // Constants Validation Tests
 // ============================================================================
 
-#[tokio::test]
-async fn test_alpn_constant() {
+#[test]
+fn test_alpn_constant() {
     assert_eq!(
         ALPN, b"/objects/0.1",
         "ALPN should match RFC-002 specification"
     );
 }
 
-#[tokio::test]
-async fn test_discovery_topic_constant() {
+#[test]
+fn test_discovery_topic_constant() {
     assert_eq!(
         DISCOVERY_TOPIC_DEVNET, "/objects/devnet/0.1/discovery",
         "Discovery topic should match RFC-002 specification"
     );
 }
 
-#[tokio::test]
-async fn test_default_relay_url_constant() {
+#[test]
+fn test_default_relay_url_constant() {
     assert_eq!(
         DEFAULT_RELAY_URL, "https://relay.objects.foundation",
         "Default relay URL should match RFC-002 specification"
