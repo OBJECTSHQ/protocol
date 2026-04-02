@@ -1,18 +1,16 @@
-use crate::client::NodeClient;
 use crate::error::CliError;
+use objects_core::node_api::NodeApi;
 
-pub async fn run(client: &NodeClient) -> Result<(), CliError> {
-    // Health check
+pub async fn run(client: &NodeApi) -> Result<(), CliError> {
     match client.health().await {
         Ok(_) => println!("✓ Node is running"),
         Err(_) => {
             println!("✗ Node not reachable");
             println!("  Start node with: cargo run -p objects-node");
-            return Ok(()); // Not an error, just info
+            return Ok(());
         }
     }
 
-    // Detailed status
     let status = client.status().await?;
 
     println!("\nNode Status:");

@@ -1,4 +1,5 @@
 use objects_cli::config::Config;
+use objects_cli::error::CliError;
 use serial_test::serial;
 use temp_env::with_var;
 use tempfile::tempdir;
@@ -10,12 +11,6 @@ fn test_default_config() {
     assert_eq!(config.node.api_bind, "127.0.0.1");
     assert_eq!(config.api_url(), "http://127.0.0.1:3420");
     assert!(config.cli.api_token.is_none());
-}
-
-#[test]
-fn test_api_url_construction() {
-    let config = Config::default();
-    assert_eq!(config.api_url(), "http://127.0.0.1:3420");
 }
 
 #[test]
@@ -69,8 +64,7 @@ fn test_config_parse_error() {
     std::fs::write(&path, "invalid toml [[[").unwrap();
 
     let result = Config::from_file(&path);
-    assert!(result.is_err());
-    assert!(result.unwrap_err().to_string().contains("Parse error"));
+    assert!(matches!(result, Err(CliError::Config(_))));
 }
 
 #[test]

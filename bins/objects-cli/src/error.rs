@@ -1,12 +1,11 @@
+use objects_core::node_api::NodeApiError;
+use objects_core::rpc::proto::RpcError;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum CliError {
-    #[error("Node error ({status}): {message}")]
-    NodeError { status: u16, message: String },
-
-    #[error("Network error: {0}")]
-    Network(#[from] reqwest::Error),
+    #[error("{0}")]
+    Api(#[from] NodeApiError),
 
     #[error("Config error: {0}")]
     Config(String),
@@ -19,4 +18,13 @@ pub enum CliError {
 
     #[error("Serialization error: {0}")]
     Serde(#[from] serde_json::Error),
+}
+
+impl From<RpcError> for CliError {
+    fn from(e: RpcError) -> Self {
+        match e {
+            RpcError::NotFound(msg) => CliError::NotFound(msg),
+            other => CliError::Api(NodeApiError::Rpc(other)),
+        }
+    }
 }
