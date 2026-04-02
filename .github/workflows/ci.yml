@@ -104,7 +104,7 @@ jobs:
       - name: Checkout registry
         uses: actions/checkout@v6
         with:
-          repository: ${{ secrets.REGISTRY_REPO }}
+          repository: ${{ vars.REGISTRY_REPO }}
           token: ${{ secrets.REGISTRY_TOKEN }}
           path: _registry
 
