@@ -1,0 +1,20 @@
+[package]
+name = "objects-health"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Health probe for OBJECTS Protocol node (like grpc-health-probe for irpc)"
+
+[[bin]]
+name = "objects-health"
+path = "src/main.rs"
+
+[dependencies]
+objects-core.workspace = true
+objects-transport.workspace = true
+irpc.workspace = true
+irpc-iroh.workspace = true
+iroh.workspace = true
+serde_json.workspace = true
+tokio = { workspace = true, features = ["rt", "macros"] }

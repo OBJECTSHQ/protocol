@@ -3093,6 +3093,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "objects-health"
+version = "0.1.0"
+dependencies = [
+ "iroh",
+ "irpc",
+ "irpc-iroh",
+ "objects-core",
+ "objects-transport",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "objects-identity"
 version = "0.1.0"
 dependencies = [

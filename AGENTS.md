@@ -150,11 +150,13 @@ Pull Request: https://github.com/OBJECTSHQ/protocol/pull/<pr-number>
 
 ## Code Quality & Formatting
 
-**Always format and verify before committing:**
+**Always format, lint, and review before creating PRs:**
 
 ```bash
 cargo fmt --all                          # Fix formatting
 cargo fmt --all -- --check               # Verify (must pass clean, matches CI)
+cargo clippy --workspace -- -D warnings  # Lint
+/simplify                                # Review changed code for reuse, quality, efficiency
 ```
 
 **Recommended setup:**
