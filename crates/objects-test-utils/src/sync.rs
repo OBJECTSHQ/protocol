@@ -26,9 +26,10 @@ use objects_sync::{ReplicaId, SyncEngine};
 #[allow(deprecated)] // Test utilities intentionally use in-memory storage for speed and isolation
 pub async fn sync_engine() -> anyhow::Result<SyncEngine> {
     let endpoint = transport::endpoint().await;
-    SyncEngine::new(endpoint)
+    Ok(SyncEngine::in_memory(endpoint)
         .await
-        .map_err(|e| anyhow::anyhow!("Failed to create sync engine: {}", e))
+        .map_err(|e| anyhow::anyhow!("Failed to create sync engine: {}", e))?
+        .spawn())
 }
 
 /// Creates a test project derived from a replica using RFC-004 derivation.
@@ -94,7 +95,7 @@ pub fn asset(id: impl Into<String>, content_hash: ContentHash) -> anyhow::Result
 
 /// Creates two sync engines that can communicate with each other.
 ///
-/// Each engine has its own `StaticProvider` for discovery. After both
+/// Each engine has its own `MemoryLookup` for discovery. After both
 /// engines (and their iroh Routers) are created, the endpoints cross-register
 /// each other's addresses. This follows the iroh canonical test pattern.
 ///
@@ -110,17 +111,16 @@ pub fn asset(id: impl Into<String>, content_hash: ContentHash) -> anyhow::Result
 /// }
 /// ```
 pub async fn sync_engine_pair() -> anyhow::Result<(SyncEngine, SyncEngine)> {
-    use objects_transport::{RelayMode, StaticProvider};
+    use objects_transport::{MemoryLookup, RelayMode};
 
-    let sp1 = StaticProvider::new();
-    let sp2 = StaticProvider::new();
+    // One shared MemoryLookup — iroh's canonical test pattern.
+    // Both endpoints register on the same lookup so they can discover each other.
+    let discovery = MemoryLookup::new();
 
-    // Use RelayMode::Disabled for fast, deterministic local connections.
-    // Matches transport::endpoint_pair() pattern.
     let ep1 = objects_transport::ObjectsEndpoint::builder()
         .config(transport::network_config())
         .relay_mode(RelayMode::Disabled)
-        .static_discovery(sp1.clone())
+        .static_discovery(discovery.clone())
         .bind()
         .await
         .expect("failed to create endpoint 1");
@@ -128,21 +128,23 @@ pub async fn sync_engine_pair() -> anyhow::Result<(SyncEngine, SyncEngine)> {
     let ep2 = objects_transport::ObjectsEndpoint::builder()
         .config(transport::network_config())
         .relay_mode(RelayMode::Disabled)
-        .static_discovery(sp2.clone())
+        .static_discovery(discovery.clone())
         .bind()
         .await
         .expect("failed to create endpoint 2");
 
-    let sync1 = SyncEngine::new(ep1)
+    let sync1 = SyncEngine::in_memory(ep1)
         .await
-        .map_err(|e| anyhow::anyhow!("sync engine 1: {}", e))?;
-    let sync2 = SyncEngine::new(ep2)
+        .map_err(|e| anyhow::anyhow!("sync engine 1: {}", e))?
+        .spawn();
+    let sync2 = SyncEngine::in_memory(ep2)
         .await
-        .map_err(|e| anyhow::anyhow!("sync engine 2: {}", e))?;
+        .map_err(|e| anyhow::anyhow!("sync engine 2: {}", e))?
+        .spawn();
 
-    // Cross-register addresses AFTER Routers are spawned (iroh canonical pattern).
-    sp1.add_endpoint_info(sync2.endpoint().addr());
-    sp2.add_endpoint_info(sync1.endpoint().addr());
+    // Register addresses AFTER Routers are spawned.
+    discovery.add_endpoint_info(sync1.endpoint().addr());
+    discovery.add_endpoint_info(sync2.endpoint().addr());
 
     Ok((sync1, sync2))
 }
@@ -153,36 +155,36 @@ pub async fn sync_engine_pair() -> anyhow::Result<(SyncEngine, SyncEngine)> {
 /// real production relay path. Slower than `sync_engine_pair()` and
 /// requires internet. Use in `#[ignore]` integration tests.
 pub async fn sync_engine_pair_with_relay() -> anyhow::Result<(SyncEngine, SyncEngine)> {
-    use objects_transport::StaticProvider;
+    use objects_transport::MemoryLookup;
 
-    let sp1 = StaticProvider::new();
-    let sp2 = StaticProvider::new();
-
+    let discovery = MemoryLookup::new();
     let relay_config = transport::network_config_with_relay("https://relay.objects.foundation");
 
     let ep1 = objects_transport::ObjectsEndpoint::builder()
         .config(relay_config.clone())
-        .static_discovery(sp1.clone())
+        .static_discovery(discovery.clone())
         .bind()
         .await
         .expect("failed to create relay endpoint 1");
 
     let ep2 = objects_transport::ObjectsEndpoint::builder()
         .config(relay_config)
-        .static_discovery(sp2.clone())
+        .static_discovery(discovery.clone())
         .bind()
         .await
         .expect("failed to create relay endpoint 2");
 
-    let sync1 = SyncEngine::new(ep1)
+    let sync1 = SyncEngine::in_memory(ep1)
         .await
-        .map_err(|e| anyhow::anyhow!("sync engine 1: {}", e))?;
-    let sync2 = SyncEngine::new(ep2)
+        .map_err(|e| anyhow::anyhow!("sync engine 1: {}", e))?
+        .spawn();
+    let sync2 = SyncEngine::in_memory(ep2)
         .await
-        .map_err(|e| anyhow::anyhow!("sync engine 2: {}", e))?;
+        .map_err(|e| anyhow::anyhow!("sync engine 2: {}", e))?
+        .spawn();
 
-    sp1.add_endpoint_info(sync2.endpoint().addr());
-    sp2.add_endpoint_info(sync1.endpoint().addr());
+    discovery.add_endpoint_info(sync1.endpoint().addr());
+    discovery.add_endpoint_info(sync2.endpoint().addr());
 
     Ok((sync1, sync2))
 }

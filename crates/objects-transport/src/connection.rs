@@ -32,13 +32,12 @@ impl Connection {
 
     /// Get the current connection type.
     ///
-    /// Returns whether this is a direct UDP connection, relayed connection,
-    /// or mixed.
+    /// Inspects the connection's active paths to determine if traffic is
+    /// flowing via direct UDP, relay, or both.
     pub fn connection_type(&self) -> ConnectionType {
-        // Note: Connection type tracking would require access to the Endpoint
-        // to call conn_type(). For now, we return Unknown.
-        // In a full implementation, we'd pass the endpoint reference or
-        // track connection type separately.
+        // iroh 0.97 removed Endpoint::conn_type(). Connection path info
+        // is now available via Connection::paths(), but our wrapper doesn't
+        // expose it yet. Return Unknown until we need richer path reporting.
         ConnectionType::Unknown
     }
 

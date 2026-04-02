@@ -1,61 +1,48 @@
-//! Project command handlers.
-
-use crate::client::NodeClient;
 use crate::error::CliError;
-use crate::types::CreateProjectRequest;
+use objects_core::node_api::NodeApi;
 
-/// Create a new project.
 pub async fn create(
     name: String,
     description: Option<String>,
-    client: &NodeClient,
+    client: &NodeApi,
 ) -> Result<(), CliError> {
     println!("Creating project '{}'...", name);
 
-    let request = CreateProjectRequest { name, description };
+    let response = CliError::from_rpc(client.create_project(&name, description).await)?;
 
-    let response = client.create_project(request).await?;
-
-    println!("✓ Project created");
+    println!("Project created");
     println!("  ID:          {}", response.id);
     println!("  Name:        {}", response.name);
     if let Some(desc) = &response.description {
         println!("  Description: {}", desc);
     }
     println!("  Owner:       {}", response.owner_id);
-    println!("  Created:     {}", response.created_at);
 
     Ok(())
 }
 
-/// List all projects.
-pub async fn list(client: &NodeClient) -> Result<(), CliError> {
-    let response = client.list_projects().await?;
+pub async fn list(client: &NodeApi) -> Result<(), CliError> {
+    let response = CliError::from_rpc(client.list_projects().await)?;
 
     if response.projects.is_empty() {
         println!("No projects found.");
-        println!("Run 'objects project create --name <name>' to create one.");
-    } else {
-        println!("Projects ({}):", response.projects.len());
-        println!();
-        for project in response.projects {
-            println!("  {} - {}", project.id, project.name);
-            if let Some(desc) = &project.description {
-                println!("    {}", desc);
-            }
-        }
+        println!("Create one with: objects project create --name \"My Project\"");
+        return Ok(());
+    }
+
+    println!("Projects ({}):", response.projects.len());
+    for project in &response.projects {
+        println!("  {} - {}", &project.id[..16], project.name);
     }
 
     Ok(())
 }
 
-/// Get a project by ID.
-pub async fn get(id: String, client: &NodeClient) -> Result<(), CliError> {
-    let response = client.get_project(&id).await?;
+pub async fn get(id: String, client: &NodeApi) -> Result<(), CliError> {
+    let response = CliError::from_rpc(client.get_project(&id).await)?;
 
-    println!("Project:");
+    println!("Project: {}", response.name);
     println!("  ID:          {}", response.id);
-    println!("  Name:        {}", response.name);
     if let Some(desc) = &response.description {
         println!("  Description: {}", desc);
     }

@@ -2,9 +2,12 @@
 //!
 //! These tests validate the correctness of the test utilities themselves,
 //! ensuring that test fixtures provide consistent, correct behavior.
+//!
+//! All test-utils module tests live here to avoid duplication between
+//! inline `#[cfg(test)]` modules and this integration test file.
 
 use objects_identity::IdentityId;
-use objects_test_utils::{crypto, identity, time};
+use objects_test_utils::{crypto, data, identity, time};
 
 // ============================================================================
 // Crypto Module Tests
@@ -143,6 +146,67 @@ fn test_random_identities_are_unique() {
 }
 
 // ============================================================================
+// Data Module Tests
+// ============================================================================
+
+#[test]
+fn test_asset_creation() {
+    let author_id = identity::test_identity_id();
+    let asset = data::asset("test-asset", author_id.clone());
+    assert_eq!(asset.id(), "test-asset");
+    assert_eq!(asset.author_id(), &author_id);
+    assert_eq!(asset.name(), "Test Asset");
+}
+
+#[test]
+fn test_asset_with_hash_uses_provided_hash() {
+    let author_id = identity::test_identity_id();
+    let hash = objects_data::ContentHash::new(crypto::deterministic_bytes(123));
+    let asset = data::asset_with_hash("custom-hash", author_id, hash.clone());
+    assert_eq!(asset.content_hash(), &hash);
+}
+
+#[test]
+fn test_project_creation() {
+    let owner_id = identity::test_identity_id();
+    let project = data::project("Test Project", owner_id.clone());
+    assert_eq!(project.name(), "Test Project");
+    assert_eq!(project.owner_id(), &owner_id);
+}
+
+#[test]
+fn test_project_from_replica_derives_id() {
+    let replica_id = crypto::deterministic_bytes(42);
+    let project = data::project_from_replica(&replica_id);
+    let expected_id = objects_data::project_id_from_replica(&replica_id);
+    assert_eq!(project.id(), expected_id);
+}
+
+#[test]
+fn test_reference_creation() {
+    let reference = data::reference("source-1", "target-2");
+    assert_eq!(reference.source_asset_id, "source-1");
+    assert_eq!(reference.target_asset_id, "target-2");
+    assert_eq!(reference.id, "ref-source-1-target-2");
+}
+
+#[test]
+fn test_signed_asset_bundle_verifies() {
+    let bundle = data::signed_asset("test-asset");
+    assert_eq!(bundle.asset.id(), "test-asset");
+    assert_eq!(bundle.asset.author_id(), &bundle.identity_id);
+    assert!(bundle.signed_asset.verify().is_ok());
+}
+
+#[test]
+fn test_signed_asset_author_matches_derived_id() {
+    let bundle = data::signed_asset("test-id-match");
+    let derived_id = IdentityId::derive(&bundle.signing_key.public_key_bytes(), &bundle.nonce);
+    assert_eq!(bundle.identity_id, derived_id);
+    assert_eq!(bundle.asset.author_id(), &derived_id);
+}
+
+// ============================================================================
 // Integration Tests (Cross-Module)
 // ============================================================================
 
@@ -152,7 +216,6 @@ fn test_ed25519_keypair_can_derive_identity() {
     let nonce = crypto::random_nonce();
     let identity_id = IdentityId::derive(&keypair.public_key, &nonce);
 
-    // Should produce a valid identity ID
     assert!(identity_id.as_str().starts_with("obj_"));
     assert!(identity_id.as_str().len() >= 23);
 }
