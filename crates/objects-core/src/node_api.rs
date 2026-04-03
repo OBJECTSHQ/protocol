@@ -5,8 +5,8 @@
 //! or QUIC connections (CLI → node).
 
 use crate::api::types::{
-    AssetListResponse, AssetResponse, HealthResponse, IdentityResponse, ProjectListResponse,
-    ProjectResponse, StatusResponse, TicketResponse, VaultResponse,
+    AssetInfo, HealthResponse, IdentityInfo, ListAssetsResponse, ListProjectsResponse, ProjectInfo,
+    StatusResponse,
 };
 use crate::rpc::proto::*;
 
@@ -56,40 +56,46 @@ impl NodeApi {
     // =========================================================================
 
     pub async fn health(&self) -> Result<HealthResponse, NodeApiError> {
-        Ok(self.client.rpc(HealthRequest).await?)
+        Ok(self.client.rpc(HealthRequest {}).await?)
     }
 
     pub async fn status(&self) -> Result<StatusResponse, NodeApiError> {
-        Ok(self.client.rpc(StatusRequest).await?)
+        Ok(self.client.rpc(StatusRequest {}).await?)
     }
 
     // =========================================================================
     // Identity
     // =========================================================================
 
-    pub async fn get_identity(&self) -> Result<IdentityResponse, NodeApiError> {
-        Ok(self.client.rpc(GetIdentityRequest).await??)
+    pub async fn get_identity(&self) -> Result<IdentityInfo, NodeApiError> {
+        let resp = self.client.rpc(GetIdentityRequest {}).await??;
+        Ok(resp
+            .identity
+            .ok_or_else(|| RpcError::Internal("Missing identity in response".into()))?)
     }
 
-    pub async fn create_identity(&self, handle: &str) -> Result<IdentityResponse, NodeApiError> {
-        Ok(self
+    pub async fn create_identity(&self, handle: &str) -> Result<IdentityInfo, NodeApiError> {
+        let resp = self
             .client
-            .rpc(CreateIdentityRpcRequest {
+            .rpc(CreateIdentityRequest {
                 handle: handle.to_owned(),
             })
-            .await??)
+            .await??;
+        Ok(resp
+            .identity
+            .ok_or_else(|| RpcError::Internal("Missing identity in response".into()))?)
     }
 
-    pub async fn rename_identity(
-        &self,
-        new_handle: &str,
-    ) -> Result<IdentityResponse, NodeApiError> {
-        Ok(self
+    pub async fn rename_identity(&self, new_handle: &str) -> Result<IdentityInfo, NodeApiError> {
+        let resp = self
             .client
-            .rpc(RenameIdentityRpcRequest {
+            .rpc(RenameIdentityRequest {
                 new_handle: new_handle.to_owned(),
             })
-            .await??)
+            .await??;
+        Ok(resp
+            .identity
+            .ok_or_else(|| RpcError::Internal("Missing identity in response".into()))?)
     }
 
     // =========================================================================
@@ -97,45 +103,51 @@ impl NodeApi {
     // =========================================================================
 
     pub async fn list_peers(&self) -> Result<ListPeersResponse, NodeApiError> {
-        Ok(self.client.rpc(ListPeersRequest).await?)
+        Ok(self.client.rpc(ListPeersRequest {}).await?)
     }
 
     // =========================================================================
     // Projects
     // =========================================================================
 
-    pub async fn list_projects(&self) -> Result<ProjectListResponse, NodeApiError> {
-        Ok(self.client.rpc(ListProjectsRequest).await??)
+    pub async fn list_projects(&self) -> Result<ListProjectsResponse, NodeApiError> {
+        Ok(self.client.rpc(ListProjectsRequest {}).await??)
     }
 
     pub async fn create_project(
         &self,
         name: &str,
         description: Option<&str>,
-    ) -> Result<ProjectResponse, NodeApiError> {
-        Ok(self
+    ) -> Result<ProjectInfo, NodeApiError> {
+        let resp = self
             .client
-            .rpc(CreateProjectRpcRequest {
+            .rpc(CreateProjectRequest {
                 name: name.to_owned(),
                 description: description.map(str::to_owned),
             })
-            .await??)
+            .await??;
+        Ok(resp
+            .project
+            .ok_or_else(|| RpcError::Internal("Missing project in response".into()))?)
     }
 
-    pub async fn get_project(&self, project_id: &str) -> Result<ProjectResponse, NodeApiError> {
-        Ok(self
+    pub async fn get_project(&self, project_id: &str) -> Result<ProjectInfo, NodeApiError> {
+        let resp = self
             .client
             .rpc(GetProjectRequest {
                 project_id: project_id.to_owned(),
             })
-            .await??)
+            .await??;
+        Ok(resp
+            .project
+            .ok_or_else(|| RpcError::Internal("Missing project in response".into()))?)
     }
 
     // =========================================================================
     // Assets
     // =========================================================================
 
-    pub async fn list_assets(&self, project_id: &str) -> Result<AssetListResponse, NodeApiError> {
+    pub async fn list_assets(&self, project_id: &str) -> Result<ListAssetsResponse, NodeApiError> {
         Ok(self
             .client
             .rpc(ListAssetsRequest {
@@ -151,8 +163,8 @@ impl NodeApi {
         filename: &str,
         content_type: &str,
         data: bytes::Bytes,
-    ) -> Result<AssetResponse, NodeApiError> {
-        let req = AddAssetRequest {
+    ) -> Result<AssetInfo, NodeApiError> {
+        let req = AddAssetMetadata {
             project_id: project_id.to_owned(),
             filename: filename.to_owned(),
             content_type: content_type.to_owned(),
@@ -173,7 +185,10 @@ impl NodeApi {
         }
         drop(tx);
 
-        Ok(rx.await??)
+        let resp = rx.await??;
+        Ok(resp
+            .asset
+            .ok_or_else(|| RpcError::Internal("Missing asset in response".into()))?)
     }
 
     /// Download asset content, returning (content_type, bytes).
@@ -208,43 +223,49 @@ impl NodeApi {
     // Tickets
     // =========================================================================
 
-    pub async fn create_ticket(&self, project_id: &str) -> Result<TicketResponse, NodeApiError> {
+    pub async fn create_ticket(
+        &self,
+        project_id: &str,
+    ) -> Result<CreateTicketResponse, NodeApiError> {
         Ok(self
             .client
-            .rpc(CreateTicketRpcRequest {
+            .rpc(CreateTicketRequest {
                 project_id: project_id.to_owned(),
             })
             .await??)
     }
 
-    pub async fn redeem_ticket(&self, ticket: &str) -> Result<ProjectResponse, NodeApiError> {
-        Ok(self
+    pub async fn redeem_ticket(&self, ticket: &str) -> Result<ProjectInfo, NodeApiError> {
+        let resp = self
             .client
-            .rpc(RedeemTicketRpcRequest {
+            .rpc(RedeemTicketRequest {
                 ticket: ticket.to_owned(),
             })
-            .await??)
+            .await??;
+        Ok(resp
+            .project
+            .ok_or_else(|| RpcError::Internal("Missing project in response".into()))?)
     }
 
     // =========================================================================
     // Vault
     // =========================================================================
 
-    pub async fn list_vault(&self) -> Result<VaultResponse, NodeApiError> {
-        Ok(self.client.rpc(ListVaultRequest).await??)
+    pub async fn list_vault(&self) -> Result<ListVaultResponse, NodeApiError> {
+        Ok(self.client.rpc(ListVaultRequest {}).await??)
     }
 
     pub async fn sync_vault(&self) -> Result<SyncVaultResponse, NodeApiError> {
-        Ok(self.client.rpc(SyncVaultRequest).await??)
+        Ok(self.client.rpc(SyncVaultRequest {}).await??)
     }
 
     pub async fn pull_vault_project(
         &self,
         project_id: &str,
-    ) -> Result<PullVaultResponse, NodeApiError> {
+    ) -> Result<PullProjectResponse, NodeApiError> {
         Ok(self
             .client
-            .rpc(PullVaultProjectRequest {
+            .rpc(PullProjectRequest {
                 project_id: project_id.to_owned(),
             })
             .await??)

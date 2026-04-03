@@ -12,7 +12,10 @@ pub async fn create(handle: String, client: &NodeApi) -> Result<(), CliError> {
     println!("Identity created");
     println!("  ID:     {}", response.id);
     println!("  Handle: {}", response.handle);
-    println!("  Nonce:  {}", response.nonce);
+    println!(
+        "  Nonce:  {}",
+        base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &response.nonce)
+    );
 
     Ok(())
 }
@@ -37,7 +40,10 @@ pub async fn show(client: &NodeApi) -> Result<(), CliError> {
             println!("Identity:");
             println!("  ID:     {}", response.id);
             println!("  Handle: {}", response.handle);
-            println!("  Nonce:  {}", response.nonce);
+            println!(
+                "  Nonce:  {}",
+                base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &response.nonce)
+            );
         }
         Err(e) if e.to_string().contains("not found") => {
             println!("No identity registered.");
