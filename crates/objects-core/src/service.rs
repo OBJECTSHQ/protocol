@@ -1,9 +1,15 @@
 //! Node service orchestrating transport layer components.
 
+use crate::api::handlers::{AppState, NodeInfo};
+use crate::api::registry::RegistryClient;
+use crate::engine::NodeEngine;
+use crate::node_api::NodeApi;
+use crate::rpc::proto::{NODE_RPC_ALPN, NodeCommand, NodeProtocol};
 use crate::{NodeConfig, NodeState};
 use anyhow::Result;
 use futures::StreamExt;
 use iroh::protocol::Router;
+use irpc_iroh::IrohProtocol;
 use objects_sync::SyncEngine;
 use objects_sync::storage::StorageConfig;
 use objects_transport::discovery::{
@@ -11,21 +17,25 @@ use objects_transport::discovery::{
 };
 use objects_transport::{NetworkConfig, NodeAddr, NodeId, ObjectsEndpoint, RelayUrl};
 use std::str::FromStr;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use tokio::sync::{Mutex, watch};
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 /// Node service orchestrating P2P networking components.
 pub struct NodeService {
-    #[allow(dead_code)] // Used for logging and future features
+    #[allow(dead_code)]
     config: NodeConfig,
-    #[allow(dead_code)] // Used for identity management
-    state: NodeState,
+    #[allow(dead_code)]
+    node_state: Arc<RwLock<NodeState>>,
     endpoint: Arc<ObjectsEndpoint>,
     /// Gossip discovery instance (shared with API layer via Arc<Mutex>).
     pub discovery: Arc<Mutex<GossipDiscovery>>,
     sync_engine: SyncEngine,
-    /// Iroh protocol router handling incoming gossip connections.
+    /// Node RPC API client (local channel to the engine actor).
+    node_api: NodeApi,
+    /// Background engine actor task.
+    _engine_handle: tokio::task::JoinHandle<()>,
+    /// Iroh protocol router handling gossip + node RPC connections.
     router: Router,
     /// Background DNS refresh task (if DNS bootstrap is active).
     dns_refresh: Option<tokio::task::JoinHandle<()>>,
@@ -36,8 +46,9 @@ pub struct NodeService {
 impl NodeService {
     /// Create a new node service with the given config and state.
     ///
-    /// This initializes the Iroh endpoint with the OBJECTS ALPN protocol
-    /// and connects to the configured relay server.
+    /// This initializes the Iroh endpoint, spawns the RPC engine actor,
+    /// registers both gossip and node RPC protocols with the router,
+    /// and performs best-effort vault initialization.
     pub async fn new(config: NodeConfig, state: NodeState) -> Result<Self> {
         info!("Creating node service");
 
@@ -68,15 +79,8 @@ impl NodeService {
 
         info!("Endpoint created with node_id: {}", endpoint.node_id());
 
-        // Set up gossip and protocol Router BEFORE going online.
-        // This ensures the gossip ALPN is registered before the node becomes
-        // reachable via relay, preventing "peer doesn't support any known protocol"
-        // errors from early connection attempts.
+        // Create gossip protocol (Router is deferred until engine is ready)
         let gossip = iroh_gossip::net::Gossip::builder().spawn(endpoint.inner().clone());
-        let router = Router::builder(endpoint.inner().clone())
-            .accept(iroh_gossip::ALPN, gossip.clone())
-            .spawn();
-        info!("Protocol router started (accepting gossip connections)");
 
         // Wait for relay connection
         endpoint.inner().online().await;
@@ -109,7 +113,7 @@ impl NodeService {
         // Spawn periodic DNS refresh (every 5 min) for observability
         let dns_refresh = resolver.spawn_refresh(std::time::Duration::from_secs(300));
         let discovery = GossipDiscovery::new(
-            gossip,
+            gossip.clone(),
             endpoint_arc.clone(),
             bootstrap_addrs,
             DiscoveryConfig::devnet(),
@@ -133,15 +137,109 @@ impl NodeService {
 
         info!("Sync engine initialized with persistent storage");
 
+        // Build AppState for the engine actor
+        let discovery_arc = Arc::new(Mutex::new(discovery));
+        let node_state_arc = Arc::new(RwLock::new(state));
+
+        let app_state = AppState {
+            node_info: Arc::new(NodeInfo {
+                node_id: endpoint_arc.node_id(),
+                node_addr: endpoint_arc.node_addr(),
+            }),
+            discovery: discovery_arc.clone(),
+            node_state: node_state_arc.clone(),
+            config: config.clone(),
+            registry_client: RegistryClient::new(&config),
+            sync_engine: sync_engine.clone(),
+            endpoint: endpoint_arc.clone(),
+        };
+
+        // Spawn engine actor — channel sender feeds both local API and remote QUIC handler
+        let (tx, rx) = tokio::sync::mpsc::channel::<NodeCommand>(128);
+        let engine = NodeEngine::new(app_state);
+        let engine_handle = tokio::spawn(engine.run(rx.into()));
+        let client = irpc::Client::<NodeProtocol>::local(tx);
+        let irpc_handler = IrohProtocol::with_sender(client.as_local().unwrap());
+        let node_api = NodeApi::from_client(client);
+
+        // Register gossip + node RPC protocols, then spawn router
+        let router = Router::builder(endpoint_arc.inner().clone())
+            .accept(iroh_gossip::ALPN, gossip)
+            .accept(NODE_RPC_ALPN, irpc_handler)
+            .spawn();
+        info!("Protocol router started (gossip + node RPC)");
+
+        // Best-effort vault startup
+        let vault_signing_key = node_state_arc
+            .read()
+            .unwrap()
+            .identity()
+            .and_then(|i| i.signing_key().copied());
+
+        if let Some(signing_key_bytes) = vault_signing_key {
+            match objects_identity::vault::VaultKeys::derive_from_signing_key(&signing_key_bytes) {
+                Ok(vault_keys) => {
+                    let vault_ns = vault_keys.namespace_id();
+
+                    match sync_engine
+                        .docs()
+                        .create_replica_with_secret(vault_keys.namespace_secret().clone())
+                        .await
+                    {
+                        Ok(_) => {
+                            info!("Vault replica opened: {}", vault_ns);
+                            match sync_engine
+                                .docs()
+                                .list_catalog(
+                                    sync_engine.blobs(),
+                                    vault_ns,
+                                    Some(&vault_keys.catalog_encryption_key),
+                                )
+                                .await
+                            {
+                                Ok(entries) if entries.is_empty() => {
+                                    info!("Vault: empty (no projects)");
+                                }
+                                Ok(entries) => {
+                                    info!("Vault: {} project(s) discovered", entries.len());
+                                    for entry in &entries {
+                                        let local = sync_engine
+                                            .docs()
+                                            .list_replicas()
+                                            .await
+                                            .unwrap_or_default()
+                                            .iter()
+                                            .any(|r| hex::encode(r.as_bytes()) == entry.project_id);
+                                        let status = if local { "local" } else { "remote" };
+                                        info!(
+                                            "  {} [{}] {}",
+                                            entry.project_name,
+                                            status,
+                                            &entry.project_id[..16]
+                                        );
+                                    }
+                                }
+                                Err(e) => warn!("Vault: failed to read catalog: {}", e),
+                            }
+                        }
+                        Err(e) => warn!("Vault: failed to open replica: {}", e),
+                    }
+                }
+                Err(e) => warn!("Vault: failed to derive keys: {}", e),
+            }
+        }
+
         // Create shutdown channel
         let (shutdown_tx, shutdown_rx) = watch::channel(false);
 
         Ok(Self {
             config,
-            state,
+            node_state: node_state_arc,
             endpoint: endpoint_arc,
-            discovery: Arc::new(Mutex::new(discovery)),
+            discovery: discovery_arc,
             sync_engine,
+            node_api,
+            _engine_handle: engine_handle,
             router,
             dns_refresh,
             shutdown_tx,
@@ -167,6 +265,11 @@ impl NodeService {
     /// Get a reference to the sync engine.
     pub fn sync_engine(&self) -> &SyncEngine {
         &self.sync_engine
+    }
+
+    /// Get a reference to the node RPC API client.
+    pub fn node_api(&self) -> &NodeApi {
+        &self.node_api
     }
 
     /// Run the node service, listening for peer announcements.

@@ -3,7 +3,7 @@
 #   docker build -f docker/node.Dockerfile -t objects-node .
 
 # --- Builder stage ---
-FROM rust:1.88-slim AS builder
+FROM rust:slim-bookworm AS builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config libssl-dev protobuf-compiler \
