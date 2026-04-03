@@ -51,7 +51,7 @@ impl NodeEngine {
     }
 
     /// Run the engine loop, processing commands until the channel closes.
-    pub async fn run(self, mut rx: irpc::channel::mpsc::Receiver<NodeCommand>) {
+    async fn run(self, mut rx: irpc::channel::mpsc::Receiver<NodeCommand>) {
         while let Ok(Some(cmd)) = rx.recv().await {
             self.dispatch(cmd).await;
         }
