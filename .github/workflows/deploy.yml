@@ -123,8 +123,10 @@ jobs:
                 --name objects-node \
                 --restart unless-stopped \
                 -p 7824:7824/udp \
+                -p 3420:3420 \
                 -v objects-data:/data \
                 -e OBJECTS_QUIC_PORT=7824 \
+                -e OBJECTS_API_BIND=0.0.0.0 \
                 -e RUST_LOG=info,objects_node=debug \
                 ${AR_REGISTRY}/objects-node:latest
             "

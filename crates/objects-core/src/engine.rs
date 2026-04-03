@@ -9,7 +9,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use base64::Engine as _;
 use tracing::info;
 
-use crate::api::handlers::{AppState, format_elapsed};
+use crate::api::handlers::AppState;
 use crate::api::registry;
 use crate::api::types::{
     AssetListResponse, AssetResponse, CreateProjectRequest, HealthResponse, IdentityResponse,
@@ -926,5 +926,19 @@ impl NodeEngine {
         }
 
         ListPeersResponse { peers }
+    }
+}
+
+/// Format an elapsed duration as a human-readable "ago" string.
+fn format_elapsed(elapsed: std::time::Duration) -> String {
+    let secs = elapsed.as_secs();
+    if secs < 60 {
+        format!("{}s ago", secs)
+    } else if secs < 3600 {
+        format!("{}m ago", secs / 60)
+    } else if secs < 86400 {
+        format!("{}h ago", secs / 3600)
+    } else {
+        format!("{}d ago", secs / 86400)
     }
 }

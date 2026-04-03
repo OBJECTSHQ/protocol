@@ -30,8 +30,8 @@ ENV OBJECTS_DATA_DIR=/data
 
 VOLUME /data
 
-# 7824/udp = QUIC transport (irpc + sync)
-EXPOSE 7824/udp
+# 7824/udp = QUIC transport (irpc + sync), 3420 = HTTP health
+EXPOSE 7824/udp 3420
 
 # Health check via irpc probe (same pattern as grpc-health-probe)
 HEALTHCHECK --interval=10s --timeout=5s --start-period=90s --retries=3 \
