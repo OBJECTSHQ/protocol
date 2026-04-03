@@ -95,6 +95,11 @@ tempfile = "3"
 serial_test = "3"
 temp-env = "0.3"
 
+# HTTP (lightweight health server)
+hyper = { version = "1", features = ["server", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+http-body-util = "0.1"
+
 # Config
 toml = "0.8"
 url = "2"

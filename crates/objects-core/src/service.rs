@@ -8,6 +8,12 @@ use crate::rpc::proto::{NODE_RPC_ALPN, NodeCommand, NodeProtocol};
 use crate::{NodeConfig, NodeState};
 use anyhow::Result;
 use futures::StreamExt;
+use http_body_util::Full;
+use hyper::body::Bytes;
+use hyper::server::conn::http1;
+use hyper::service::service_fn;
+use hyper::{Request, Response, StatusCode};
+use hyper_util::rt::TokioIo;
 use iroh::protocol::Router;
 use irpc_iroh::IrohProtocol;
 use objects_sync::SyncEngine;
@@ -130,12 +136,31 @@ impl NodeService {
             .unwrap_or_else(|| std::path::PathBuf::from(&config.node.data_dir).join("storage"));
         let storage_config = StorageConfig::from_base_dir(&storage_base);
 
-        // Create sync engine with persistent storage
-        let sync_engine = SyncEngine::with_storage(endpoint_arc.inner(), &storage_config)
-            .await?
-            .spawn();
+        // Create sync engine builder and extract router builder.
+        // We'll add gossip + node RPC to the same Router before spawning,
+        // so all protocols share a single Router (avoids ALPN conflicts).
+        let (sync_finalizer, router_builder) =
+            SyncEngine::with_storage(endpoint_arc.inner(), &storage_config)
+                .await?
+                .into_router_builder();
 
         info!("Sync engine initialized with persistent storage");
+
+        // Create irpc channel + handler (messages buffer until engine starts)
+        let (tx, rx) = tokio::sync::mpsc::channel::<NodeCommand>(128);
+        let client = irpc::Client::<NodeProtocol>::local(tx);
+        let irpc_handler = IrohProtocol::with_sender(client.as_local().unwrap());
+        let node_api = NodeApi::from_client(client);
+
+        // Single Router with ALL protocols: blobs + docs + gossip + node RPC
+        let router = router_builder
+            .accept(iroh_gossip::ALPN, gossip)
+            .accept(NODE_RPC_ALPN, irpc_handler)
+            .spawn();
+        info!("Protocol router started (blobs + docs + gossip + node RPC)");
+
+        // Finalize sync engine with the shared Router
+        let sync_engine = sync_finalizer.finalize(router.clone());
 
         // Build AppState for the engine actor
         let discovery_arc = Arc::new(Mutex::new(discovery));
@@ -154,20 +179,9 @@ impl NodeService {
             endpoint: endpoint_arc.clone(),
         };
 
-        // Spawn engine actor — channel sender feeds both local API and remote QUIC handler
-        let (tx, rx) = tokio::sync::mpsc::channel::<NodeCommand>(128);
+        // Spawn engine actor (reads from rx, processes commands)
         let engine = NodeEngine::new(app_state);
         let engine_handle = tokio::spawn(engine.run(rx.into()));
-        let client = irpc::Client::<NodeProtocol>::local(tx);
-        let irpc_handler = IrohProtocol::with_sender(client.as_local().unwrap());
-        let node_api = NodeApi::from_client(client);
-
-        // Register gossip + node RPC protocols, then spawn router
-        let router = Router::builder(endpoint_arc.inner().clone())
-            .accept(iroh_gossip::ALPN, gossip)
-            .accept(NODE_RPC_ALPN, irpc_handler)
-            .spawn();
-        info!("Protocol router started (gossip + node RPC)");
 
         // Best-effort vault startup
         let vault_signing_key = node_state_arc
@@ -226,6 +240,22 @@ impl NodeService {
                     }
                 }
                 Err(e) => warn!("Vault: failed to derive keys: {}", e),
+            }
+        }
+
+        // Spawn HTTP health server
+        let health_addr = format!("{}:{}", config.node.api_bind, config.node.api_port);
+        match tokio::net::TcpListener::bind(&health_addr).await {
+            Ok(listener) => {
+                let health_api = node_api.clone();
+                tokio::spawn(run_health_server(listener, health_api));
+                info!("HTTP health server listening on {}", health_addr);
+            }
+            Err(e) => {
+                warn!(
+                    "Failed to bind HTTP health server on {}: {}",
+                    health_addr, e
+                );
             }
         }
 
@@ -389,6 +419,59 @@ impl NodeService {
     /// Closes discovery and endpoint in order.
     pub async fn shutdown(mut self) -> Result<()> {
         self.shutdown_inner().await
+    }
+}
+
+async fn run_health_server(listener: tokio::net::TcpListener, node_api: NodeApi) {
+    loop {
+        let (stream, _) = match listener.accept().await {
+            Ok(conn) => conn,
+            Err(e) => {
+                tracing::warn!("Health server accept error: {e}");
+                continue;
+            }
+        };
+        let io = TokioIo::new(stream);
+        let api = node_api.clone();
+        tokio::spawn(async move {
+            let service = service_fn(move |req| {
+                let api = api.clone();
+                async move { handle_health_request(req, api).await }
+            });
+            if let Err(e) = http1::Builder::new().serve_connection(io, service).await {
+                tracing::debug!("Health server connection error: {e}");
+            }
+        });
+    }
+}
+
+async fn handle_health_request(
+    req: Request<hyper::body::Incoming>,
+    node_api: NodeApi,
+) -> Result<Response<Full<Bytes>>, std::convert::Infallible> {
+    match (req.method(), req.uri().path()) {
+        (&hyper::Method::GET, "/health") => match node_api.health().await {
+            Ok(resp) => {
+                let body = serde_json::to_string(&resp).unwrap();
+                Ok(Response::builder()
+                    .status(StatusCode::OK)
+                    .header("content-type", "application/json")
+                    .body(Full::new(Bytes::from(body)))
+                    .unwrap())
+            }
+            Err(_) => {
+                let body = r#"{"status":"unhealthy"}"#;
+                Ok(Response::builder()
+                    .status(StatusCode::SERVICE_UNAVAILABLE)
+                    .header("content-type", "application/json")
+                    .body(Full::new(Bytes::from(body)))
+                    .unwrap())
+            }
+        },
+        _ => Ok(Response::builder()
+            .status(StatusCode::NOT_FOUND)
+            .body(Full::new(Bytes::from("not found")))
+            .unwrap()),
     }
 }
 

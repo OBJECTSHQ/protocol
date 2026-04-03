@@ -3,10 +3,14 @@
 use crate::config::Config;
 use objects_core::node_api::NodeApi;
 use objects_core::rpc::proto::NODE_RPC_ALPN;
-use objects_transport::NodeAddr;
+use objects_transport::{NetworkConfig, NodeAddr, ObjectsEndpoint, RelayUrl};
 use std::path::Path;
+use std::str::FromStr;
 
 /// Read node.api file and connect to the node via irpc over QUIC.
+///
+/// Uses the relay URL from config so the CLI can reach remote nodes
+/// via relay when direct connections aren't possible.
 pub async fn connect_to_node(config: &Config) -> anyhow::Result<NodeApi> {
     let api_path = Path::new(&config.data_dir()).join("node.api");
 
@@ -26,14 +30,18 @@ pub async fn connect_to_node(config: &Config) -> anyhow::Result<NodeApi> {
             .clone(),
     )?;
 
-    // Create a lightweight iroh endpoint for the CLI (no relay, no discovery)
-    let endpoint = iroh::Endpoint::empty_builder()
+    // Create endpoint with relay configured for remote node communication
+    let relay_url = RelayUrl::from_str(&config.network.relay_url)?;
+    let network_config = NetworkConfig::devnet().with_relay_url(relay_url);
+
+    let endpoint = ObjectsEndpoint::builder()
+        .config(network_config)
         .bind()
         .await
         .map_err(|e| anyhow::anyhow!("Failed to create endpoint: {e}"))?;
 
     let client = irpc_iroh::client::<objects_core::rpc::proto::NodeProtocol>(
-        endpoint,
+        endpoint.inner().clone(),
         node_addr,
         NODE_RPC_ALPN,
     );

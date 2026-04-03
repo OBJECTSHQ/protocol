@@ -36,12 +36,19 @@ async fn main() {
         process::exit(1);
     };
 
+    // Strip relay addresses — probe runs on the same machine, connect direct IP only.
+    // Using relay for localhost would require relay transport on the probe endpoint.
+    let direct_addr = NodeAddr {
+        id: addr.id,
+        addrs: addr.addrs.into_iter().filter(|a| !a.is_relay()).collect(),
+    };
+
     let Ok(endpoint) = iroh::Endpoint::empty_builder().bind().await else {
         eprintln!("failed to create endpoint");
         process::exit(1);
     };
 
-    let client = irpc_iroh::client::<NodeProtocol>(endpoint, addr, NODE_RPC_ALPN);
+    let client = irpc_iroh::client::<NodeProtocol>(endpoint, direct_addr, NODE_RPC_ALPN);
     let api = NodeApi::from_client(client);
 
     match tokio::time::timeout(Duration::from_secs(3), api.health()).await {
