@@ -1,78 +1,30 @@
 //! API request and response types.
+//!
+//! Types are generated from `proto/objects/node/v1/node.proto` via prost-build.
+//! This module re-exports them and provides `From` impls for domain types
+//! (objects-data Asset, Project) and validation logic.
 
-use base64::Engine;
 use objects_data::{Asset, Project};
-use objects_transport::NodeAddr;
-use serde::{Deserialize, Serialize};
 
-/// Response for the health check endpoint.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct HealthResponse {
-    /// Status of the node ("ok" if healthy).
-    pub status: String,
-}
+// Re-export proto-generated types used by the API layer.
+pub use crate::proto_gen::{
+    AssetInfo, CreateProjectRequest, GetAssetContentResponse, HealthResponse, IdentityInfo,
+    ListAssetsResponse, ListProjectsResponse, ListVaultResponse, NodeAddress, PeerInfo,
+    ProjectInfo, StatusResponse, VaultEntry,
+};
 
-/// Response for the node status endpoint.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct StatusResponse {
-    /// Node ID as a string.
-    pub node_id: String,
-    /// Node address with relay information.
-    pub node_addr: NodeAddr,
-    /// Number of currently discovered peers.
-    pub peer_count: usize,
-    /// Identity information if registered.
-    pub identity: Option<IdentityResponse>,
-    /// Relay URL the node is connected to.
-    pub relay_url: String,
-}
+// =============================================================================
+// Domain → Proto conversions
+// =============================================================================
 
-/// Identity information response.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct IdentityResponse {
-    /// Identity ID (e.g., "obj_2dMiYc8RhnYkorPc5pVh9").
-    pub id: String,
-    /// Handle (e.g., "@alice").
-    pub handle: String,
-    /// 8-byte nonce encoded as base64.
-    pub nonce: String,
-}
-
-impl From<&crate::state::IdentityInfo> for IdentityResponse {
+impl From<&crate::state::IdentityInfo> for IdentityInfo {
     fn from(info: &crate::state::IdentityInfo) -> Self {
         Self {
             id: info.identity_id().to_string(),
             handle: info.handle().to_string(),
-            nonce: base64::engine::general_purpose::STANDARD.encode(info.nonce()),
+            nonce: info.nonce().to_vec(),
         }
     }
-}
-
-/// Peer information for listing discovered peers.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PeerInfo {
-    /// Peer's node ID.
-    pub node_id: String,
-    /// Peer's relay URL if known.
-    pub relay_url: Option<String>,
-    /// Human-readable time since last seen (e.g., "2m ago").
-    pub last_seen_ago: String,
-    /// Connection type: "direct(addr)", "relay(url)", "mixed(addr, url)", or "none".
-    pub connection_type: String,
-}
-
-// =============================================================================
-// Project Types
-// =============================================================================
-
-/// Request to create a new project.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CreateProjectRequest {
-    /// Human-readable name for the project (1-256 characters).
-    pub name: String,
-    /// Optional description (max 4096 characters).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
 }
 
 impl CreateProjectRequest {
@@ -99,25 +51,7 @@ impl CreateProjectRequest {
     }
 }
 
-/// Response containing project information.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct ProjectResponse {
-    /// Project ID (32 hex characters derived from ReplicaId).
-    pub id: String,
-    /// Human-readable name.
-    pub name: String,
-    /// Optional description.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
-    /// Owner identity ID (e.g., "obj_2dMiYc8RhnYkorPc5pVh9").
-    pub owner_id: String,
-    /// Unix timestamp when project was created.
-    pub created_at: u64,
-    /// Unix timestamp when project was last updated.
-    pub updated_at: u64,
-}
-
-impl From<&Project> for ProjectResponse {
+impl From<&Project> for ProjectInfo {
     fn from(project: &Project) -> Self {
         Self {
             id: project.id().to_string(),
@@ -130,41 +64,13 @@ impl From<&Project> for ProjectResponse {
     }
 }
 
-impl From<Project> for ProjectResponse {
+impl From<Project> for ProjectInfo {
     fn from(project: Project) -> Self {
         Self::from(&project)
     }
 }
 
-/// Response containing a list of projects.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ProjectListResponse {
-    /// List of projects.
-    pub projects: Vec<ProjectResponse>,
-}
-
-// =============================================================================
-// Asset Types
-// =============================================================================
-
-/// Response containing asset information.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct AssetResponse {
-    /// Asset ID (alphanumeric + hyphens, 1-64 characters).
-    pub id: String,
-    /// Human-readable filename.
-    pub filename: String,
-    /// MIME type (e.g., "image/png", "model/step").
-    pub content_type: String,
-    /// Size of the content in bytes.
-    pub size: u64,
-    /// BLAKE3 hash of the content (base64-encoded).
-    pub content_hash: String,
-    /// Unix timestamp when asset was created.
-    pub created_at: u64,
-}
-
-impl From<&Asset> for AssetResponse {
+impl From<&Asset> for AssetInfo {
     fn from(asset: &Asset) -> Self {
         Self {
             id: asset.id().to_string(),
@@ -174,72 +80,30 @@ impl From<&Asset> for AssetResponse {
                 .unwrap_or("application/octet-stream")
                 .to_string(),
             size: asset.content_size(),
-            content_hash: base64::engine::general_purpose::STANDARD.encode(asset.content_hash().0),
+            content_hash: asset.content_hash().0.to_vec(),
             created_at: asset.created_at(),
         }
     }
 }
 
-impl From<Asset> for AssetResponse {
+impl From<Asset> for AssetInfo {
     fn from(asset: Asset) -> Self {
         Self::from(&asset)
     }
 }
 
-/// Response containing a list of assets.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AssetListResponse {
-    /// List of assets.
-    pub assets: Vec<AssetResponse>,
-}
-
 // =============================================================================
-// Ticket Types
+// NodeAddress ↔ NodeAddr conversions
 // =============================================================================
 
-/// Request to create a project share ticket.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CreateTicketRequest {
-    /// Project ID to create ticket for.
-    pub project_id: String,
-}
-
-/// Response containing the ticket string.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TicketResponse {
-    /// Serialized ticket string for sharing.
-    pub ticket: String,
-}
-
-/// Request to redeem a ticket.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RedeemTicketRequest {
-    /// Ticket string to redeem.
-    pub ticket: String,
-}
-
-// =============================================================================
-// Vault Types
-// =============================================================================
-
-/// Response containing vault catalog entries.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct VaultResponse {
-    /// List of projects in the vault catalog.
-    pub entries: Vec<VaultEntry>,
-}
-
-/// A single entry in the vault catalog.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct VaultEntry {
-    /// Project ID (32 hex characters).
-    pub project_id: String,
-    /// Human-readable project name.
-    pub name: String,
-    /// Unix timestamp when project was created.
-    pub created_at: u64,
-    /// Whether the project replica exists locally on this device.
-    pub local: bool,
+impl From<&objects_transport::NodeAddr> for NodeAddress {
+    fn from(addr: &objects_transport::NodeAddr) -> Self {
+        Self {
+            node_id: addr.id.to_string(),
+            relay_url: addr.relay_urls().next().map(|u| u.to_string()),
+            direct_addresses: addr.ip_addrs().map(|a| a.to_string()).collect(),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -253,23 +117,21 @@ mod tests {
         };
 
         let json = serde_json::to_string(&response).unwrap();
-        assert_eq!(json, r#"{"status":"ok"}"#);
-
         let deserialized: HealthResponse = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized, response);
     }
 
     #[test]
-    fn test_identity_response_serialization() {
-        let response = IdentityResponse {
+    fn test_identity_info_serialization() {
+        let info = IdentityInfo {
             id: "obj_2dMiYc8RhnYkorPc5pVh9".to_string(),
             handle: "@alice".to_string(),
-            nonce: "AQIDBAUGBwg=".to_string(), // base64 encoding of [1,2,3,4,5,6,7,8]
+            nonce: vec![1, 2, 3, 4, 5, 6, 7, 8],
         };
 
-        let json = serde_json::to_string(&response).unwrap();
-        let deserialized: IdentityResponse = serde_json::from_str(&json).unwrap();
-        assert_eq!(deserialized, response);
+        let json = serde_json::to_string(&info).unwrap();
+        let deserialized: IdentityInfo = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, info);
     }
 
     #[test]
@@ -330,8 +192,8 @@ mod tests {
     }
 
     #[test]
-    fn test_project_response_serialization() {
-        let response = ProjectResponse {
+    fn test_project_info_serialization() {
+        let info = ProjectInfo {
             id: "a".repeat(32),
             name: "Test Project".to_string(),
             description: Some("A test project".to_string()),
@@ -340,13 +202,13 @@ mod tests {
             updated_at: 1704542500,
         };
 
-        let json = serde_json::to_string(&response).unwrap();
-        let deserialized: ProjectResponse = serde_json::from_str(&json).unwrap();
-        assert_eq!(deserialized, response);
+        let json = serde_json::to_string(&info).unwrap();
+        let deserialized: ProjectInfo = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, info);
     }
 
     #[test]
-    fn test_project_response_from_project() {
+    fn test_project_info_from_project() {
         use objects_identity::IdentityId;
 
         let owner_id = IdentityId::parse("obj_2dMiYc8RhnYkorPc5pVh9").unwrap();
@@ -360,19 +222,19 @@ mod tests {
         )
         .unwrap();
 
-        let response = ProjectResponse::from(&project);
-        assert_eq!(response.id, "a".repeat(64));
-        assert_eq!(response.name, "Test Project");
-        assert_eq!(response.description, Some("A test project".to_string()));
-        assert_eq!(response.owner_id, "obj_2dMiYc8RhnYkorPc5pVh9");
-        assert_eq!(response.created_at, 1704542400);
-        assert_eq!(response.updated_at, 1704542500);
+        let info = ProjectInfo::from(&project);
+        assert_eq!(info.id, "a".repeat(64));
+        assert_eq!(info.name, "Test Project");
+        assert_eq!(info.description, Some("A test project".to_string()));
+        assert_eq!(info.owner_id, "obj_2dMiYc8RhnYkorPc5pVh9");
+        assert_eq!(info.created_at, 1704542400);
+        assert_eq!(info.updated_at, 1704542500);
     }
 
     #[test]
-    fn test_project_list_response_serialization() {
-        let response = ProjectListResponse {
-            projects: vec![ProjectResponse {
+    fn test_list_projects_response_serialization() {
+        let response = ListProjectsResponse {
+            projects: vec![ProjectInfo {
                 id: "a".repeat(32),
                 name: "Test Project".to_string(),
                 description: None,
@@ -384,7 +246,7 @@ mod tests {
 
         let json = serde_json::to_string(&response).unwrap();
         assert!(json.contains("Test Project"));
-        let deserialized: ProjectListResponse = serde_json::from_str(&json).unwrap();
+        let deserialized: ListProjectsResponse = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.projects.len(), 1);
     }
 
@@ -393,24 +255,23 @@ mod tests {
     // =========================================================================
 
     #[test]
-    fn test_asset_response_serialization() {
-        let response = AssetResponse {
+    fn test_asset_info_serialization() {
+        let info = AssetInfo {
             id: "motor-mount-v1".to_string(),
             filename: "motor_mount.step".to_string(),
             content_type: "model/step".to_string(),
             size: 1024,
-            content_hash: base64::engine::general_purpose::STANDARD
-                .encode(objects_test_utils::crypto::deterministic_bytes(42)),
+            content_hash: objects_test_utils::crypto::deterministic_bytes(42).to_vec(),
             created_at: 1704542400,
         };
 
-        let json = serde_json::to_string(&response).unwrap();
-        let deserialized: AssetResponse = serde_json::from_str(&json).unwrap();
-        assert_eq!(deserialized, response);
+        let json = serde_json::to_string(&info).unwrap();
+        let deserialized: AssetInfo = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, info);
     }
 
     #[test]
-    fn test_asset_response_from_asset() {
+    fn test_asset_info_from_asset() {
         use objects_data::ContentHash;
         use objects_identity::IdentityId;
 
@@ -428,20 +289,17 @@ mod tests {
         )
         .unwrap();
 
-        let response = AssetResponse::from(&asset);
-        assert_eq!(response.id, "motor-mount-v1");
-        assert_eq!(response.filename, "motor_mount.step");
-        assert_eq!(response.content_type, "model/step");
-        assert_eq!(response.size, 1024);
-        assert_eq!(
-            response.content_hash,
-            base64::engine::general_purpose::STANDARD.encode([0xab; 32])
-        );
-        assert_eq!(response.created_at, 1704542400);
+        let info = AssetInfo::from(&asset);
+        assert_eq!(info.id, "motor-mount-v1");
+        assert_eq!(info.filename, "motor_mount.step");
+        assert_eq!(info.content_type, "model/step");
+        assert_eq!(info.size, 1024);
+        assert_eq!(info.content_hash, [0xab; 32].to_vec());
+        assert_eq!(info.created_at, 1704542400);
     }
 
     #[test]
-    fn test_asset_response_default_content_type() {
+    fn test_asset_info_default_content_type() {
         use objects_data::ContentHash;
         use objects_identity::IdentityId;
 
@@ -459,27 +317,26 @@ mod tests {
         )
         .unwrap();
 
-        let response = AssetResponse::from(&asset);
-        assert_eq!(response.content_type, "application/octet-stream");
+        let info = AssetInfo::from(&asset);
+        assert_eq!(info.content_type, "application/octet-stream");
     }
 
     #[test]
-    fn test_asset_list_response_serialization() {
-        let response = AssetListResponse {
-            assets: vec![AssetResponse {
+    fn test_list_assets_response_serialization() {
+        let response = ListAssetsResponse {
+            assets: vec![AssetInfo {
                 id: "motor-mount-v1".to_string(),
                 filename: "motor_mount.step".to_string(),
                 content_type: "model/step".to_string(),
                 size: 1024,
-                content_hash: base64::engine::general_purpose::STANDARD
-                    .encode(objects_test_utils::crypto::deterministic_bytes(42)),
+                content_hash: objects_test_utils::crypto::deterministic_bytes(42).to_vec(),
                 created_at: 1704542400,
             }],
         };
 
         let json = serde_json::to_string(&response).unwrap();
         assert!(json.contains("motor-mount-v1"));
-        let deserialized: AssetListResponse = serde_json::from_str(&json).unwrap();
+        let deserialized: ListAssetsResponse = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.assets.len(), 1);
     }
 }
