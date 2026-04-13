@@ -214,6 +214,206 @@ async fn test_get_project_not_found() {
 }
 
 // ============================================================================
+// UpdateProject
+// ============================================================================
+
+#[tokio::test]
+async fn test_update_project_name() {
+    let (_h, api, _tmp) = spawn_test_engine_with_identity().await;
+    let created = api.create_project("Original", None).await.unwrap();
+
+    let updated = api
+        .update_project(&created.id, Some("Renamed"), None, false)
+        .await
+        .unwrap();
+
+    assert_eq!(updated.name, "Renamed");
+    assert_eq!(updated.id, created.id);
+
+    // Verify persisted
+    let fetched = api.get_project(&created.id).await.unwrap();
+    assert_eq!(fetched.name, "Renamed");
+}
+
+#[tokio::test]
+async fn test_update_project_description() {
+    let (_h, api, _tmp) = spawn_test_engine_with_identity().await;
+    let created = api.create_project("Proj", None).await.unwrap();
+    assert_eq!(created.description, None);
+
+    let updated = api
+        .update_project(&created.id, None, Some("New desc"), false)
+        .await
+        .unwrap();
+
+    assert_eq!(updated.description, Some("New desc".to_owned()));
+    assert_eq!(updated.name, "Proj");
+}
+
+#[tokio::test]
+async fn test_update_project_clear_description() {
+    let (_h, api, _tmp) = spawn_test_engine_with_identity().await;
+    let created = api
+        .create_project("Proj", Some("Has desc"))
+        .await
+        .unwrap();
+    assert_eq!(created.description, Some("Has desc".to_owned()));
+
+    let updated = api
+        .update_project(&created.id, None, None, true)
+        .await
+        .unwrap();
+
+    assert_eq!(updated.description, None);
+}
+
+#[tokio::test]
+async fn test_update_project_description_overrides_clear() {
+    let (_h, api, _tmp) = spawn_test_engine_with_identity().await;
+    let created = api
+        .create_project("Proj", Some("Old"))
+        .await
+        .unwrap();
+
+    // When both description and clear_description are set, description wins
+    let updated = api
+        .update_project(&created.id, None, Some("New"), true)
+        .await
+        .unwrap();
+
+    assert_eq!(updated.description, Some("New".to_owned()));
+}
+
+#[tokio::test]
+async fn test_update_project_name_and_description() {
+    let (_h, api, _tmp) = spawn_test_engine_with_identity().await;
+    let created = api.create_project("Old Name", None).await.unwrap();
+
+    let updated = api
+        .update_project(&created.id, Some("New Name"), Some("New Desc"), false)
+        .await
+        .unwrap();
+
+    assert_eq!(updated.name, "New Name");
+    assert_eq!(updated.description, Some("New Desc".to_owned()));
+}
+
+#[tokio::test]
+async fn test_update_project_no_fields_fails() {
+    let (_h, api, _tmp) = spawn_test_engine_with_identity().await;
+    let created = api.create_project("Proj", None).await.unwrap();
+
+    let result = api
+        .update_project(&created.id, None, None, false)
+        .await;
+
+    assert!(
+        matches!(result, Err(NodeApiError::Rpc(RpcError::BadRequest(_)))),
+        "expected BadRequest, got: {result:?}"
+    );
+}
+
+#[tokio::test]
+async fn test_update_project_not_found() {
+    let (_h, api, _tmp) = spawn_test_engine_with_identity().await;
+    let result = api
+        .update_project(&"a".repeat(64), Some("Name"), None, false)
+        .await;
+
+    assert!(
+        matches!(result, Err(NodeApiError::Rpc(RpcError::NotFound(_)))),
+        "expected NotFound, got: {result:?}"
+    );
+}
+
+#[tokio::test]
+async fn test_update_project_empty_name_fails() {
+    let (_h, api, _tmp) = spawn_test_engine_with_identity().await;
+    let created = api.create_project("Valid", None).await.unwrap();
+
+    let result = api
+        .update_project(&created.id, Some(""), None, false)
+        .await;
+
+    assert!(
+        matches!(result, Err(NodeApiError::Rpc(RpcError::BadRequest(_)))),
+        "expected BadRequest for empty name, got: {result:?}"
+    );
+}
+
+// ============================================================================
+// DeleteProject
+// ============================================================================
+
+#[tokio::test]
+async fn test_delete_project() {
+    let (_h, api, _tmp) = spawn_test_engine_with_identity().await;
+    let created = api.create_project("ToDelete", None).await.unwrap();
+
+    api.delete_project(&created.id).await.unwrap();
+
+    // Verify it's gone
+    let result = api.get_project(&created.id).await;
+    assert!(
+        matches!(result, Err(NodeApiError::Rpc(RpcError::NotFound(_)))),
+        "expected NotFound after delete, got: {result:?}"
+    );
+}
+
+#[tokio::test]
+async fn test_delete_project_removes_from_list() {
+    let (_h, api, _tmp) = spawn_test_engine_with_identity().await;
+    let p1 = api.create_project("Keep", None).await.unwrap();
+    let p2 = api.create_project("Delete", None).await.unwrap();
+
+    api.delete_project(&p2.id).await.unwrap();
+
+    let projects = api.list_projects().await.unwrap();
+    assert_eq!(projects.projects.len(), 1);
+    assert_eq!(projects.projects[0].id, p1.id);
+}
+
+#[tokio::test]
+async fn test_delete_project_not_found() {
+    let (_h, api, _tmp) = spawn_test_engine_with_identity().await;
+    let result = api.delete_project(&"a".repeat(64)).await;
+
+    assert!(
+        matches!(result, Err(NodeApiError::Rpc(RpcError::NotFound(_)))),
+        "expected NotFound, got: {result:?}"
+    );
+}
+
+#[tokio::test]
+async fn test_create_update_delete_lifecycle() {
+    let (_h, api, _tmp) = spawn_test_engine_with_identity().await;
+
+    // Create
+    let project = api
+        .create_project("Lifecycle", Some("v1"))
+        .await
+        .unwrap();
+    assert_eq!(project.name, "Lifecycle");
+    assert_eq!(project.description, Some("v1".to_owned()));
+
+    // Update
+    let updated = api
+        .update_project(&project.id, Some("Lifecycle v2"), Some("v2 desc"), false)
+        .await
+        .unwrap();
+    assert_eq!(updated.name, "Lifecycle v2");
+    assert_eq!(updated.description, Some("v2 desc".to_owned()));
+    assert!(updated.updated_at >= project.updated_at);
+
+    // Delete
+    api.delete_project(&project.id).await.unwrap();
+
+    // Gone
+    let list = api.list_projects().await.unwrap();
+    assert!(list.projects.is_empty());
+}
+
+// ============================================================================
 // Tickets
 // ============================================================================
 
