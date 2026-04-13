@@ -9,6 +9,11 @@ pub mod config;
 pub mod defaults;
 pub mod engine;
 pub mod node_api;
+/// Proto-generated types from `proto/objects/node/v1/node.proto`.
+///
+/// Re-generated via `cargo build -p objects-core --features codegen`.
+#[path = "proto_gen.rs"]
+pub mod proto_gen;
 pub mod rpc;
 pub mod service;
 pub mod state;
