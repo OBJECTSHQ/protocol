@@ -8,9 +8,9 @@ use objects_data::{Asset, Project};
 
 // Re-export proto-generated types used by the API layer.
 pub use crate::proto_gen::{
-    AssetInfo, CreateProjectRequest, GetAssetContentResponse, HealthResponse, IdentityInfo,
-    ListAssetsResponse, ListProjectsResponse, ListVaultResponse, NodeAddress, PeerInfo,
-    ProjectInfo, StatusResponse, VaultEntry,
+    AssetInfo, CreateProjectRequest, DeleteProjectRequest, GetAssetContentResponse, HealthResponse,
+    IdentityInfo, ListAssetsResponse, ListProjectsResponse, ListVaultResponse, NodeAddress,
+    PeerInfo, ProjectInfo, StatusResponse, UpdateProjectRequest, VaultEntry,
 };
 
 // =============================================================================
@@ -47,6 +47,64 @@ impl CreateProjectRequest {
         {
             return Err("Description must be at most 4096 characters".to_string());
         }
+        Ok(())
+    }
+}
+
+/// Validates a project ID: must be exactly 64 hex characters.
+fn validate_project_id(project_id: &str) -> Result<(), String> {
+    if project_id.len() != 64 {
+        return Err("Project ID must be 64 hex characters".to_string());
+    }
+    if !project_id.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err("Project ID must be 64 hex characters".to_string());
+    }
+    Ok(())
+}
+
+impl UpdateProjectRequest {
+    /// Validates the request fields.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error message if validation fails:
+    /// - project_id must be 64 hex characters
+    /// - At least one of name, description, or clear_description must be set
+    /// - Name (if set) must be 1-256 characters
+    /// - Description (if set) must be at most 4096 characters
+    pub fn validate(&self) -> Result<(), String> {
+        validate_project_id(&self.project_id)?;
+        if self.name.is_none() && self.description.is_none() && !self.clear_description {
+            return Err(
+                "At least one of name, description, or clear_description must be set".to_string(),
+            );
+        }
+        if let Some(ref name) = self.name {
+            if name.is_empty() {
+                return Err("Name must be 1-256 characters".to_string());
+            }
+            if name.len() > 256 {
+                return Err("Name must be 1-256 characters".to_string());
+            }
+        }
+        if let Some(ref desc) = self.description
+            && desc.len() > 4096
+        {
+            return Err("Description must be at most 4096 characters".to_string());
+        }
+        Ok(())
+    }
+}
+
+impl DeleteProjectRequest {
+    /// Validates the request fields.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error message if validation fails:
+    /// - project_id must be 64 hex characters
+    pub fn validate(&self) -> Result<(), String> {
+        validate_project_id(&self.project_id)?;
         Ok(())
     }
 }

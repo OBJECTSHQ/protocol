@@ -213,6 +213,37 @@ pub struct GetProjectResponse {
     pub project: ::core::option::Option<ProjectInfo>,
 }
 #[derive(serde::Serialize, serde::Deserialize, Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct UpdateProjectRequest {
+    /// Project ID (hex string derived from ReplicaId).
+    #[prost(string, tag = "1")]
+    pub project_id: ::prost::alloc::string::String,
+    /// New project name (1-256 characters). Omit to leave unchanged.
+    #[prost(string, optional, tag = "2")]
+    pub name: ::core::option::Option<::prost::alloc::string::String>,
+    /// New project description (max 4096 characters). Omit to leave unchanged.
+    #[prost(string, optional, tag = "3")]
+    pub description: ::core::option::Option<::prost::alloc::string::String>,
+    /// Set to true to clear the description. Ignored if description is also set.
+    #[prost(bool, tag = "4")]
+    pub clear_description: bool,
+}
+#[derive(serde::Serialize, serde::Deserialize, Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct UpdateProjectResponse {
+    /// The updated project.
+    #[prost(message, optional, tag = "1")]
+    pub project: ::core::option::Option<ProjectInfo>,
+}
+#[derive(serde::Serialize, serde::Deserialize, Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct DeleteProjectRequest {
+    /// Project ID (hex string derived from ReplicaId).
+    #[prost(string, tag = "1")]
+    pub project_id: ::prost::alloc::string::String,
+}
+#[derive(
+    serde::Serialize, serde::Deserialize, Clone, Copy, PartialEq, Eq, Hash, ::prost::Message,
+)]
+pub struct DeleteProjectResponse {}
+#[derive(serde::Serialize, serde::Deserialize, Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ListAssetsRequest {
     /// Project ID to list assets for.
     #[prost(string, tag = "1")]

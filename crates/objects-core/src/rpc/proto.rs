@@ -78,6 +78,12 @@ pub enum NodeProtocol {
     #[rpc(tx = oneshot::Sender<Result<GetProjectResponse, RpcError>>)]
     GetProject(GetProjectRequest),
 
+    #[rpc(tx = oneshot::Sender<Result<UpdateProjectResponse, RpcError>>)]
+    UpdateProject(UpdateProjectRequest),
+
+    #[rpc(tx = oneshot::Sender<Result<DeleteProjectResponse, RpcError>>)]
+    DeleteProject(DeleteProjectRequest),
+
     // --- Assets ---
     #[rpc(tx = oneshot::Sender<Result<ListAssetsResponse, RpcError>>)]
     ListAssets(ListAssetsRequest),

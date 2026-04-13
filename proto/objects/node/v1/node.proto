@@ -39,6 +39,12 @@ service ProjectService {
   // Get a project by ID.
   rpc GetProject(GetProjectRequest) returns (GetProjectResponse);
 
+  // Update a project's name and/or description.
+  rpc UpdateProject(UpdateProjectRequest) returns (UpdateProjectResponse);
+
+  // Delete a project and all associated data.
+  rpc DeleteProject(DeleteProjectRequest) returns (DeleteProjectResponse);
+
   // List assets in a project.
   rpc ListAssets(ListAssetsRequest) returns (ListAssetsResponse);
 
@@ -265,6 +271,32 @@ message GetProjectResponse {
   // The requested project.
   ProjectInfo project = 1;
 }
+
+message UpdateProjectRequest {
+  // Project ID (hex string derived from ReplicaId).
+  string project_id = 1;
+
+  // New project name (1-256 characters). Omit to leave unchanged.
+  optional string name = 2;
+
+  // New project description (max 4096 characters). Omit to leave unchanged.
+  optional string description = 3;
+
+  // Set to true to clear the description. Ignored if description is also set.
+  bool clear_description = 4;
+}
+
+message UpdateProjectResponse {
+  // The updated project.
+  ProjectInfo project = 1;
+}
+
+message DeleteProjectRequest {
+  // Project ID (hex string derived from ReplicaId).
+  string project_id = 1;
+}
+
+message DeleteProjectResponse {}
 
 message ListAssetsRequest {
   // Project ID to list assets for.
