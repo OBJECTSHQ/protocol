@@ -383,12 +383,35 @@ pub struct NodeSettings {
 impl Default for NodeSettings {
     fn default() -> Self {
         Self {
-            data_dir: "~/.objects".to_string(),
+            data_dir: default_data_dir(),
             api_port: 3420,
             api_bind: "127.0.0.1".to_string(),
             quic_port: None,
         }
     }
+}
+
+/// Platform-aware default data directory.
+///
+/// Returns the standard location for application data on each platform:
+/// - **macOS**: `~/Library/Application Support/Objects/`
+/// - **Linux (root)**: `/var/lib/objects/`
+/// - **Linux (user)**: `$XDG_DATA_HOME/objects/` (defaults to `~/.local/share/objects/`)
+/// - **Windows**: `%APPDATA%\Objects\`
+///
+/// # Panics
+///
+/// Panics if the platform data directory cannot be determined (no `$HOME`, no user profile).
+/// Use `OBJECTS_DATA_DIR` environment variable to override.
+pub fn default_data_dir() -> String {
+    #[cfg(target_os = "linux")]
+    if std::env::var("USER").as_deref() == Ok("root") {
+        return "/var/lib/objects".to_string();
+    }
+
+    dirs::data_dir()
+        .map(|p| p.join("Objects").to_string_lossy().into_owned())
+        .expect("Could not determine platform data directory. Set OBJECTS_DATA_DIR to override.")
 }
 
 /// Network configuration settings.
@@ -551,7 +574,7 @@ mod tests {
     fn test_default_values() {
         let config = NodeConfig::default();
 
-        assert_eq!(config.node.data_dir, "~/.objects");
+        assert_eq!(config.node.data_dir, default_data_dir());
         assert_eq!(config.node.api_port, 3420);
         assert_eq!(config.node.api_bind, "127.0.0.1");
         assert!(config.node.quic_port.is_none());

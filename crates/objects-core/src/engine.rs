@@ -6,23 +6,23 @@
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use base64::Engine as _;
 use tracing::info;
 
 use crate::api::handlers::AppState;
-use crate::api::registry;
 use crate::api::types::{
-    AssetListResponse, AssetResponse, CreateProjectRequest, HealthResponse, IdentityResponse,
-    PeerInfo, ProjectListResponse, ProjectResponse, StatusResponse, TicketResponse, VaultEntry,
-    VaultResponse,
+    AssetInfo, CreateProjectRequest, DeleteProjectRequest, GetAssetContentResponse,
+    HealthResponse, IdentityInfo, ListAssetsResponse, ListProjectsResponse, ListVaultResponse,
+    NodeAddress, PeerInfo, ProjectInfo, StatusResponse, UpdateProjectRequest, VaultEntry,
 };
 use crate::rpc::proto::*;
-use crate::state::IdentityInfo;
+use crate::state::IdentityInfo as StateIdentityInfo;
 use objects_identity::{
     Ed25519SigningKey, Handle, IdentityId, generate_nonce,
     message::{change_handle_message, create_identity_message},
 };
 use objects_transport::discovery::Discovery;
+
+use crate::api::registry;
 
 /// The node engine — an actor that processes RPC requests.
 ///
@@ -101,6 +101,14 @@ impl NodeEngine {
                 let resp = self.handle_get_project(msg.inner).await;
                 msg.tx.send(resp).await.ok();
             }
+            NodeCommand::UpdateProject(msg) => {
+                let resp = self.handle_update_project(msg.inner).await;
+                msg.tx.send(resp).await.ok();
+            }
+            NodeCommand::DeleteProject(msg) => {
+                let resp = self.handle_delete_project(msg.inner).await;
+                msg.tx.send(resp).await.ok();
+            }
 
             // --- Assets ---
             NodeCommand::ListAssets(msg) => {
@@ -141,7 +149,7 @@ impl NodeEngine {
             NodeCommand::PullVaultProject(msg) => {
                 let id = msg.inner.project_id.clone();
                 msg.tx
-                    .send(Ok(PullVaultResponse {
+                    .send(Ok(PullProjectResponse {
                         status: "pulled".into(),
                         project_id: id,
                     }))
@@ -178,31 +186,36 @@ impl NodeEngine {
             .read()
             .expect("node_state lock poisoned")
             .identity()
-            .map(IdentityResponse::from);
+            .map(IdentityInfo::from);
 
         StatusResponse {
             node_id: self.state.node_info.node_id.to_string(),
-            node_addr: self.state.node_info.node_addr.clone(),
-            peer_count,
+            node_addr: Some(NodeAddress::from(&self.state.node_info.node_addr)),
+            peer_count: peer_count as u32,
             identity,
             relay_url: self.state.config.network.relay_url.clone(),
         }
     }
 
-    fn handle_get_identity(&self) -> Result<IdentityResponse, RpcError> {
-        self.state
+    fn handle_get_identity(&self) -> Result<GetIdentityResponse, RpcError> {
+        let identity = self
+            .state
             .node_state
             .read()
             .expect("node_state lock poisoned")
             .identity()
-            .map(IdentityResponse::from)
-            .ok_or_else(|| RpcError::NotFound("No identity registered".into()))
+            .map(IdentityInfo::from)
+            .ok_or_else(|| RpcError::NotFound("No identity registered".into()))?;
+
+        Ok(GetIdentityResponse {
+            identity: Some(identity),
+        })
     }
 
     async fn handle_create_identity(
         &self,
-        req: CreateIdentityRpcRequest,
-    ) -> Result<IdentityResponse, RpcError> {
+        req: CreateIdentityRequest,
+    ) -> Result<CreateIdentityResponse, RpcError> {
         let handle = Handle::parse(&req.handle).map_err(|e| RpcError::BadRequest(e.to_string()))?;
 
         let signing_key = Ed25519SigningKey::generate();
@@ -221,12 +234,12 @@ impl NodeEngine {
         let b64 = &base64::engine::general_purpose::STANDARD;
         let registry_request = registry::CreateIdentityRequest {
             handle: handle.to_string(),
-            public_key: b64.encode(public_key),
-            nonce: b64.encode(nonce),
+            public_key: base64::Engine::encode(b64, public_key),
+            nonce: base64::Engine::encode(b64, nonce),
             timestamp,
             signature: registry::SignatureData {
-                signature: b64.encode(signature.signature_bytes()),
-                public_key: b64.encode(signature.public_key_bytes()),
+                signature: base64::Engine::encode(b64, signature.signature_bytes()),
+                public_key: base64::Engine::encode(b64, signature.public_key_bytes()),
             },
         };
 
@@ -237,7 +250,7 @@ impl NodeEngine {
             .await
             .map_err(|e| RpcError::Registry(e.to_string()))?;
 
-        let identity_info = IdentityInfo::with_signing_key(
+        let identity_info = StateIdentityInfo::with_signing_key(
             IdentityId::parse(&registry_response.id)
                 .map_err(|e| RpcError::Internal(format!("Invalid identity ID: {e}")))?,
             Handle::parse(&registry_response.handle)
@@ -278,17 +291,19 @@ impl NodeEngine {
 
         info!("Identity created: {}", identity_info.handle());
 
-        Ok(IdentityResponse {
-            id: registry_response.id,
-            handle: registry_response.handle,
-            nonce: b64.encode(nonce),
+        Ok(CreateIdentityResponse {
+            identity: Some(IdentityInfo {
+                id: registry_response.id,
+                handle: registry_response.handle,
+                nonce: nonce.to_vec(),
+            }),
         })
     }
 
     async fn handle_rename_identity(
         &self,
-        req: RenameIdentityRpcRequest,
-    ) -> Result<IdentityResponse, RpcError> {
+        req: RenameIdentityRequest,
+    ) -> Result<RenameIdentityResponse, RpcError> {
         let new_handle =
             Handle::parse(&req.new_handle).map_err(|e| RpcError::BadRequest(e.to_string()))?;
 
@@ -317,8 +332,8 @@ impl NodeEngine {
             "new_handle": new_handle.as_str(),
             "timestamp": timestamp,
             "signature": {
-                "signature": b64.encode(signature.signature_bytes()),
-                "public_key": b64.encode(signature.public_key_bytes()),
+                "signature": base64::Engine::encode(b64, signature.signature_bytes()),
+                "public_key": base64::Engine::encode(b64, signature.public_key_bytes()),
             }
         });
 
@@ -338,10 +353,12 @@ impl NodeEngine {
 
         info!("Identity renamed to @{}", new_handle);
 
-        Ok(IdentityResponse {
-            id: identity_id.to_string(),
-            handle: new_handle.to_string(),
-            nonce: String::new(),
+        Ok(RenameIdentityResponse {
+            identity: Some(IdentityInfo {
+                id: identity_id.to_string(),
+                handle: new_handle.to_string(),
+                nonce: Vec::new(),
+            }),
         })
     }
 
@@ -349,7 +366,7 @@ impl NodeEngine {
     // Project handlers
     // =========================================================================
 
-    async fn handle_list_projects(&self) -> Result<ProjectListResponse, RpcError> {
+    async fn handle_list_projects(&self) -> Result<ListProjectsResponse, RpcError> {
         let replica_ids = self
             .state
             .sync_engine
@@ -376,19 +393,18 @@ impl NodeEngine {
                     .await
                     && let Ok(project) = serde_json::from_slice::<objects_data::Project>(&bytes)
                 {
-                    projects.push(ProjectResponse::from(project));
+                    projects.push(ProjectInfo::from(project));
                 }
             }
         }
 
-        Ok(ProjectListResponse { projects })
+        Ok(ListProjectsResponse { projects })
     }
 
     async fn handle_create_project(
         &self,
-        req: CreateProjectRpcRequest,
-    ) -> Result<ProjectResponse, RpcError> {
-        let req: CreateProjectRequest = req.into();
+        req: CreateProjectRequest,
+    ) -> Result<CreateProjectResponse, RpcError> {
         req.validate().map_err(RpcError::BadRequest)?;
 
         let owner_id = self
@@ -449,7 +465,9 @@ impl NodeEngine {
                 // Best-effort vault catalog entry
                 self.add_project_to_vault(&project, replica_id).await;
                 info!("Project created: {} ({})", req.name, project.id());
-                Ok(ProjectResponse::from(project))
+                Ok(CreateProjectResponse {
+                    project: Some(ProjectInfo::from(project)),
+                })
             }
             Err(e) => {
                 if let Err(cleanup_err) = self
@@ -469,7 +487,7 @@ impl NodeEngine {
     async fn handle_get_project(
         &self,
         req: GetProjectRequest,
-    ) -> Result<ProjectResponse, RpcError> {
+    ) -> Result<GetProjectResponse, RpcError> {
         if req.project_id.len() != 64 || !req.project_id.chars().all(|c| c.is_ascii_hexdigit()) {
             return Err(RpcError::BadRequest("Invalid project ID format".into()));
         }
@@ -508,7 +526,9 @@ impl NodeEngine {
                 let project: objects_data::Project = serde_json::from_slice(&bytes)
                     .map_err(|e| RpcError::Internal(format!("Failed to parse project: {e}")))?;
 
-                return Ok(ProjectResponse::from(project));
+                return Ok(GetProjectResponse {
+                    project: Some(ProjectInfo::from(project)),
+                });
             }
         }
 
@@ -516,6 +536,124 @@ impl NodeEngine {
             "Project not found: {}",
             req.project_id
         )))
+    }
+
+    async fn handle_update_project(
+        &self,
+        req: UpdateProjectRequest,
+    ) -> Result<UpdateProjectResponse, RpcError> {
+        req.validate().map_err(RpcError::BadRequest)?;
+
+        let replica_id = self.find_replica(&req.project_id).await?;
+
+        // Load existing project
+        let entry = self
+            .state
+            .sync_engine
+            .docs()
+            .get_latest(replica_id, objects_sync::PROJECT_KEY)
+            .await
+            .map_err(|e| RpcError::Internal(format!("Failed to read project: {e}")))?
+            .ok_or_else(|| RpcError::NotFound("Project metadata not found".into()))?;
+
+        let content_hash = self.state.sync_engine.docs().entry_content_hash(&entry);
+        let bytes = self
+            .state
+            .sync_engine
+            .blobs()
+            .read_to_bytes(content_hash)
+            .await
+            .map_err(|e| RpcError::Internal(format!("Failed to read content: {e}")))?;
+
+        let mut project: objects_data::Project = serde_json::from_slice(&bytes)
+            .map_err(|e| RpcError::Internal(format!("Failed to parse project: {e}")))?;
+
+        // Apply updates
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|e| RpcError::Internal(format!("System time error: {e}")))?
+            .as_secs();
+
+        project
+            .update(req.name, req.description, req.clear_description, now)
+            .map_err(|e| RpcError::BadRequest(format!("Invalid update: {e}")))?;
+
+        // Store updated project
+        let project_json = serde_json::to_vec(&project)
+            .map_err(|e| RpcError::Internal(format!("Failed to serialize project: {e}")))?;
+
+        let author = self.state.sync_engine.default_author();
+        self.state
+            .sync_engine
+            .docs()
+            .set_bytes(replica_id, author, objects_sync::PROJECT_KEY, project_json)
+            .await
+            .map_err(|e| RpcError::Internal(format!("Failed to store project: {e}")))?;
+
+        info!("Project updated: {}", req.project_id);
+        Ok(UpdateProjectResponse {
+            project: Some(ProjectInfo::from(project)),
+        })
+    }
+
+    async fn handle_delete_project(
+        &self,
+        req: DeleteProjectRequest,
+    ) -> Result<DeleteProjectResponse, RpcError> {
+        req.validate().map_err(RpcError::BadRequest)?;
+
+        let replica_id = self.find_replica(&req.project_id).await?;
+
+        // Best-effort remove vault catalog entry
+        self.remove_project_from_vault(&req.project_id).await;
+
+        // Delete the entire replica (project metadata, assets, refs)
+        self.state
+            .sync_engine
+            .docs()
+            .delete_replica(replica_id)
+            .await
+            .map_err(|e| RpcError::Internal(format!("Failed to delete project: {e}")))?;
+
+        info!("Project deleted: {}", req.project_id);
+        Ok(DeleteProjectResponse {})
+    }
+
+    /// Best-effort remove project from vault catalog (tombstone).
+    async fn remove_project_from_vault(&self, project_id: &str) {
+        let signing_key_opt = self
+            .state
+            .node_state
+            .read()
+            .unwrap()
+            .identity()
+            .and_then(|i| i.signing_key().cloned());
+
+        let Some(signing_key_bytes) = signing_key_opt else {
+            return;
+        };
+
+        let vault_keys =
+            match objects_identity::vault::VaultKeys::derive_from_signing_key(&signing_key_bytes) {
+                Ok(k) => k,
+                Err(e) => {
+                    tracing::warn!("Vault key derivation failed: {e}");
+                    return;
+                }
+            };
+
+        let author = self.state.sync_engine.default_author();
+        if let Err(e) = self
+            .state
+            .sync_engine
+            .docs()
+            .remove_catalog_entry(vault_keys.namespace_id(), author, project_id)
+            .await
+        {
+            tracing::warn!("Failed to remove vault catalog entry for '{project_id}': {e}");
+        } else {
+            info!("Removed project '{project_id}' from vault catalog");
+        }
     }
 
     /// Best-effort add project to vault catalog (encrypted).
@@ -581,7 +719,7 @@ impl NodeEngine {
     async fn handle_list_assets(
         &self,
         req: ListAssetsRequest,
-    ) -> Result<AssetListResponse, RpcError> {
+    ) -> Result<ListAssetsResponse, RpcError> {
         let replica_id = self.find_replica(&req.project_id).await?;
 
         let entries = self
@@ -603,18 +741,18 @@ impl NodeEngine {
                 .await
                 && let Ok(asset) = serde_json::from_slice::<objects_data::Asset>(&bytes)
             {
-                assets.push(AssetResponse::from(asset));
+                assets.push(AssetInfo::from(asset));
             }
         }
 
-        Ok(AssetListResponse { assets })
+        Ok(ListAssetsResponse { assets })
     }
 
     async fn handle_add_asset(
         &self,
-        req: AddAssetRequest,
+        req: AddAssetMetadata,
         mut rx: irpc::channel::mpsc::Receiver<AssetChunk>,
-    ) -> Result<AssetResponse, RpcError> {
+    ) -> Result<AddAssetResponse, RpcError> {
         let replica_id = self.find_replica(&req.project_id).await?;
 
         let author_identity_id = self
@@ -683,13 +821,15 @@ impl NodeEngine {
             .map_err(|e| RpcError::Internal(format!("Failed to store asset metadata: {e}")))?;
 
         info!("Asset added: {} to project {}", asset_id, req.project_id);
-        Ok(AssetResponse::from(asset))
+        Ok(AddAssetResponse {
+            asset: Some(AssetInfo::from(asset)),
+        })
     }
 
     async fn handle_get_asset_content(
         &self,
         req: GetAssetContentRequest,
-        tx: irpc::channel::mpsc::Sender<Result<ContentChunk, RpcError>>,
+        tx: irpc::channel::mpsc::Sender<Result<GetAssetContentResponse, RpcError>>,
     ) {
         let result = self.stream_asset_content(&req, &tx).await;
         if let Err(e) = result {
@@ -700,7 +840,7 @@ impl NodeEngine {
     async fn stream_asset_content(
         &self,
         req: &GetAssetContentRequest,
-        tx: &irpc::channel::mpsc::Sender<Result<ContentChunk, RpcError>>,
+        tx: &irpc::channel::mpsc::Sender<Result<GetAssetContentResponse, RpcError>>,
     ) -> Result<(), RpcError> {
         let replica_id = self.find_replica(&req.project_id).await?;
 
@@ -730,7 +870,7 @@ impl NodeEngine {
         // Send content in chunks (64 KiB)
         let mut first = true;
         for chunk_data in content.chunks(64 * 1024) {
-            let chunk = ContentChunk {
+            let chunk = GetAssetContentResponse {
                 data: chunk_data.to_vec(),
                 content_type: if first {
                     first = false;
@@ -753,8 +893,8 @@ impl NodeEngine {
 
     async fn handle_create_ticket(
         &self,
-        req: CreateTicketRpcRequest,
-    ) -> Result<TicketResponse, RpcError> {
+        req: CreateTicketRequest,
+    ) -> Result<CreateTicketResponse, RpcError> {
         let replica_id = self.find_replica(&req.project_id).await?;
 
         let ticket = self
@@ -766,15 +906,15 @@ impl NodeEngine {
             .map_err(|e| RpcError::Internal(format!("Failed to create ticket: {e}")))?;
 
         info!("Ticket created for project {}", req.project_id);
-        Ok(TicketResponse {
+        Ok(CreateTicketResponse {
             ticket: ticket.to_string(),
         })
     }
 
     async fn handle_redeem_ticket(
         &self,
-        req: RedeemTicketRpcRequest,
-    ) -> Result<ProjectResponse, RpcError> {
+        req: RedeemTicketRequest,
+    ) -> Result<RedeemTicketResponse, RpcError> {
         let ticket: objects_sync::DocTicket = req
             .ticket
             .parse()
@@ -798,14 +938,16 @@ impl NodeEngine {
             .ok_or_else(|| RpcError::Internal("Project metadata not found in ticket".into()))?;
 
         info!("Ticket redeemed: project {}", project.name());
-        Ok(ProjectResponse::from(project))
+        Ok(RedeemTicketResponse {
+            project: Some(ProjectInfo::from(project)),
+        })
     }
 
     // =========================================================================
     // Vault handlers
     // =========================================================================
 
-    async fn handle_list_vault(&self) -> Result<VaultResponse, RpcError> {
+    async fn handle_list_vault(&self) -> Result<ListVaultResponse, RpcError> {
         let signing_key_bytes = self
             .state
             .node_state
@@ -859,7 +1001,7 @@ impl NodeEngine {
             })
             .collect();
 
-        Ok(VaultResponse { entries: items })
+        Ok(ListVaultResponse { entries: items })
     }
 
     // =========================================================================
