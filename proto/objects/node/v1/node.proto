@@ -1,0 +1,373 @@
+syntax = "proto3";
+package objects.node.v1;
+
+// =============================================================================
+// Node Service — health, status, identity, peers
+// =============================================================================
+
+service NodeService {
+  // Health check — always returns "ok" if the node is running.
+  rpc Health(HealthRequest) returns (HealthResponse);
+
+  // Full node status including identity and peer information.
+  rpc Status(StatusRequest) returns (StatusResponse);
+
+  // Get the node's current identity (if registered).
+  rpc GetIdentity(GetIdentityRequest) returns (GetIdentityResponse);
+
+  // Register a new identity with the given handle.
+  rpc CreateIdentity(CreateIdentityRequest) returns (CreateIdentityResponse);
+
+  // Change the node's identity handle.
+  rpc RenameIdentity(RenameIdentityRequest) returns (RenameIdentityResponse);
+
+  // List currently discovered peers.
+  rpc ListPeers(ListPeersRequest) returns (ListPeersResponse);
+}
+
+// =============================================================================
+// Project Service — projects, assets, tickets
+// =============================================================================
+
+service ProjectService {
+  // List all projects owned by this node.
+  rpc ListProjects(ListProjectsRequest) returns (ListProjectsResponse);
+
+  // Create a new project.
+  rpc CreateProject(CreateProjectRequest) returns (CreateProjectResponse);
+
+  // Get a project by ID.
+  rpc GetProject(GetProjectRequest) returns (GetProjectResponse);
+
+  // List assets in a project.
+  rpc ListAssets(ListAssetsRequest) returns (ListAssetsResponse);
+
+  // Upload an asset via client streaming (metadata first, then chunks).
+  rpc AddAsset(stream AddAssetRequest) returns (AddAssetResponse);
+
+  // Download asset content via server streaming.
+  rpc GetAssetContent(GetAssetContentRequest) returns (stream GetAssetContentResponse);
+
+  // Create a share ticket for a project.
+  rpc CreateTicket(CreateTicketRequest) returns (CreateTicketResponse);
+
+  // Redeem a share ticket to join a project.
+  rpc RedeemTicket(RedeemTicketRequest) returns (RedeemTicketResponse);
+}
+
+// =============================================================================
+// Vault Service — encrypted vault catalog and sync
+// =============================================================================
+
+service VaultService {
+  // List all entries in the vault catalog.
+  rpc ListVault(ListVaultRequest) returns (ListVaultResponse);
+
+  // Sync the vault catalog with the network.
+  rpc SyncVault(SyncVaultRequest) returns (SyncVaultResponse);
+
+  // Pull a specific project from the vault to this device.
+  rpc PullProject(PullProjectRequest) returns (PullProjectResponse);
+}
+
+// =============================================================================
+// Shared types
+// =============================================================================
+
+// Transport-agnostic node address (iroh NodeAddr equivalent).
+message NodeAddress {
+  // REQUIRED. Node ID as hex string (64 characters).
+  string node_id = 1;
+
+  // OPTIONAL. Relay URL the node is reachable through.
+  optional string relay_url = 2;
+
+  // Direct socket addresses (e.g., "192.168.1.5:12345").
+  repeated string direct_addresses = 3;
+}
+
+// Identity information returned by identity RPCs.
+message IdentityInfo {
+  // Identity ID (e.g., "obj_2dMiYc8RhnYkorPc5pVh9").
+  string id = 1;
+
+  // Handle (e.g., "@alice").
+  string handle = 2;
+
+  // 8-byte nonce used in ID derivation.
+  bytes nonce = 3;
+}
+
+// Peer connection information.
+message PeerInfo {
+  // Peer's node ID as hex string.
+  string node_id = 1;
+
+  // Peer's relay URL, if known.
+  optional string relay_url = 2;
+
+  // Human-readable time since last seen (e.g., "2m ago").
+  string last_seen_ago = 3;
+
+  // Connection type: "direct(addr)", "relay(url)", "mixed(addr, url)", or "none".
+  string connection_type = 4;
+}
+
+// Project information returned by project RPCs.
+message ProjectInfo {
+  // Project ID (hex string derived from ReplicaId).
+  string id = 1;
+
+  // Human-readable name.
+  string name = 2;
+
+  // Optional description.
+  optional string description = 3;
+
+  // Owner identity ID (e.g., "obj_2dMiYc8RhnYkorPc5pVh9").
+  string owner_id = 4;
+
+  // Unix timestamp (seconds) when project was created.
+  uint64 created_at = 5;
+
+  // Unix timestamp (seconds) when project was last updated.
+  uint64 updated_at = 6;
+}
+
+// Asset information returned by asset RPCs.
+message AssetInfo {
+  // Asset ID (alphanumeric + hyphens, 1-64 characters).
+  string id = 1;
+
+  // Human-readable filename.
+  string filename = 2;
+
+  // MIME type (e.g., "image/png", "model/step").
+  string content_type = 3;
+
+  // Size of the content in bytes.
+  uint64 size = 4;
+
+  // BLAKE3 hash of the content. Exactly 32 bytes.
+  bytes content_hash = 5;
+
+  // Unix timestamp (seconds) when asset was created.
+  uint64 created_at = 6;
+}
+
+// A single entry in the vault catalog.
+message VaultEntry {
+  // Project ID (hex string).
+  string project_id = 1;
+
+  // Human-readable project name.
+  string name = 2;
+
+  // Unix timestamp (seconds) when project was created.
+  uint64 created_at = 3;
+
+  // Whether the project replica exists locally on this device.
+  bool local = 4;
+}
+
+// =============================================================================
+// Node Service messages
+// =============================================================================
+
+message HealthRequest {}
+
+message HealthResponse {
+  // Status string, "ok" when healthy.
+  string status = 1;
+}
+
+message StatusRequest {}
+
+message StatusResponse {
+  // Node ID as hex string.
+  string node_id = 1;
+
+  // Full node address with relay and direct addresses.
+  NodeAddress node_addr = 2;
+
+  // Number of currently discovered peers.
+  uint32 peer_count = 3;
+
+  // Identity information, present only if registered.
+  optional IdentityInfo identity = 4;
+
+  // Relay URL the node is connected to.
+  string relay_url = 5;
+}
+
+message GetIdentityRequest {}
+
+message GetIdentityResponse {
+  // The node's current identity.
+  IdentityInfo identity = 1;
+}
+
+message CreateIdentityRequest {
+  // Handle for the new identity (1-30 chars, lowercase alphanumeric + underscore/period).
+  string handle = 1;
+}
+
+message CreateIdentityResponse {
+  // The newly created identity.
+  IdentityInfo identity = 1;
+}
+
+message RenameIdentityRequest {
+  // New handle for the identity.
+  string new_handle = 1;
+}
+
+message RenameIdentityResponse {
+  // The identity with updated handle.
+  IdentityInfo identity = 1;
+}
+
+message ListPeersRequest {}
+
+message ListPeersResponse {
+  repeated PeerInfo peers = 1;
+}
+
+// =============================================================================
+// Project Service messages
+// =============================================================================
+
+message ListProjectsRequest {}
+
+message ListProjectsResponse {
+  repeated ProjectInfo projects = 1;
+}
+
+message CreateProjectRequest {
+  // Human-readable project name (1-256 characters).
+  string name = 1;
+
+  // Optional project description (max 4096 characters).
+  optional string description = 2;
+}
+
+message CreateProjectResponse {
+  // The newly created project.
+  ProjectInfo project = 1;
+}
+
+message GetProjectRequest {
+  // Project ID (hex string derived from ReplicaId).
+  string project_id = 1;
+}
+
+message GetProjectResponse {
+  // The requested project.
+  ProjectInfo project = 1;
+}
+
+message ListAssetsRequest {
+  // Project ID to list assets for.
+  string project_id = 1;
+}
+
+message ListAssetsResponse {
+  repeated AssetInfo assets = 1;
+}
+
+// Client-streaming upload: first message must be metadata, subsequent messages are chunk_data.
+message AddAssetRequest {
+  oneof request {
+    // Initial metadata — must be the first message in the stream.
+    AddAssetMetadata metadata = 1;
+
+    // File content chunk — sent after metadata.
+    bytes chunk_data = 2;
+  }
+}
+
+message AddAssetMetadata {
+  // Project ID to add the asset to.
+  string project_id = 1;
+
+  // Human-readable filename.
+  string filename = 2;
+
+  // MIME type (e.g., "image/png", "model/step").
+  string content_type = 3;
+
+  // Total size of the asset content in bytes.
+  uint64 total_size = 4;
+}
+
+message AddAssetResponse {
+  // The newly created asset.
+  AssetInfo asset = 1;
+}
+
+message GetAssetContentRequest {
+  // Project ID containing the asset.
+  string project_id = 1;
+
+  // Asset ID to download.
+  string asset_id = 2;
+}
+
+// Server-streaming download chunk.
+message GetAssetContentResponse {
+  // Content bytes.
+  bytes data = 1;
+
+  // MIME type, included in the first chunk only.
+  optional string content_type = 2;
+}
+
+message CreateTicketRequest {
+  // Project ID to create a share ticket for.
+  string project_id = 1;
+}
+
+message CreateTicketResponse {
+  // Serialized ticket string for sharing.
+  string ticket = 1;
+}
+
+message RedeemTicketRequest {
+  // Ticket string to redeem.
+  string ticket = 1;
+}
+
+message RedeemTicketResponse {
+  // The project that was joined.
+  ProjectInfo project = 1;
+}
+
+// =============================================================================
+// Vault Service messages
+// =============================================================================
+
+message ListVaultRequest {}
+
+message ListVaultResponse {
+  repeated VaultEntry entries = 1;
+}
+
+message SyncVaultRequest {}
+
+message SyncVaultResponse {
+  // Sync status description.
+  string status = 1;
+}
+
+message PullProjectRequest {
+  // Project ID to pull from the vault.
+  string project_id = 1;
+}
+
+message PullProjectResponse {
+  // Result status description.
+  string status = 1;
+
+  // Project ID that was pulled.
+  string project_id = 2;
+}
