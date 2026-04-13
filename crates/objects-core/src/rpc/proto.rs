@@ -2,6 +2,9 @@
 //!
 //! Uses irpc's `#[rpc_requests]` macro to generate the message enum
 //! and channel boilerplate. Follows the same pattern as iroh-blobs.
+//!
+//! Request, response, and shared types are generated from
+//! `proto/objects/node/v1/node.proto` via prost-build (see `build.rs`).
 
 use irpc::{
     channel::{mpsc, oneshot},
@@ -9,11 +12,8 @@ use irpc::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::api::types::{
-    AssetListResponse, AssetResponse, CreateProjectRequest, CreateTicketRequest, HealthResponse,
-    IdentityResponse, PeerInfo, ProjectListResponse, ProjectResponse, StatusResponse,
-    TicketResponse, VaultResponse,
-};
+// Re-export all proto-generated types.
+pub use crate::proto_gen::*;
 
 /// ALPN protocol identifier for the OBJECTS node RPC service.
 pub const NODE_RPC_ALPN: &[u8] = b"/objects/node-rpc/0";
@@ -55,195 +55,65 @@ pub enum NodeProtocol {
     Status(StatusRequest),
 
     // --- Identity ---
-    #[rpc(tx = oneshot::Sender<Result<IdentityResponse, RpcError>>)]
+    #[rpc(tx = oneshot::Sender<Result<GetIdentityResponse, RpcError>>)]
     GetIdentity(GetIdentityRequest),
 
-    #[rpc(tx = oneshot::Sender<Result<IdentityResponse, RpcError>>)]
-    CreateIdentity(CreateIdentityRpcRequest),
+    #[rpc(tx = oneshot::Sender<Result<CreateIdentityResponse, RpcError>>)]
+    CreateIdentity(CreateIdentityRequest),
 
-    #[rpc(tx = oneshot::Sender<Result<IdentityResponse, RpcError>>)]
-    RenameIdentity(RenameIdentityRpcRequest),
+    #[rpc(tx = oneshot::Sender<Result<RenameIdentityResponse, RpcError>>)]
+    RenameIdentity(RenameIdentityRequest),
 
     // --- Peers ---
     #[rpc(tx = oneshot::Sender<ListPeersResponse>)]
     ListPeers(ListPeersRequest),
 
     // --- Projects ---
-    #[rpc(tx = oneshot::Sender<Result<ProjectListResponse, RpcError>>)]
+    #[rpc(tx = oneshot::Sender<Result<ListProjectsResponse, RpcError>>)]
     ListProjects(ListProjectsRequest),
 
-    #[rpc(tx = oneshot::Sender<Result<ProjectResponse, RpcError>>)]
-    CreateProject(CreateProjectRpcRequest),
+    #[rpc(tx = oneshot::Sender<Result<CreateProjectResponse, RpcError>>)]
+    CreateProject(CreateProjectRequest),
 
-    #[rpc(tx = oneshot::Sender<Result<ProjectResponse, RpcError>>)]
+    #[rpc(tx = oneshot::Sender<Result<GetProjectResponse, RpcError>>)]
     GetProject(GetProjectRequest),
 
     // --- Assets ---
-    #[rpc(tx = oneshot::Sender<Result<AssetListResponse, RpcError>>)]
+    #[rpc(tx = oneshot::Sender<Result<ListAssetsResponse, RpcError>>)]
     ListAssets(ListAssetsRequest),
 
     /// Client streams file bytes, server responds with asset metadata.
-    #[rpc(rx = mpsc::Receiver<AssetChunk>, tx = oneshot::Sender<Result<AssetResponse, RpcError>>)]
-    AddAsset(AddAssetRequest),
+    #[rpc(rx = mpsc::Receiver<AssetChunk>, tx = oneshot::Sender<Result<AddAssetResponse, RpcError>>)]
+    AddAsset(AddAssetMetadata),
 
     /// Server streams content bytes back to client.
-    #[rpc(tx = mpsc::Sender<Result<ContentChunk, RpcError>>)]
+    #[rpc(tx = mpsc::Sender<Result<GetAssetContentResponse, RpcError>>)]
     GetAssetContent(GetAssetContentRequest),
 
     // --- Tickets ---
-    #[rpc(tx = oneshot::Sender<Result<TicketResponse, RpcError>>)]
-    CreateTicket(CreateTicketRpcRequest),
+    #[rpc(tx = oneshot::Sender<Result<CreateTicketResponse, RpcError>>)]
+    CreateTicket(CreateTicketRequest),
 
-    #[rpc(tx = oneshot::Sender<Result<ProjectResponse, RpcError>>)]
-    RedeemTicket(RedeemTicketRpcRequest),
+    #[rpc(tx = oneshot::Sender<Result<RedeemTicketResponse, RpcError>>)]
+    RedeemTicket(RedeemTicketRequest),
 
     // --- Vault ---
-    #[rpc(tx = oneshot::Sender<Result<VaultResponse, RpcError>>)]
+    #[rpc(tx = oneshot::Sender<Result<ListVaultResponse, RpcError>>)]
     ListVault(ListVaultRequest),
 
     #[rpc(tx = oneshot::Sender<Result<SyncVaultResponse, RpcError>>)]
     SyncVault(SyncVaultRequest),
 
-    #[rpc(tx = oneshot::Sender<Result<PullVaultResponse, RpcError>>)]
-    PullVaultProject(PullVaultProjectRequest),
+    #[rpc(tx = oneshot::Sender<Result<PullProjectResponse, RpcError>>)]
+    PullVaultProject(PullProjectRequest),
 }
 
 // =============================================================================
-// Request types
+// Streaming types (not in proto — irpc-specific wire types)
 // =============================================================================
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct HealthRequest;
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct StatusRequest;
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct GetIdentityRequest;
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct CreateIdentityRpcRequest {
-    pub handle: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct RenameIdentityRpcRequest {
-    pub new_handle: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ListPeersRequest;
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ListProjectsRequest;
-
-/// Wraps [`CreateProjectRequest`] for the RPC layer.
-/// Uses the same fields but is a distinct type for irpc codegen.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct CreateProjectRpcRequest {
-    pub name: String,
-    pub description: Option<String>,
-}
-
-impl From<CreateProjectRpcRequest> for CreateProjectRequest {
-    fn from(r: CreateProjectRpcRequest) -> Self {
-        Self {
-            name: r.name,
-            description: r.description,
-        }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct GetProjectRequest {
-    pub project_id: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ListAssetsRequest {
-    pub project_id: String,
-}
-
-/// Initial metadata for an asset upload (sent before byte chunks).
-#[derive(Debug, Serialize, Deserialize)]
-pub struct AddAssetRequest {
-    pub project_id: String,
-    pub filename: String,
-    pub content_type: String,
-    pub total_size: u64,
-}
 
 /// A chunk of file data streamed during asset upload.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AssetChunk {
     pub data: Vec<u8>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct GetAssetContentRequest {
-    pub project_id: String,
-    pub asset_id: String,
-}
-
-/// A chunk of content streamed during asset download.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ContentChunk {
-    pub data: Vec<u8>,
-    /// Content-Type, included in the first chunk only.
-    pub content_type: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct CreateTicketRpcRequest {
-    pub project_id: String,
-}
-
-impl From<CreateTicketRpcRequest> for CreateTicketRequest {
-    fn from(r: CreateTicketRpcRequest) -> Self {
-        Self {
-            project_id: r.project_id,
-        }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct RedeemTicketRpcRequest {
-    pub ticket: String,
-}
-
-impl From<RedeemTicketRpcRequest> for crate::api::types::RedeemTicketRequest {
-    fn from(r: RedeemTicketRpcRequest) -> Self {
-        Self { ticket: r.ticket }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ListVaultRequest;
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct SyncVaultRequest;
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct PullVaultProjectRequest {
-    pub project_id: String,
-}
-
-// =============================================================================
-// Response types (RPC-specific, not shared with Axum)
-// =============================================================================
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ListPeersResponse {
-    pub peers: Vec<PeerInfo>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct SyncVaultResponse {
-    pub status: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct PullVaultResponse {
-    pub status: String,
-    pub project_id: String,
 }
