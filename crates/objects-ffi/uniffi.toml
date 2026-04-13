@@ -1,0 +1,9 @@
+[bindings.kotlin]
+package_name = "foundation.objects.sdk"
+cdylib_name = "objects_ffi"
+generate_immutable_records = true
+android = true
+
+[bindings.swift]
+cdylib_name = "objects_ffi"
+module_name = "ObjectsSDK"
