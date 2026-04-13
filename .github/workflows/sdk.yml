@@ -1,0 +1,312 @@
+name: SDK Build
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'crates/objects-ffi/**'
+      - 'proto/objects/node/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Build native libraries for each platform target
+  # ---------------------------------------------------------------------------
+  build-native:
+    name: Build (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            artifact: libobjects_ffi.dylib
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            artifact: libobjects_ffi.dylib
+          - target: aarch64-apple-ios
+            os: macos-latest
+            artifact: libobjects_ffi.a
+          - target: aarch64-apple-ios-sim
+            os: macos-latest
+            artifact: libobjects_ffi.a
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            artifact: libobjects_ffi.so
+          - target: aarch64-linux-android
+            os: ubuntu-latest
+            artifact: libobjects_ffi.so
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: sdk-${{ matrix.target }}
+
+      # Android NDK setup (only for Android targets)
+      - name: Install cargo-ndk
+        if: contains(matrix.target, 'android')
+        run: cargo install cargo-ndk
+
+      - name: Set up Android NDK
+        if: contains(matrix.target, 'android')
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android NDK
+        if: contains(matrix.target, 'android')
+        run: sdkmanager --install "ndk;27.2.12479018"
+
+      - name: Set NDK environment
+        if: contains(matrix.target, 'android')
+        env:
+          NDK_VERSION: "27.2.12479018"
+        run: |
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
+          echo "$ANDROID_HOME/ndk/$NDK_VERSION/toolchains/llvm/prebuilt/linux-x86_64/bin" >> "$GITHUB_PATH"
+
+      # Build
+      - name: Build objects-ffi (Android)
+        if: contains(matrix.target, 'android')
+        run: cargo ndk -t arm64-v8a build -p objects-ffi --release
+
+      - name: Build objects-ffi
+        if: "!contains(matrix.target, 'android')"
+        env:
+          BUILD_TARGET: ${{ matrix.target }}
+        run: cargo build -p objects-ffi --release --target "$BUILD_TARGET"
+
+      # Upload the compiled library
+      - name: Upload native library
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.target }}
+          path: target/${{ matrix.target }}/release/${{ matrix.artifact }}
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # Generate Kotlin and Swift bindings from the compiled library
+  # ---------------------------------------------------------------------------
+  generate-bindings:
+    name: Generate Bindings
+    needs: build-native
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install uniffi-bindgen-cli
+        run: cargo install uniffi-bindgen-cli
+
+      # Download a macOS dylib to use for bindgen (any platform works, ABI is
+      # read from the embedded UDL, not the machine code)
+      - name: Download macOS library
+        uses: actions/download-artifact@v4
+        with:
+          name: native-aarch64-apple-darwin
+          path: artifacts/
+
+      - name: Generate Kotlin bindings
+        run: |
+          mkdir -p out/kotlin
+          uniffi-bindgen generate \
+            --library artifacts/libobjects_ffi.dylib \
+            --language kotlin \
+            --out-dir out/kotlin \
+            --config crates/objects-ffi/uniffi.toml
+
+      - name: Generate Swift bindings
+        run: |
+          mkdir -p out/swift
+          uniffi-bindgen generate \
+            --library artifacts/libobjects_ffi.dylib \
+            --language swift \
+            --out-dir out/swift \
+            --config crates/objects-ffi/uniffi.toml
+
+      - name: Upload Kotlin bindings
+        uses: actions/upload-artifact@v4
+        with:
+          name: bindings-kotlin
+          path: out/kotlin/
+          retention-days: 7
+
+      - name: Upload Swift bindings
+        uses: actions/upload-artifact@v4
+        with:
+          name: bindings-swift
+          path: out/swift/
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # Package Swift XCFramework
+  # ---------------------------------------------------------------------------
+  package-swift:
+    name: Package XCFramework
+    needs: [build-native, generate-bindings]
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Download iOS device library
+        uses: actions/download-artifact@v4
+        with:
+          name: native-aarch64-apple-ios
+          path: artifacts/ios-device/
+
+      - name: Download iOS simulator library
+        uses: actions/download-artifact@v4
+        with:
+          name: native-aarch64-apple-ios-sim
+          path: artifacts/ios-sim/
+
+      - name: Download macOS ARM library
+        uses: actions/download-artifact@v4
+        with:
+          name: native-aarch64-apple-darwin
+          path: artifacts/macos-arm/
+
+      - name: Download macOS Intel library
+        uses: actions/download-artifact@v4
+        with:
+          name: native-x86_64-apple-darwin
+          path: artifacts/macos-x86/
+
+      - name: Download Swift bindings
+        uses: actions/download-artifact@v4
+        with:
+          name: bindings-swift
+          path: artifacts/swift/
+
+      # Create fat (universal) macOS library
+      - name: Create universal macOS library
+        run: |
+          mkdir -p artifacts/macos-universal
+          lipo -create \
+            artifacts/macos-arm/libobjects_ffi.dylib \
+            artifacts/macos-x86/libobjects_ffi.dylib \
+            -output artifacts/macos-universal/libobjects_ffi.dylib
+
+      # Build XCFramework from static libs (iOS) and dylib (macOS)
+      - name: Create XCFramework
+        run: |
+          # Copy the generated Swift modulemap and header alongside each lib.
+          # uniffi generates ObjectsFFI.h and ObjectsFFI.modulemap.
+          for dir in ios-device ios-sim macos-universal; do
+            mkdir -p "artifacts/${dir}/Headers" "artifacts/${dir}/Modules"
+            cp artifacts/swift/*FFI.h "artifacts/${dir}/Headers/" 2>/dev/null || true
+            cp artifacts/swift/*FFI.modulemap "artifacts/${dir}/Modules/module.modulemap" 2>/dev/null || true
+          done
+
+          xcodebuild -create-xcframework \
+            -library artifacts/ios-device/libobjects_ffi.a \
+            -headers artifacts/ios-device/Headers \
+            -library artifacts/ios-sim/libobjects_ffi.a \
+            -headers artifacts/ios-sim/Headers \
+            -library artifacts/macos-universal/libobjects_ffi.dylib \
+            -headers artifacts/macos-universal/Headers \
+            -output ObjectsSDK.xcframework
+
+      - name: Upload XCFramework
+        uses: actions/upload-artifact@v4
+        with:
+          name: ObjectsSDK.xcframework
+          path: ObjectsSDK.xcframework/
+          retention-days: 7
+
+      - name: Upload Swift source files
+        uses: actions/upload-artifact@v4
+        with:
+          name: swift-sources
+          path: artifacts/swift/*.swift
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # Package Kotlin JAR with native libraries
+  # ---------------------------------------------------------------------------
+  package-kotlin:
+    name: Package Kotlin
+    needs: [build-native, generate-bindings]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Download Linux x86_64 library
+        uses: actions/download-artifact@v4
+        with:
+          name: native-x86_64-unknown-linux-gnu
+          path: artifacts/linux-x86_64/
+
+      - name: Download macOS ARM library
+        uses: actions/download-artifact@v4
+        with:
+          name: native-aarch64-apple-darwin
+          path: artifacts/macos-arm/
+
+      - name: Download macOS Intel library
+        uses: actions/download-artifact@v4
+        with:
+          name: native-x86_64-apple-darwin
+          path: artifacts/macos-x86/
+
+      - name: Download Android ARM64 library
+        uses: actions/download-artifact@v4
+        with:
+          name: native-aarch64-linux-android
+          path: artifacts/android-arm64/
+
+      - name: Download Kotlin bindings
+        uses: actions/download-artifact@v4
+        with:
+          name: bindings-kotlin
+          path: artifacts/kotlin/
+
+      # Assemble JAR structure:
+      #   foundation/objects/sdk/*.kt   (generated bindings)
+      #   native/linux-x86_64/          (libobjects_ffi.so)
+      #   native/macos-arm64/           (libobjects_ffi.dylib)
+      #   native/macos-x86_64/          (libobjects_ffi.dylib)
+      #   native/android-arm64/         (libobjects_ffi.so)
+      - name: Assemble JAR contents
+        run: |
+          mkdir -p jar-staging/foundation/objects/sdk
+          mkdir -p jar-staging/native/{linux-x86_64,macos-arm64,macos-x86_64,android-arm64}
+
+          # Kotlin sources
+          cp artifacts/kotlin/*.kt jar-staging/foundation/objects/sdk/
+
+          # Native libraries
+          cp artifacts/linux-x86_64/libobjects_ffi.so   jar-staging/native/linux-x86_64/
+          cp artifacts/macos-arm/libobjects_ffi.dylib    jar-staging/native/macos-arm64/
+          cp artifacts/macos-x86/libobjects_ffi.dylib    jar-staging/native/macos-x86_64/
+          cp artifacts/android-arm64/libobjects_ffi.so   jar-staging/native/android-arm64/
+
+      - name: Create JAR
+        run: |
+          cd jar-staging
+          jar cf ../objects-sdk.jar .
+
+      - name: Upload JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: objects-sdk.jar
+          path: objects-sdk.jar
+          retention-days: 7
