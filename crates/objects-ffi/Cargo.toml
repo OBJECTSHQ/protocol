@@ -1,0 +1,27 @@
+[package]
+name = "objects-ffi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "UniFFI bindings for OBJECTS Protocol — Kotlin and Swift SDK"
+
+[lib]
+crate-type = ["lib", "cdylib"]
+name = "objects_ffi"
+
+[dependencies]
+objects-core.workspace = true
+
+# FFI
+uniffi = { version = "0.29", features = ["cli"] }
+
+# Async
+tokio.workspace = true
+
+# Serialization
+bytes.workspace = true
+
+# Error handling
+thiserror.workspace = true
+tracing.workspace = true
