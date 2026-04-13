@@ -132,6 +132,32 @@ impl ObjectsNode {
         Ok(self.api.get_project(&project_id).await?.into())
     }
 
+    /// Update a project's name and/or description.
+    pub async fn update_project(
+        &self,
+        project_id: String,
+        name: Option<String>,
+        description: Option<String>,
+        clear_description: bool,
+    ) -> Result<ProjectInfo, SdkError> {
+        Ok(self
+            .api
+            .update_project(
+                &project_id,
+                name.as_deref(),
+                description.as_deref(),
+                clear_description,
+            )
+            .await?
+            .into())
+    }
+
+    /// Delete a project and all associated data.
+    pub async fn delete_project(&self, project_id: String) -> Result<(), SdkError> {
+        self.api.delete_project(&project_id).await?;
+        Ok(())
+    }
+
     // =====================================================================
     // Assets
     // =====================================================================

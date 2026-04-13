@@ -143,6 +143,36 @@ impl NodeApi {
             .ok_or_else(|| RpcError::Internal("Missing project in response".into()))?)
     }
 
+    pub async fn update_project(
+        &self,
+        project_id: &str,
+        name: Option<&str>,
+        description: Option<&str>,
+        clear_description: bool,
+    ) -> Result<ProjectInfo, NodeApiError> {
+        let resp = self
+            .client
+            .rpc(UpdateProjectRequest {
+                project_id: project_id.to_owned(),
+                name: name.map(str::to_owned),
+                description: description.map(str::to_owned),
+                clear_description,
+            })
+            .await??;
+        Ok(resp
+            .project
+            .ok_or_else(|| RpcError::Internal("Missing project in response".into()))?)
+    }
+
+    pub async fn delete_project(&self, project_id: &str) -> Result<(), NodeApiError> {
+        self.client
+            .rpc(DeleteProjectRequest {
+                project_id: project_id.to_owned(),
+            })
+            .await??;
+        Ok(())
+    }
+
     // =========================================================================
     // Assets
     // =========================================================================

@@ -10,9 +10,9 @@ use tracing::info;
 
 use crate::api::handlers::AppState;
 use crate::api::types::{
-    AssetInfo, CreateProjectRequest, GetAssetContentResponse, HealthResponse, IdentityInfo,
-    ListAssetsResponse, ListProjectsResponse, ListVaultResponse, NodeAddress, PeerInfo,
-    ProjectInfo, StatusResponse, VaultEntry,
+    AssetInfo, CreateProjectRequest, DeleteProjectRequest, GetAssetContentResponse, HealthResponse,
+    IdentityInfo, ListAssetsResponse, ListProjectsResponse, ListVaultResponse, NodeAddress,
+    PeerInfo, ProjectInfo, StatusResponse, UpdateProjectRequest, VaultEntry,
 };
 use crate::rpc::proto::*;
 use crate::state::IdentityInfo as StateIdentityInfo;
@@ -102,16 +102,12 @@ impl NodeEngine {
                 msg.tx.send(resp).await.ok();
             }
             NodeCommand::UpdateProject(msg) => {
-                msg.tx
-                    .send(Err(RpcError::Internal("not implemented".into())))
-                    .await
-                    .ok();
+                let resp = self.handle_update_project(msg.inner).await;
+                msg.tx.send(resp).await.ok();
             }
             NodeCommand::DeleteProject(msg) => {
-                msg.tx
-                    .send(Err(RpcError::Internal("not implemented".into())))
-                    .await
-                    .ok();
+                let resp = self.handle_delete_project(msg.inner).await;
+                msg.tx.send(resp).await.ok();
             }
 
             // --- Assets ---
@@ -540,6 +536,124 @@ impl NodeEngine {
             "Project not found: {}",
             req.project_id
         )))
+    }
+
+    async fn handle_update_project(
+        &self,
+        req: UpdateProjectRequest,
+    ) -> Result<UpdateProjectResponse, RpcError> {
+        req.validate().map_err(RpcError::BadRequest)?;
+
+        let replica_id = self.find_replica(&req.project_id).await?;
+
+        // Load existing project
+        let entry = self
+            .state
+            .sync_engine
+            .docs()
+            .get_latest(replica_id, objects_sync::PROJECT_KEY)
+            .await
+            .map_err(|e| RpcError::Internal(format!("Failed to read project: {e}")))?
+            .ok_or_else(|| RpcError::NotFound("Project metadata not found".into()))?;
+
+        let content_hash = self.state.sync_engine.docs().entry_content_hash(&entry);
+        let bytes = self
+            .state
+            .sync_engine
+            .blobs()
+            .read_to_bytes(content_hash)
+            .await
+            .map_err(|e| RpcError::Internal(format!("Failed to read content: {e}")))?;
+
+        let mut project: objects_data::Project = serde_json::from_slice(&bytes)
+            .map_err(|e| RpcError::Internal(format!("Failed to parse project: {e}")))?;
+
+        // Apply updates
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|e| RpcError::Internal(format!("System time error: {e}")))?
+            .as_secs();
+
+        project
+            .update(req.name, req.description, req.clear_description, now)
+            .map_err(|e| RpcError::BadRequest(format!("Invalid update: {e}")))?;
+
+        // Store updated project
+        let project_json = serde_json::to_vec(&project)
+            .map_err(|e| RpcError::Internal(format!("Failed to serialize project: {e}")))?;
+
+        let author = self.state.sync_engine.default_author();
+        self.state
+            .sync_engine
+            .docs()
+            .set_bytes(replica_id, author, objects_sync::PROJECT_KEY, project_json)
+            .await
+            .map_err(|e| RpcError::Internal(format!("Failed to store project: {e}")))?;
+
+        info!("Project updated: {}", req.project_id);
+        Ok(UpdateProjectResponse {
+            project: Some(ProjectInfo::from(project)),
+        })
+    }
+
+    async fn handle_delete_project(
+        &self,
+        req: DeleteProjectRequest,
+    ) -> Result<DeleteProjectResponse, RpcError> {
+        req.validate().map_err(RpcError::BadRequest)?;
+
+        let replica_id = self.find_replica(&req.project_id).await?;
+
+        // Best-effort remove vault catalog entry
+        self.remove_project_from_vault(&req.project_id).await;
+
+        // Delete the entire replica (project metadata, assets, refs)
+        self.state
+            .sync_engine
+            .docs()
+            .delete_replica(replica_id)
+            .await
+            .map_err(|e| RpcError::Internal(format!("Failed to delete project: {e}")))?;
+
+        info!("Project deleted: {}", req.project_id);
+        Ok(DeleteProjectResponse {})
+    }
+
+    /// Best-effort remove project from vault catalog (tombstone).
+    async fn remove_project_from_vault(&self, project_id: &str) {
+        let signing_key_opt = self
+            .state
+            .node_state
+            .read()
+            .unwrap()
+            .identity()
+            .and_then(|i| i.signing_key().cloned());
+
+        let Some(signing_key_bytes) = signing_key_opt else {
+            return;
+        };
+
+        let vault_keys =
+            match objects_identity::vault::VaultKeys::derive_from_signing_key(&signing_key_bytes) {
+                Ok(k) => k,
+                Err(e) => {
+                    tracing::warn!("Vault key derivation failed: {e}");
+                    return;
+                }
+            };
+
+        let author = self.state.sync_engine.default_author();
+        if let Err(e) = self
+            .state
+            .sync_engine
+            .docs()
+            .remove_catalog_entry(vault_keys.namespace_id(), author, project_id)
+            .await
+        {
+            tracing::warn!("Failed to remove vault catalog entry for '{project_id}': {e}");
+        } else {
+            info!("Removed project '{project_id}' from vault catalog");
+        }
     }
 
     /// Best-effort add project to vault catalog (encrypted).
