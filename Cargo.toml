@@ -81,6 +81,9 @@ thiserror = "2"
 # File locking
 fs4 = "0.13"
 
+# Platform directories
+dirs = "6"
+
 # DNS
 hickory-resolver = { version = "0.25", features = ["tokio", "system-config"] }
 

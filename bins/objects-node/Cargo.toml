@@ -30,7 +30,7 @@ tracing-subscriber.workspace = true
 fs4.workspace = true
 
 # System utilities
-dirs = "5.0"
+dirs.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

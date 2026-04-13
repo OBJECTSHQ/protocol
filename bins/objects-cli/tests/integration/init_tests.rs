@@ -8,17 +8,17 @@ use tempfile::tempdir;
 #[serial]
 fn test_init_creates_structure() {
     let temp = tempdir().unwrap();
-    let temp_path = temp.path().to_str().unwrap().to_string();
+    let data_dir = temp.path().join("objects-data");
+    let data_dir_str = data_dir.to_str().unwrap().to_string();
 
-    with_var("HOME", Some(&temp_path), || {
+    with_var("OBJECTS_DATA_DIR", Some(&data_dir_str), || {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             commands::init::run().await.unwrap();
 
-            let objects_dir = temp.path().join(".objects");
-            assert!(objects_dir.exists());
+            assert!(data_dir.exists());
 
-            let config_file = objects_dir.join("config.toml");
+            let config_file = data_dir.join("config.toml");
             assert!(config_file.exists());
         });
     });
@@ -28,9 +28,10 @@ fn test_init_creates_structure() {
 #[serial]
 fn test_init_idempotent() {
     let temp = tempdir().unwrap();
-    let temp_path = temp.path().to_str().unwrap().to_string();
+    let data_dir = temp.path().join("objects-data");
+    let data_dir_str = data_dir.to_str().unwrap().to_string();
 
-    with_var("HOME", Some(&temp_path), || {
+    with_var("OBJECTS_DATA_DIR", Some(&data_dir_str), || {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             commands::init::run().await.unwrap();
@@ -45,14 +46,15 @@ fn test_init_idempotent() {
 #[serial]
 fn test_init_config_has_defaults() {
     let temp = tempdir().unwrap();
-    let temp_path = temp.path().to_str().unwrap().to_string();
+    let data_dir = temp.path().join("objects-data");
+    let data_dir_str = data_dir.to_str().unwrap().to_string();
 
-    with_var("HOME", Some(&temp_path), || {
+    with_var("OBJECTS_DATA_DIR", Some(&data_dir_str), || {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             commands::init::run().await.unwrap();
 
-            let config_file = temp.path().join(".objects/config.toml");
+            let config_file = data_dir.join("config.toml");
             let config = Config::from_file(&config_file).unwrap();
 
             assert_eq!(config.api_url(), "http://127.0.0.1:3420");

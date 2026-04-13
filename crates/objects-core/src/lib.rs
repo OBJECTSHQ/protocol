@@ -18,5 +18,5 @@ pub mod rpc;
 pub mod service;
 pub mod state;
 
-pub use config::NodeConfig;
+pub use config::{NodeConfig, default_data_dir};
 pub use state::NodeState;

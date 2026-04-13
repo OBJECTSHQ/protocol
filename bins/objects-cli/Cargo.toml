@@ -30,7 +30,7 @@ iroh.workspace = true
 # Config
 toml.workspace = true
 url.workspace = true
-dirs = "6"
+dirs.workspace = true
 
 # Async
 tokio.workspace = true

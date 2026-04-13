@@ -60,14 +60,14 @@ async fn main() -> Result<()> {
 
     info!("Starting OBJECTS node...");
 
-    // Determine config path
+    // Determine config path.
+    // OBJECTS_CONFIG > OBJECTS_DATA_DIR/config.toml > default_data_dir()/config.toml
     let config_path = std::env::var("OBJECTS_CONFIG")
         .map(PathBuf::from)
         .unwrap_or_else(|_| {
-            dirs::home_dir()
-                .expect("Could not determine home directory")
-                .join(".objects")
-                .join("config.toml")
+            let base = std::env::var("OBJECTS_DATA_DIR")
+                .unwrap_or_else(|_| objects_core::default_data_dir());
+            PathBuf::from(base).join("config.toml")
         });
 
     // Load or create config
