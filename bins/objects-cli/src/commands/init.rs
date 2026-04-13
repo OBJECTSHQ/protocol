@@ -5,7 +5,8 @@ use std::fs;
 pub async fn run() -> Result<(), CliError> {
     println!("Initializing OBJECTS CLI...");
 
-    let config = Config::default();
+    let mut config = Config::default();
+    config.apply_env();
     let data_dir = config.data_dir();
 
     let dir_existed = data_dir.exists();
