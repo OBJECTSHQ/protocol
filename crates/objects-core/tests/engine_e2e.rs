@@ -253,10 +253,7 @@ async fn test_update_project_description() {
 #[tokio::test]
 async fn test_update_project_clear_description() {
     let (_h, api, _tmp) = spawn_test_engine_with_identity().await;
-    let created = api
-        .create_project("Proj", Some("Has desc"))
-        .await
-        .unwrap();
+    let created = api.create_project("Proj", Some("Has desc")).await.unwrap();
     assert_eq!(created.description, Some("Has desc".to_owned()));
 
     let updated = api
@@ -270,10 +267,7 @@ async fn test_update_project_clear_description() {
 #[tokio::test]
 async fn test_update_project_description_overrides_clear() {
     let (_h, api, _tmp) = spawn_test_engine_with_identity().await;
-    let created = api
-        .create_project("Proj", Some("Old"))
-        .await
-        .unwrap();
+    let created = api.create_project("Proj", Some("Old")).await.unwrap();
 
     // When both description and clear_description are set, description wins
     let updated = api
@@ -303,9 +297,7 @@ async fn test_update_project_no_fields_fails() {
     let (_h, api, _tmp) = spawn_test_engine_with_identity().await;
     let created = api.create_project("Proj", None).await.unwrap();
 
-    let result = api
-        .update_project(&created.id, None, None, false)
-        .await;
+    let result = api.update_project(&created.id, None, None, false).await;
 
     assert!(
         matches!(result, Err(NodeApiError::Rpc(RpcError::BadRequest(_)))),
@@ -331,9 +323,7 @@ async fn test_update_project_empty_name_fails() {
     let (_h, api, _tmp) = spawn_test_engine_with_identity().await;
     let created = api.create_project("Valid", None).await.unwrap();
 
-    let result = api
-        .update_project(&created.id, Some(""), None, false)
-        .await;
+    let result = api.update_project(&created.id, Some(""), None, false).await;
 
     assert!(
         matches!(result, Err(NodeApiError::Rpc(RpcError::BadRequest(_)))),
@@ -389,10 +379,7 @@ async fn test_create_update_delete_lifecycle() {
     let (_h, api, _tmp) = spawn_test_engine_with_identity().await;
 
     // Create
-    let project = api
-        .create_project("Lifecycle", Some("v1"))
-        .await
-        .unwrap();
+    let project = api.create_project("Lifecycle", Some("v1")).await.unwrap();
     assert_eq!(project.name, "Lifecycle");
     assert_eq!(project.description, Some("v1".to_owned()));
 

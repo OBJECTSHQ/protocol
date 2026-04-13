@@ -13,7 +13,7 @@ use std::time::Duration;
 
 use fs4::fs_std::FileExt;
 use objects_core::node_api::NodeApi;
-use objects_core::rpc::proto::{NodeProtocol, NODE_RPC_ALPN};
+use objects_core::rpc::proto::{NODE_RPC_ALPN, NodeProtocol};
 use objects_core::service::NodeService;
 use objects_core::{NodeConfig, NodeState};
 use objects_transport::{NodeAddr, ObjectsEndpoint};

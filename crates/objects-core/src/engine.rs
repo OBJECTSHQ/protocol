@@ -10,9 +10,9 @@ use tracing::info;
 
 use crate::api::handlers::AppState;
 use crate::api::types::{
-    AssetInfo, CreateProjectRequest, DeleteProjectRequest, GetAssetContentResponse,
-    HealthResponse, IdentityInfo, ListAssetsResponse, ListProjectsResponse, ListVaultResponse,
-    NodeAddress, PeerInfo, ProjectInfo, StatusResponse, UpdateProjectRequest, VaultEntry,
+    AssetInfo, CreateProjectRequest, DeleteProjectRequest, GetAssetContentResponse, HealthResponse,
+    IdentityInfo, ListAssetsResponse, ListProjectsResponse, ListVaultResponse, NodeAddress,
+    PeerInfo, ProjectInfo, StatusResponse, UpdateProjectRequest, VaultEntry,
 };
 use crate::rpc::proto::*;
 use crate::state::IdentityInfo as StateIdentityInfo;
