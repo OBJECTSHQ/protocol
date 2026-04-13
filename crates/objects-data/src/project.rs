@@ -108,6 +108,35 @@ impl Project {
         self.updated_at
     }
 
+    /// Apply partial updates to the project.
+    ///
+    /// - `name`: If `Some`, replaces the project name.
+    /// - `description`: If `Some`, sets the description.
+    /// - `clear_description`: If `true` and `description` is `None`, clears the description.
+    /// - `updated_at`: New timestamp (must be >= created_at).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidProject`] if the updated state fails validation.
+    pub fn update(
+        &mut self,
+        name: Option<String>,
+        description: Option<String>,
+        clear_description: bool,
+        updated_at: u64,
+    ) -> Result<(), Error> {
+        if let Some(n) = name {
+            self.name = n;
+        }
+        if let Some(d) = description {
+            self.description = Some(d);
+        } else if clear_description {
+            self.description = None;
+        }
+        self.updated_at = updated_at;
+        self.validate()
+    }
+
     /// Validates the project according to RFC-004 rules.
     ///
     /// Checks:
@@ -247,6 +276,50 @@ mod tests {
             200,
             100,
         );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_update_name_only() {
+        let mut project = valid_project();
+        project
+            .update(Some("New Name".to_string()), None, false, 1704542600)
+            .unwrap();
+        assert_eq!(project.name(), "New Name");
+        assert_eq!(project.description(), Some("A test project"));
+        assert_eq!(project.updated_at(), 1704542600);
+    }
+
+    #[test]
+    fn test_update_description_only() {
+        let mut project = valid_project();
+        project
+            .update(None, Some("New description".to_string()), false, 1704542600)
+            .unwrap();
+        assert_eq!(project.name(), "Test Project");
+        assert_eq!(project.description(), Some("New description"));
+    }
+
+    #[test]
+    fn test_update_clear_description() {
+        let mut project = valid_project();
+        project.update(None, None, true, 1704542600).unwrap();
+        assert_eq!(project.description(), None);
+    }
+
+    #[test]
+    fn test_update_description_takes_precedence_over_clear() {
+        let mut project = valid_project();
+        project
+            .update(None, Some("Keep this".to_string()), true, 1704542600)
+            .unwrap();
+        assert_eq!(project.description(), Some("Keep this"));
+    }
+
+    #[test]
+    fn test_update_validates_empty_name() {
+        let mut project = valid_project();
+        let result = project.update(Some("".to_string()), None, false, 1704542600);
         assert!(result.is_err());
     }
 }

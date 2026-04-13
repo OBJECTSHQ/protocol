@@ -169,6 +169,7 @@ impl DocsClient {
             .await
             .map_err(Error::Iroh)?;
 
+        doc.close().await.map_err(Error::Iroh)?;
         Ok(hash)
     }
 
@@ -217,6 +218,7 @@ impl DocsClient {
         futures::pin_mut!(stream);
 
         let entry = stream.next().await;
+        doc.close().await.map_err(Error::Iroh)?;
         match entry {
             Some(Ok(e)) => Ok(Some(e)),
             Some(Err(e)) => Err(Error::Iroh(e)),
@@ -297,6 +299,7 @@ impl DocsClient {
             entries.push(entry);
         }
 
+        doc.close().await.map_err(Error::Iroh)?;
         Ok(entries)
     }
 
@@ -334,6 +337,7 @@ impl DocsClient {
             .await
             .map_err(|e| Error::SyncFailed(e.to_string()))?;
 
+        doc.close().await.map_err(Error::Iroh)?;
         Ok(())
     }
 
@@ -426,6 +430,7 @@ impl DocsClient {
             .await
             .map_err(|e| Error::SyncFailed(e.to_string()))?;
 
+        doc.close().await.map_err(Error::Iroh)?;
         Ok(ticket)
     }
 
