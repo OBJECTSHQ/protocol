@@ -55,8 +55,8 @@ impl Config {
     }
 
     pub fn config_path() -> PathBuf {
-        let base = std::env::var("OBJECTS_DATA_DIR")
-            .unwrap_or_else(|_| objects_core::default_data_dir());
+        let base =
+            std::env::var("OBJECTS_DATA_DIR").unwrap_or_else(|_| objects_core::default_data_dir());
         PathBuf::from(base).join("config.toml")
     }
 
