@@ -1,17 +1,24 @@
 //! ObjectsNode — the primary FFI entry point.
 //!
 //! Wraps [`NodeService`] and [`NodeApi`] behind a uniffi-exported `Object`.
-//! The constructor starts a full in-process OBJECTS node (endpoint, discovery,
-//! sync engine, vault) and returns a handle. Async methods delegate to
-//! [`NodeApi`] which communicates with the engine actor over an irpc channel.
+//!
+//! **Connect-or-start:** `ObjectsNode::start(dataDir)` first tries to connect
+//! to an already-running node (reading `node.api`). If none is healthy, it
+//! acquires an exclusive lock and starts a full in-process node.
 
+use std::fs::File;
 use std::path::Path;
 use std::sync::Arc;
+use std::time::Duration;
 
+use fs4::fs_std::FileExt;
 use objects_core::node_api::NodeApi;
+use objects_core::rpc::proto::{NODE_RPC_ALPN, NodeProtocol};
 use objects_core::service::NodeService;
 use objects_core::{NodeConfig, NodeState};
+use objects_transport::{NodeAddr, ObjectsEndpoint};
 use tokio::sync::watch;
+use tracing::info;
 
 use crate::error::SdkError;
 use crate::types::{
@@ -19,32 +26,35 @@ use crate::types::{
     VaultEntryInfo, assets_from, peers_from, projects_from, vault_entries_from,
 };
 
-/// An in-process OBJECTS Protocol node.
+/// An OBJECTS Protocol node handle.
+///
+/// May be backed by a local in-process node (this app owns it) or a remote
+/// connection to a node started by another app.
 ///
 /// Kotlin: `val node = ObjectsNode.start("/path/to/data")`
 /// Swift:  `let node = try ObjectsNode.start(dataDir: "/path/to/data")`
-///
-/// The node runs its own tokio runtime and background tasks. Call [`shutdown`]
-/// when done to release resources cleanly.
 #[derive(uniffi::Object)]
 pub struct ObjectsNode {
-    /// Kept alive to sustain background tasks spawned during node startup.
+    /// Kept alive to sustain background tasks (local node or client endpoint).
     #[allow(dead_code)]
     runtime: Arc<tokio::runtime::Runtime>,
     api: NodeApi,
-    shutdown_tx: watch::Sender<bool>,
+    /// Present only when we own the node (started it locally).
+    shutdown_tx: Option<watch::Sender<bool>>,
+    /// Held to prevent other processes from starting a second node.
+    /// Released on drop / shutdown.
+    #[allow(dead_code)]
+    _lock: Option<File>,
 }
 
 #[uniffi::export]
 impl ObjectsNode {
-    /// Start an in-process OBJECTS node.
+    /// Connect to an existing node or start a new one.
     ///
-    /// Creates the data directory if it does not exist, loads or generates
-    /// a node keypair, connects to the relay, joins the discovery topic,
-    /// and initializes the sync engine.
-    ///
-    /// The `data_dir` is the root directory for all node data (config, keys,
-    /// blob storage). Equivalent to `~/.objects` for the CLI daemon.
+    /// 1. Read `{data_dir}/node.api` and health-check the existing node.
+    /// 2. If healthy → return a client connected to it (no local engine).
+    /// 3. If not → acquire `{data_dir}/.node.lock`, start a full node,
+    ///    write `node.api`, and return.
     #[uniffi::constructor]
     pub fn start(data_dir: String) -> Result<Arc<Self>, SdkError> {
         let runtime = tokio::runtime::Builder::new_multi_thread()
@@ -54,12 +64,13 @@ impl ObjectsNode {
                 message: format!("failed to create tokio runtime: {e}"),
             })?;
 
-        let (api, shutdown_tx) = runtime.block_on(async { start_node(&data_dir).await })?;
+        let result = runtime.block_on(async { connect_or_start(&data_dir).await })?;
 
         Ok(Arc::new(Self {
             runtime: Arc::new(runtime),
-            api,
-            shutdown_tx,
+            api: result.api,
+            shutdown_tx: result.shutdown_tx,
+            _lock: result.lock,
         }))
     }
 
@@ -242,21 +253,109 @@ impl ObjectsNode {
 
     /// Shut down the node gracefully.
     ///
-    /// Stops discovery, closes connections, and releases resources.
-    /// After calling this, the node cannot be used again.
+    /// If this app owns the node (started it), stops discovery, closes
+    /// connections, and releases resources. If connected to another app's
+    /// node, just drops the connection without affecting the shared node.
     pub fn shutdown(&self) -> Result<(), SdkError> {
-        let _ = self.shutdown_tx.send(true);
+        if let Some(ref tx) = self.shutdown_tx {
+            let _ = tx.send(true);
+        }
         Ok(())
     }
 }
 
-/// Internal: starts the full node and returns the API client + shutdown handle.
-async fn start_node(data_dir: &str) -> Result<(NodeApi, watch::Sender<bool>), SdkError> {
-    // Ensure data directory exists
+// =============================================================================
+// Internal: connect-or-start logic
+// =============================================================================
+
+struct StartResult {
+    api: NodeApi,
+    shutdown_tx: Option<watch::Sender<bool>>,
+    lock: Option<File>,
+}
+
+/// Try to connect to an existing node; if none is running, start one.
+async fn connect_or_start(data_dir: &str) -> Result<StartResult, SdkError> {
     std::fs::create_dir_all(data_dir).map_err(|e| SdkError::Internal {
         message: format!("failed to create data directory: {e}"),
     })?;
 
+    // Try connecting to an existing node first
+    if let Some(api) = try_connect_existing(data_dir).await {
+        info!("Connected to existing node via node.api");
+        return Ok(StartResult {
+            api,
+            shutdown_tx: None,
+            lock: None,
+        });
+    }
+
+    // No healthy node found — acquire lock and start our own
+    let lock = acquire_lock(data_dir)?;
+    info!("No existing node found, starting new node");
+
+    let (api, shutdown_tx) = start_node(data_dir).await?;
+
+    Ok(StartResult {
+        api,
+        shutdown_tx: Some(shutdown_tx),
+        lock: Some(lock),
+    })
+}
+
+/// Try to connect to an already-running node by reading node.api.
+async fn try_connect_existing(data_dir: &str) -> Option<NodeApi> {
+    let api_path = Path::new(data_dir).join("node.api");
+    let content = std::fs::read_to_string(&api_path).ok()?;
+    let info: serde_json::Value = serde_json::from_str(&content).ok()?;
+    let node_addr: NodeAddr = serde_json::from_value(info.get("node_addr")?.clone()).ok()?;
+
+    // Lightweight endpoint — just for the QUIC client connection, no engine
+    let endpoint = ObjectsEndpoint::builder().bind().await.ok()?;
+
+    let client =
+        irpc_iroh::client::<NodeProtocol>(endpoint.inner().clone(), node_addr, NODE_RPC_ALPN);
+    let api = NodeApi::from_client(client);
+
+    // Health check with timeout — if the node is dead, this fails fast
+    match tokio::time::timeout(Duration::from_secs(2), api.health()).await {
+        Ok(Ok(_)) => Some(api),
+        _ => {
+            info!("Existing node not healthy, will start a new one");
+            None
+        }
+    }
+}
+
+/// Acquire an exclusive lock file to prevent multiple nodes on the same data dir.
+fn acquire_lock(data_dir: &str) -> Result<File, SdkError> {
+    let lock_path = Path::new(data_dir).join(".node.lock");
+    let file = File::create(&lock_path).map_err(|e| SdkError::Internal {
+        message: format!("failed to create lock file: {e}"),
+    })?;
+    file.try_lock_exclusive().map_err(|_| SdkError::Internal {
+        message: "another node is starting up on this data directory".into(),
+    })?;
+    Ok(file)
+}
+
+/// Write node.api file so other apps (and CLI) can discover this node.
+fn write_node_api(data_dir: &str, service: &NodeService) {
+    let api_path = Path::new(data_dir).join("node.api");
+    let info = serde_json::json!({
+        "node_id": service.node_id().to_string(),
+        "node_addr": service.node_addr(),
+    });
+
+    if let Err(e) = std::fs::write(&api_path, serde_json::to_string_pretty(&info).unwrap()) {
+        tracing::warn!("Failed to write node.api: {e}");
+    } else {
+        info!("Node API info written to {}", api_path.display());
+    }
+}
+
+/// Start a full in-process node and return the API client + shutdown handle.
+async fn start_node(data_dir: &str) -> Result<(NodeApi, watch::Sender<bool>), SdkError> {
     // Load or create config
     let config_path = Path::new(data_dir).join("config.toml");
     let mut config = NodeConfig::load_or_create(&config_path).map_err(|e| SdkError::Internal {
@@ -279,6 +378,9 @@ async fn start_node(data_dir: &str) -> Result<(NodeApi, watch::Sender<bool>), Sd
 
     let api = service.node_api().clone();
     let shutdown_tx = service.shutdown_trigger();
+
+    // Write node.api so other apps can discover us
+    write_node_api(data_dir, &service);
 
     // Run the service event loop in the background
     tokio::spawn(async move {

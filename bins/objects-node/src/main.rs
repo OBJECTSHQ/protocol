@@ -85,6 +85,18 @@ async fn main() -> Result<()> {
     // Ensure data directory exists
     std::fs::create_dir_all(&config.node.data_dir)?;
 
+    // Acquire exclusive lock to prevent multiple nodes on the same data dir
+    let lock_path = Path::new(&config.node.data_dir).join(".node.lock");
+    let lock_file = std::fs::File::create(&lock_path)?;
+    use fs4::fs_std::FileExt;
+    lock_file.try_lock_exclusive().map_err(|_| {
+        anyhow::anyhow!(
+            "Another node is already running on {}. Only one node per data directory is allowed.",
+            config.node.data_dir
+        )
+    })?;
+    let _lock = lock_file; // held until process exits
+
     // Load or create state
     let state_path = Path::new(&config.node.data_dir).join("node.key");
     let state = match NodeState::load_or_create(&state_path) {

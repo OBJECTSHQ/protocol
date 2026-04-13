@@ -12,6 +12,7 @@ name = "objects_ffi"
 
 [dependencies]
 objects-core.workspace = true
+objects-transport.workspace = true
 
 # FFI
 uniffi = { version = "0.29", features = ["cli"] }
@@ -19,8 +20,15 @@ uniffi = { version = "0.29", features = ["cli"] }
 # Async
 tokio.workspace = true
 
+# Networking (for connecting to existing node)
+irpc-iroh.workspace = true
+
 # Serialization
 bytes.workspace = true
+serde_json.workspace = true
+
+# File locking
+fs4.workspace = true
 
 # Error handling
 thiserror.workspace = true
