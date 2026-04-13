@@ -102,12 +102,16 @@ impl NodeEngine {
                 msg.tx.send(resp).await.ok();
             }
             NodeCommand::UpdateProject(msg) => {
-                let resp = self.handle_update_project(msg.inner).await;
-                msg.tx.send(resp).await.ok();
+                msg.tx
+                    .send(Err(RpcError::Internal("not implemented".into())))
+                    .await
+                    .ok();
             }
             NodeCommand::DeleteProject(msg) => {
-                let resp = self.handle_delete_project(msg.inner).await;
-                msg.tx.send(resp).await.ok();
+                msg.tx
+                    .send(Err(RpcError::Internal("not implemented".into())))
+                    .await
+                    .ok();
             }
 
             // --- Assets ---
