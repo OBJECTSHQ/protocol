@@ -258,6 +258,22 @@ impl DocsClient {
         self.set_bytes(replica_id, author, key, value).await
     }
 
+    /// Remove a catalog entry by overwriting with empty bytes (tombstone).
+    ///
+    /// The entry at `/catalog/{project_id}` is overwritten with an empty value.
+    /// `list_catalog` will skip entries that fail to decode, so this effectively
+    /// removes the project from the catalog.
+    pub async fn remove_catalog_entry(
+        &self,
+        replica_id: NamespaceId,
+        author: AuthorId,
+        project_id: &str,
+    ) -> Result<()> {
+        let key = catalog_key(project_id);
+        self.set_bytes(replica_id, author, key, vec![]).await?;
+        Ok(())
+    }
+
     /// Lists all catalog entries from a vault replica.
     ///
     /// When `encryption_key` is provided, entries are decrypted with XChaCha20-Poly1305
