@@ -8,9 +8,9 @@ use objects_data::{Asset, Project};
 
 // Re-export proto-generated types used by the API layer.
 pub use crate::proto_gen::{
-    AssetInfo, CreateProjectRequest, DeleteProjectRequest, GetAssetContentResponse,
-    HealthResponse, IdentityInfo, ListAssetsResponse, ListProjectsResponse, ListVaultResponse,
-    NodeAddress, PeerInfo, ProjectInfo, StatusResponse, UpdateProjectRequest, VaultEntry,
+    AssetInfo, CreateProjectRequest, DeleteProjectRequest, GetAssetContentResponse, HealthResponse,
+    IdentityInfo, ListAssetsResponse, ListProjectsResponse, ListVaultResponse, NodeAddress,
+    PeerInfo, ProjectInfo, StatusResponse, UpdateProjectRequest, VaultEntry,
 };
 
 // =============================================================================
