@@ -125,12 +125,7 @@ For large changes, consider breaking them into stacked PRs:
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the same terms as the project:
-
-- [Apache License 2.0](LICENSE-APACHE)
-- [MIT License](LICENSE)
-
-at the contributor's option.
+By contributing, you agree that your contributions will be licensed under the [Apache License 2.0](LICENSE), the same license as the project.
 
 ## Questions?
 
