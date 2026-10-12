@@ -85,7 +85,7 @@ fs4 = "0.13"
 dirs = "6"
 
 # DNS
-hickory-resolver = { version = "0.25", features = ["tokio", "system-config"] }
+hickory-resolver = { version = "0.26", features = ["tokio", "system-config"] }
 
 # Logging
 tracing = "0.1"
